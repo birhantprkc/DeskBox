@@ -100,6 +100,7 @@ public sealed partial class WidgetWindow : Window
         ViewModel.Items.CollectionChanged += (_, _) => QueueEmptyStateUpdate();
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         UpdateEmptyState();
+        ApplyTitleBarLayout();
     }
 
     private void ConfigureWindow()
@@ -291,6 +292,7 @@ public sealed partial class WidgetWindow : Window
         {
             ApplyBackdropPreference();
             UpdateInteractiveSurfaces();
+            ApplyTitleBarLayout();
             return;
         }
 
@@ -298,6 +300,7 @@ public sealed partial class WidgetWindow : Window
         {
             ApplyBackdropPreference();
             UpdateInteractiveSurfaces();
+            ApplyTitleBarLayout();
         });
     }
 
@@ -443,6 +446,40 @@ public sealed partial class WidgetWindow : Window
             ApplyWidgetItemLayout(border);
             ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Normal);
         }
+    }
+
+    private void ApplyTitleBarLayout()
+    {
+        double listIcon = ViewModel.ListIconSize;
+        double labelFont = ViewModel.ListLabelFontSize;
+
+        double titleIconSize = Math.Clamp(Math.Round(listIcon * 0.54), 11, 18);
+        TitleIcon.FontSize = titleIconSize;
+
+        double titleTextSize = Math.Clamp(Math.Round(labelFont * 1.27), 12, 18);
+        TitleText.FontSize = titleTextSize;
+        TitleEditBox.FontSize = Math.Max(titleTextSize - 1, 11);
+
+        double btnSize = Math.Clamp(titleIconSize + 14, 24, 34);
+        AddButton.Width = btnSize;
+        AddButton.Height = btnSize;
+        MoreButton.Width = btnSize;
+        MoreButton.Height = btnSize;
+        CloseButton.Width = btnSize;
+        CloseButton.Height = btnSize;
+
+        double btnIconSize = Math.Clamp(titleIconSize - 3, 10, 15);
+        AddButtonIcon.FontSize = btnIconSize;
+        MoreButtonIcon.FontSize = btnIconSize;
+        CloseButtonIcon.FontSize = btnIconSize;
+
+        double rowHeight = Math.Clamp(titleIconSize + 32, 40, 54);
+        RootGrid.RowDefinitions[0].Height = new GridLength(rowHeight);
+
+        double padH = Math.Clamp(Math.Round(titleIconSize * 0.9), 10, 16);
+        double padT = Math.Clamp(Math.Round(titleIconSize * 0.5), 4, 10);
+        double padB = Math.Clamp(Math.Round(titleIconSize * 0.35), 3, 8);
+        TitleBarGrid.Padding = new Thickness(padH, padT, padH - 2, padB);
     }
 
     private IEnumerable<Border> FindInteractiveSurfaceBorders(DependencyObject parent)
@@ -651,6 +688,11 @@ public sealed partial class WidgetWindow : Window
         {
             ApplyBackdropPreference();
             UpdateEmptyState();
+        }
+        else if (e.PropertyName is nameof(WidgetViewModel.IconImageSize) or nameof(WidgetViewModel.IconLabelFontSize)
+            or nameof(WidgetViewModel.ListIconSize) or nameof(WidgetViewModel.ListLabelFontSize))
+        {
+            ApplyTitleBarLayout();
         }
     }
 

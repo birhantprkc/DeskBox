@@ -111,7 +111,7 @@
                         MaxWidth="300"
                         Margin="0,-1,0,0"
                         FontSize="14"
-                        FontWeight="SemiBold"
+                        FontWeight="Normal"
                         IsDoubleTapEnabled="True"
                         Text="{Binding Name}"
                         TextTrimming="CharacterEllipsis"
@@ -209,7 +209,7 @@
                 <TextBlock
                     x:Name="EmptyStateTitleText"
                     FontSize="14"
-                    FontWeight="SemiBold"
+                    FontWeight="Normal"
                     Text="{Binding EmptyStateTitle}"
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
@@ -394,7 +394,7 @@
             <StackPanel Width="220" Spacing="10">
                 <TextBlock
                     FontSize="13"
-                    FontWeight="SemiBold"
+                    FontWeight="Normal"
                     Text="删除这个组件？" />
                 <TextBlock
                     x:Name="DeleteConfirmText"
