@@ -1,44 +1,52 @@
-; Inno Setup Script for DeskBox
+; DeskBox 安装脚本
+; 构建命令：
+; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\x64 -v:minimal
 
 #define MyAppName "DeskBox"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "Wingezi"
+#define MyAppPublisher "DeskBox 开发者"
 #define MyAppExeName "DeskBox.exe"
+#define MyAppOutputBaseName "DeskBox_Setup"
+#define MyAppReleaseDir "..\artifacts\publish\DeskBox\x64"
 
 [Setup]
-; NOTE: The value of AppId uniquely identifies this application.
+; AppId 用于唯一标识同一个应用。
 AppId={{5E052824-3456-427E-9759-3BCAE078A1D3}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppComments=安装包会按需检测并下载 .NET 8 Runtime 和 Windows App Runtime。
+UninstallDisplayName={#MyAppName} {#MyAppVersion}
+UninstallDisplayIcon={app}\Assets\deskbox.ico
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
-; To auto-start the app on Windows boot
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 OutputDir=..\Output
-OutputBaseFilename=DeskBox_Installer
+OutputBaseFilename={#MyAppOutputBaseName}_{#MyAppVersion}_x64
 SetupIconFile=..\src\DeskBox\Assets\deskbox.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 
 [Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "autostart"; Description: "Start DeskBox automatically when Windows starts"; GroupDescription: "System Integration"
+Name: "autostart"; Description: "{cm:AutoStart}"; GroupDescription: "{cm:WindowsIntegration}"; Flags: unchecked
 
 [Files]
-Source: "..\src\DeskBox\bin\Release\net8.0-windows10.0.22621.0\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyAppReleaseDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-
-[Registry]
-; Auto-start registry key (HKCU)
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"" --startup"; Tasks: autostart; Flags: uninsdeletevalue
+Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; Tasks: autostart
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+#include "DeskBox.Dependencies.iss"
+#include "DeskBox.Uninstall.iss"

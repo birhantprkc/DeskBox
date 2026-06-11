@@ -49,7 +49,7 @@ public static class IconHelper
     /// </summary>
     public static async Task<BitmapImage?> GetIconAsync(string path, bool hideShortcutArrowOverlay = false)
     {
-        var dispatcher = App.MainWindowDispatcherQueue;
+        var dispatcher = App.UiDispatcherQueue;
         if (dispatcher == null || string.IsNullOrWhiteSpace(path))
         {
             return null;

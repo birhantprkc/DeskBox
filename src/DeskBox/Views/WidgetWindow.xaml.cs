@@ -4,6 +4,9 @@ using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.ViewModels;
 using Microsoft.UI;
+using Microsoft.UI.Composition;
+using Microsoft.UI.Composition.SystemBackdrops;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -15,6 +18,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using WinRT;
 using WinRT.Interop;
 
 namespace DeskBox.Views;
@@ -25,7 +29,8 @@ public sealed partial class WidgetWindow : Window
     {
         Normal,
         Hover,
-        Pressed
+        Pressed,
+        DropTarget
     }
 
     private const int MinWidth = (int)SettingsService.MinWidgetWidth;
@@ -35,6 +40,9 @@ public sealed partial class WidgetWindow : Window
     private readonly SettingsService _settingsService;
     private readonly IntPtr _hWnd;
     private readonly AppWindow _appWindow;
+    private DesktopAcrylicController? _acrylicController;
+    private SystemBackdropConfiguration? _backdropConfiguration;
+    private ICompositionSupportsSystemBackdrop? _backdropTarget;
     private bool _isDragging;
     private bool _isResizing;
     private string _resizeDirection = string.Empty;
@@ -43,9 +51,14 @@ public sealed partial class WidgetWindow : Window
     private Windows.Graphics.SizeInt32 _initialWindowSize;
     private Storyboard? _showButtonsStoryboard;
     private Storyboard? _hideButtonsStoryboard;
+    private DispatcherQueueTimer? _statusToastTimer;
     private bool _emptyStateUpdateQueued;
     private bool _deletePending;
     private string[] _cutClipboardPaths = [];
+    private string[] _activeDragSourcePaths = [];
+    private bool _activeDragHasStorageItems;
+    private Border? _folderDropTarget;
+    private bool _surfaceDragCompletionHandled;
     private int _lastSelectionAnchorIndex = -1;
     private bool _selectionPointerPressed;
     private bool _isBoxSelecting;
@@ -53,8 +66,15 @@ public sealed partial class WidgetWindow : Window
     private Windows.Foundation.Point _selectionCurrentPoint;
     private List<WidgetItem> _selectionSnapshot = [];
     private Flyout? _itemRenameFlyout;
+    private MenuFlyout? _itemDeleteConfirmFlyout;
+    private Flyout? _messageFlyout;
     private TextBox? _itemRenameTextBox;
     private WidgetItem? _itemRenameTarget;
+    private MenuFlyout? _deleteWidgetFlyout;
+    private FrameworkElement? _lastMoreFlyoutTarget;
+    private Windows.Foundation.Point? _lastMoreFlyoutPosition;
+    private bool _isDeleteWidgetFlyoutOpen;
+    private bool _isInlineFlyoutOpen;
     private bool _isCommittingItemRename;
     private DateTime _lastTitleBarClickTimeUtc;
     private Win32Helper.POINT _lastTitleBarClickPoint;
@@ -86,7 +106,7 @@ public sealed partial class WidgetWindow : Window
         RootGrid.DataContext = ViewModel;
 
         TitleEditBox.PlaceholderText = "\u8f93\u5165\u7ec4\u4ef6\u540d\u79f0";
-        ToolTipService.SetToolTip(AddButton, "\u6dfb\u52a0\u9879\u76ee");
+        ToolTipService.SetToolTip(AddButton, "\u65b0\u5efa");
         ToolTipService.SetToolTip(MoreButton, "\u66f4\u591a\u9009\u9879");
         ToolTipService.SetToolTip(CloseButton, "\u5220\u9664\u7ec4\u4ef6");
 
@@ -143,8 +163,7 @@ public sealed partial class WidgetWindow : Window
         int borderNone = unchecked((int)0xFFFFFFFE);
         Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_BORDER_COLOR, ref borderNone, sizeof(int));
 
-        int cornerPreference = Win32Helper.DWMWCP_ROUNDSMALL;
-        Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_WINDOW_CORNER_PREFERENCE, ref cornerPreference, sizeof(int));
+        ApplyWindowCornerPreference();
 
         Win32Helper.EnsureSystemDispatcherQueue();
         Win32Helper.ApplyFullWindowFrame(_hWnd);
@@ -213,6 +232,7 @@ public sealed partial class WidgetWindow : Window
             Visible = false;
             _settingsService.SettingsChanged -= OnSettingsChanged;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            DisposeAcrylicController();
         };
     }
 
@@ -221,7 +241,27 @@ public sealed partial class WidgetWindow : Window
         Win32Helper.SetWindowToBottom(_hWnd);
     }
 
-    public void RevealFromTray()
+    public void RaiseTemporarilyFromTray()
+    {
+        _appWindow.Show();
+        Win32Helper.ClearWindowTopMost(_hWnd);
+        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
+        Win32Helper.BringWindowTemporarilyToFront(_hWnd);
+        Visible = true;
+        ViewModel.Config.IsVisible = true;
+        _settingsService.SaveDebounced();
+
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(60);
+            if (Visible)
+            {
+                Win32Helper.BringWindowTemporarilyToFront(_hWnd);
+            }
+        });
+    }
+
+    public void RevealFromTray(bool autoRestore = true)
     {
         ElevateForInteraction();
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
@@ -229,6 +269,11 @@ public sealed partial class WidgetWindow : Window
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
+
+        if (!autoRestore)
+        {
+            return;
+        }
 
         var timer = DispatcherQueue.CreateTimer();
         timer.IsRepeating = false;
@@ -261,12 +306,12 @@ public sealed partial class WidgetWindow : Window
 
     private void RestoreDesktopLayer()
     {
-        if (_isDragging || _isResizing || TitleEditBox.Visibility == Visibility.Visible || _deletePending)
-        {
-            return;
-        }
-
-        if (DeleteConfirmBar.Visibility == Visibility.Visible)
+        if (_isDragging ||
+            _isResizing ||
+            TitleEditBox.Visibility == Visibility.Visible ||
+            _deletePending ||
+            _isDeleteWidgetFlyoutOpen ||
+            _isInlineFlyoutOpen)
         {
             return;
         }
@@ -290,6 +335,7 @@ public sealed partial class WidgetWindow : Window
     {
         if (DispatcherQueue.HasThreadAccess)
         {
+            ApplyWindowCornerPreference();
             ApplyBackdropPreference();
             UpdateInteractiveSurfaces();
             ApplyTitleBarLayout();
@@ -298,10 +344,24 @@ public sealed partial class WidgetWindow : Window
 
         DispatcherQueue.TryEnqueue(() =>
         {
+            ApplyWindowCornerPreference();
             ApplyBackdropPreference();
             UpdateInteractiveSurfaces();
             ApplyTitleBarLayout();
         });
+    }
+
+    private void ApplyWindowCornerPreference()
+    {
+        int cornerPreference = _settingsService.Settings.WidgetCornerPreference switch
+        {
+            SettingsService.WidgetCornerPreferenceDefault => Win32Helper.DWMWCP_DEFAULT,
+            SettingsService.WidgetCornerPreferenceSquare => Win32Helper.DWMWCP_DONOTROUND,
+            SettingsService.WidgetCornerPreferenceSmall => Win32Helper.DWMWCP_ROUNDSMALL,
+            _ => Win32Helper.DWMWCP_ROUND
+        };
+
+        Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_WINDOW_CORNER_PREFERENCE, ref cornerPreference, sizeof(int));
     }
 
     private void ApplyBackdropPreference()
@@ -309,9 +369,7 @@ public sealed partial class WidgetWindow : Window
         bool useNativeBlur = _settingsService.Settings.UseNativeBackdropBlur;
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         double surfaceOpacity = Math.Clamp(ViewModel.WidgetOpacity, 0.0, 1.0);
-        var tintColor = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
-            : ColorHelper.FromArgb(0xFF, 0xF7, 0xF7, 0xF8);
+        var tintColor = BuildNativeBackdropTintColor(isDark);
 
         try
         {
@@ -321,21 +379,31 @@ public sealed partial class WidgetWindow : Window
             int backdropType;
             if (useNativeBlur)
             {
-                backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
-                Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
-                SystemBackdrop ??= new DesktopAcrylicBackdrop();
+                if (ApplyAcrylicController(isDark, tintColor, surfaceOpacity))
+                {
+                    backdropType = Win32Helper.DWMSBT_NONE;
+                    Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                }
+                else
+                {
+                    backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
+                    Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                    SystemBackdrop ??= new DesktopAcrylicBackdrop();
+                }
             }
             else
             {
                 backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
                 SystemBackdrop = null;
+                DisposeAcrylicController();
             }
 
             App.LogVerbose(
                 $"[Backdrop] hwnd=0x{_hWnd.ToInt64():X} useNativeBlur={useNativeBlur} isDark={isDark} " +
                 $"opacity={surfaceOpacity:F3} tint=#{tintColor.A:X2}{tintColor.R:X2}{tintColor.G:X2}{tintColor.B:X2} " +
-                $"dwmBackdropType={backdropType} systemBackdrop={(SystemBackdrop?.GetType().Name ?? "null")}");
+                $"dwmBackdropType={backdropType} systemBackdrop={(SystemBackdrop?.GetType().Name ?? "null")} " +
+                $"acrylicController={_acrylicController is not null}");
 
             if (useNativeBlur)
             {
@@ -351,17 +419,101 @@ public sealed partial class WidgetWindow : Window
         {
             App.Log($"ApplyBackdropPreference fallback: {ex}");
             SystemBackdrop = null;
+            DisposeAcrylicController();
             Win32Helper.ApplyAccentBlur(_hWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
         }
 
         ApplySurfaceStyle();
     }
 
+    private bool ApplyAcrylicController(bool isDark, Windows.UI.Color tintColor, double surfaceOpacity)
+    {
+        if (!DesktopAcrylicController.IsSupported())
+        {
+            DisposeAcrylicController();
+            return false;
+        }
+
+        _backdropTarget ??= this.As<ICompositionSupportsSystemBackdrop>();
+        _backdropConfiguration ??= new SystemBackdropConfiguration();
+        _backdropConfiguration.IsInputActive = true;
+        _backdropConfiguration.Theme = isDark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
+        _backdropConfiguration.HighContrastBackgroundColor = isDark
+            ? ColorHelper.FromArgb(0xFF, 0x20, 0x20, 0x20)
+            : ColorHelper.FromArgb(0xFF, 0xF3, 0xF3, 0xF3);
+
+        if (_acrylicController is null || _acrylicController.IsClosed)
+        {
+            SystemBackdrop = null;
+            _acrylicController = new DesktopAcrylicController
+            {
+                Kind = DesktopAcrylicKind.Thin
+            };
+
+            if (!_acrylicController.AddSystemBackdropTarget(_backdropTarget))
+            {
+                DisposeAcrylicController();
+                return false;
+            }
+        }
+
+        _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
+        _acrylicController.Kind = DesktopAcrylicKind.Thin;
+        _acrylicController.TintColor = tintColor;
+        _acrylicController.FallbackColor = tintColor;
+        _acrylicController.TintOpacity = (float)(isDark
+            ? Math.Clamp(0.12 + surfaceOpacity * 0.34, 0.0, 0.52)
+            : Math.Clamp(0.06 + surfaceOpacity * 0.22, 0.0, 0.36));
+        _acrylicController.LuminosityOpacity = (float)(isDark
+            ? Math.Clamp(0.34 + surfaceOpacity * 0.36, 0.0, 0.82)
+            : Math.Clamp(0.45 + surfaceOpacity * 0.16, 0.0, 0.68));
+        return true;
+    }
+
+    private void DisposeAcrylicController()
+    {
+        if (_acrylicController is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _acrylicController.RemoveAllSystemBackdropTargets();
+            _acrylicController.Dispose();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _acrylicController = null;
+        }
+    }
+
+    private Windows.UI.Color BuildNativeBackdropTintColor(bool isDark)
+    {
+        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
+            ?? AccentColorHelper.DefaultAccentColor;
+        var baseColor = isDark
+            ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
+            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+
+        return BuildAccentSurfaceColor(
+            isDark,
+            accentColor,
+            baseColor,
+            accentMix: isDark ? 0.08 : 0.16,
+            overlayMix: isDark ? 0.04 : 0.08);
+    }
+
     private void ApplySurfaceStyle()
     {
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         double surfaceOpacity = Math.Clamp(ViewModel.WidgetOpacity, 0.0, 1.0);
-        double materialOpacity = Math.Clamp(surfaceOpacity * 0.78, 0.10, 0.82);
+        double materialOpacity = isDark
+            ? Math.Clamp(surfaceOpacity * 0.78, 0.10, 0.82)
+            : Math.Clamp(0.02 + surfaceOpacity * 0.30, 0.02, 0.40);
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
 
@@ -371,14 +523,14 @@ public sealed partial class WidgetWindow : Window
                 accentColor,
                 isDark
                     ? ColorHelper.FromArgb(0xFF, 0x21, 0x24, 0x2A)
-                    : ColorHelper.FromArgb(0xFF, 0xFB, 0xFB, 0xFC),
-                accentMix: isDark ? 0.18 : 0.11,
-                overlayMix: isDark ? 0.15 : 0.10),
+                    : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
+                accentMix: isDark ? 0.18 : 0.18,
+                overlayMix: isDark ? 0.15 : 0.04),
             materialOpacity);
 
         var borderColor = isDark
             ? ColorHelper.FromArgb(0x12, 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb(0x12, 0x00, 0x00, 0x00);
+            : WithAlpha(BlendColors(ColorHelper.FromArgb(0xFF, 0x00, 0x00, 0x00), accentColor, 0.22), 0x18);
 
         var dividerColor = isDark
             ? ColorHelper.FromArgb(0x10, 0xFF, 0xFF, 0xFF)
@@ -403,19 +555,6 @@ public sealed partial class WidgetWindow : Window
             ? ColorHelper.FromArgb(0x20, 0xFF, 0xFF, 0xFF)
             : ColorHelper.FromArgb(0x14, 0x00, 0x00, 0x00);
 
-        var confirmBackground = BuildAccentSurfaceColor(
-            isDark,
-            accentColor,
-            isDark
-                ? ColorHelper.FromArgb(0xFF, 0x22, 0x24, 0x29)
-                : ColorHelper.FromArgb(0xFF, 0xFA, 0xFA, 0xFB),
-            accentMix: isDark ? 0.06 : 0.03,
-            overlayMix: isDark ? 0.08 : 0.04);
-
-        var confirmBorder = isDark
-            ? ColorHelper.FromArgb(0x14, 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb(0x10, 0x00, 0x00, 0x00);
-
         var secondaryText = isDark
             ? ColorHelper.FromArgb(0xD8, 0xC0, 0xC3, 0xC8)
             : ColorHelper.FromArgb(0xD0, 0x62, 0x65, 0x6A);
@@ -427,14 +566,12 @@ public sealed partial class WidgetWindow : Window
         TitleEditBox.Background = new SolidColorBrush(editorBackground);
         TitleEditBox.BorderBrush = new SolidColorBrush(editorBorder);
         TitleEditBox.Foreground = new SolidColorBrush(isDark ? Colors.White : Colors.Black);
-        DeleteConfirmBar.Background = new SolidColorBrush(confirmBackground);
-        DeleteConfirmBar.BorderBrush = new SolidColorBrush(confirmBorder);
-        DeleteConfirmText.Foreground = new SolidColorBrush(secondaryText);
         EmptyStateTitleText.Foreground = new SolidColorBrush(isDark ? Colors.White : ColorHelper.FromArgb(0xFF, 0x1A, 0x1A, 0x1A));
         EmptyStateDescriptionText.Foreground = new SolidColorBrush(secondaryText);
         EmptyStateIcon.Foreground = new SolidColorBrush(secondaryText);
         SelectionRectangle.Background = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x2D : (byte)0x24));
         SelectionRectangle.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0xD8 : (byte)0xCC));
+        StatusToastText.Foreground = new SolidColorBrush(isDark ? Colors.White : Colors.Black);
 
         UpdateInteractiveSurfaces();
     }
@@ -502,6 +639,11 @@ public sealed partial class WidgetWindow : Window
 
     private void ApplyWidgetItemSurfaceState(Border border, ItemSurfaceState state)
     {
+        if (ReferenceEquals(border, _folderDropTarget) && state != ItemSurfaceState.DropTarget)
+        {
+            state = ItemSurfaceState.DropTarget;
+        }
+
         bool useNativeBlur = _settingsService.Settings.UseNativeBackdropBlur;
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
@@ -524,8 +666,8 @@ public sealed partial class WidgetWindow : Window
                 accentMix: isDark ? 0.30 : 0.18,
                 overlayMix: isDark ? 0.08 : 0.04),
             useNativeBlur
-                ? (isDark ? (byte)0x34 : (byte)0x40)
-                : (isDark ? (byte)0x24 : (byte)0x1C));
+                ? (isDark ? (byte)0x62 : (byte)0x72)
+                : (isDark ? (byte)0x48 : (byte)0x42));
 
         var hoverBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -537,8 +679,8 @@ public sealed partial class WidgetWindow : Window
                 accentMix: isDark ? 0.20 : 0.12,
                 overlayMix: isDark ? 0.12 : 0.18),
             useNativeBlur
-                ? (isDark ? (byte)0x1A : (byte)0x22)
-                : (isDark ? (byte)0x12 : (byte)0x10));
+                ? (isDark ? (byte)0x3A : (byte)0x44)
+                : (isDark ? (byte)0x2A : (byte)0x28));
 
         var pressedBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -550,8 +692,8 @@ public sealed partial class WidgetWindow : Window
                 accentMix: isDark ? 0.24 : 0.15,
                 overlayMix: isDark ? 0.10 : 0.16),
             useNativeBlur
-                ? (isDark ? (byte)0x26 : (byte)0x30)
-                : (isDark ? (byte)0x18 : (byte)0x16));
+                ? (isDark ? (byte)0x48 : (byte)0x54)
+                : (isDark ? (byte)0x34 : (byte)0x30));
 
         var selectedHoverBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -563,11 +705,25 @@ public sealed partial class WidgetWindow : Window
                 accentMix: isDark ? 0.34 : 0.21,
                 overlayMix: isDark ? 0.08 : 0.05),
             useNativeBlur
-                ? (isDark ? (byte)0x3C : (byte)0x48)
-                : (isDark ? (byte)0x28 : (byte)0x20));
+                ? (isDark ? (byte)0x78 : (byte)0x88)
+                : (isDark ? (byte)0x58 : (byte)0x52));
+
+        var dropTargetBackground = WithAlpha(
+            BuildAccentSurfaceColor(
+                isDark,
+                accentColor,
+                isDark
+                    ? ColorHelper.FromArgb(0xFF, 0x35, 0x3D, 0x48)
+                    : ColorHelper.FromArgb(0xFF, 0xE7, 0xF3, 0xFF),
+                accentMix: isDark ? 0.42 : 0.30,
+                overlayMix: isDark ? 0.06 : 0.04),
+            useNativeBlur
+                ? (isDark ? (byte)0x92 : (byte)0x9C)
+                : (isDark ? (byte)0x72 : (byte)0x68));
 
         var backgroundColor = state switch
         {
+            ItemSurfaceState.DropTarget => dropTargetBackground,
             ItemSurfaceState.Hover when isSelected => selectedHoverBackground,
             ItemSurfaceState.Pressed when isSelected => selectedHoverBackground,
             ItemSurfaceState.Hover => hoverBackground,
@@ -577,8 +733,12 @@ public sealed partial class WidgetWindow : Window
         };
 
         border.Background = new SolidColorBrush(backgroundColor);
-        border.BorderBrush = new SolidColorBrush(Colors.Transparent);
-        border.BorderThickness = new Thickness(0);
+        border.BorderBrush = new SolidColorBrush(state == ItemSurfaceState.DropTarget
+            ? WithAlpha(accentColor, isDark ? (byte)0xF0 : (byte)0xD8)
+            : Colors.Transparent);
+        border.BorderThickness = state == ItemSurfaceState.DropTarget
+            ? new Thickness(1)
+            : new Thickness(0);
         border.Opacity = isCut ? 0.58 : 1.0;
     }
 
@@ -590,7 +750,7 @@ public sealed partial class WidgetWindow : Window
             border.Height = double.NaN;
             border.Margin = ViewModel.ListItemMargin;
             border.Padding = ViewModel.ListItemPadding;
-            border.CornerRadius = new CornerRadius(8);
+            border.CornerRadius = GetItemSurfaceCornerRadius();
 
             if (border.Child is Grid listGrid)
             {
@@ -606,30 +766,47 @@ public sealed partial class WidgetWindow : Window
                 {
                     label.FontSize = ViewModel.ListLabelFontSize;
                 }
+
+                foreach (var textBlock in FindDescendants<TextBlock>(listGrid).Skip(1))
+                {
+                    textBlock.FontSize = Math.Max(ViewModel.ListLabelFontSize - 2, 9);
+                    textBlock.Visibility = ViewModel.ShowListItemDetails
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                }
             }
 
             return;
         }
 
-        border.Width = ViewModel.IconTileWidth;
-        border.Height = ViewModel.IconTileHeight;
-        border.Margin = ViewModel.IconTileMargin;
-        border.Padding = ViewModel.IconTilePadding;
-        border.CornerRadius = new CornerRadius(8);
-
-        if (border.Child is Grid iconGrid)
+        if (border.Parent is FrameworkElement slot && slot.Tag as string == "ItemSlot")
         {
-            iconGrid.RowSpacing = ViewModel.IconContentSpacing;
+            slot.Width = ViewModel.IconTileWidth;
+            slot.Height = ViewModel.IconTileHeight;
+            slot.Margin = ViewModel.IconTileMargin;
+        }
 
-            if (TryGetDescendant<Image>(iconGrid, out var icon))
+        border.Width = double.NaN;
+        border.Height = double.NaN;
+        border.MaxWidth = Math.Max(ViewModel.IconImageSize + 18, ViewModel.IconLabelMaxWidth + 12);
+        border.Margin = new Thickness(0);
+        border.Padding = ViewModel.IconTilePadding;
+        border.CornerRadius = GetItemSurfaceCornerRadius();
+
+        if (border.Child is StackPanel iconStack)
+        {
+            iconStack.Spacing = ViewModel.IconContentSpacing;
+
+            if (TryGetDescendant<Image>(iconStack, out var icon))
             {
                 icon.Width = ViewModel.IconImageSize;
                 icon.Height = ViewModel.IconImageSize;
             }
 
-            if (TryGetDescendant<TextBlock>(iconGrid, out var label))
+            if (TryGetDescendant<TextBlock>(iconStack, out var label))
             {
                 label.FontSize = ViewModel.IconLabelFontSize;
+                label.MaxWidth = ViewModel.IconLabelMaxWidth;
             }
         }
     }
@@ -654,6 +831,37 @@ public sealed partial class WidgetWindow : Window
 
         result = null!;
         return false;
+    }
+
+    private CornerRadius GetItemSurfaceCornerRadius()
+    {
+        double radius = _settingsService.Settings.WidgetCornerPreference switch
+        {
+            SettingsService.WidgetCornerPreferenceSquare => 0,
+            SettingsService.WidgetCornerPreferenceSmall => 4,
+            SettingsService.WidgetCornerPreferenceRound => 6,
+            _ => 5
+        };
+
+        return new CornerRadius(radius);
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < childCount; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T typedChild)
+            {
+                yield return typedChild;
+            }
+
+            foreach (var nested in FindDescendants<T>(child))
+            {
+                yield return nested;
+            }
+        }
     }
 
     private bool IsWithinItemsListView(DependencyObject source)
@@ -689,10 +897,22 @@ public sealed partial class WidgetWindow : Window
             ApplyBackdropPreference();
             UpdateEmptyState();
         }
-        else if (e.PropertyName is nameof(WidgetViewModel.IconImageSize) or nameof(WidgetViewModel.IconLabelFontSize)
-            or nameof(WidgetViewModel.ListIconSize) or nameof(WidgetViewModel.ListLabelFontSize))
+        else if (e.PropertyName is nameof(WidgetViewModel.ShowListItemDetails)
+            or nameof(WidgetViewModel.IconTileWidth)
+            or nameof(WidgetViewModel.IconTileHeight)
+            or nameof(WidgetViewModel.IconTileMargin)
+            or nameof(WidgetViewModel.IconTilePadding)
+            or nameof(WidgetViewModel.IconContentSpacing)
+            or nameof(WidgetViewModel.IconImageSize)
+            or nameof(WidgetViewModel.IconLabelFontSize)
+            or nameof(WidgetViewModel.IconLabelMaxWidth)
+            or nameof(WidgetViewModel.ListItemMargin)
+            or nameof(WidgetViewModel.ListItemPadding)
+            or nameof(WidgetViewModel.ListIconSize)
+            or nameof(WidgetViewModel.ListLabelFontSize))
         {
             ApplyTitleBarLayout();
+            UpdateInteractiveSurfaces();
         }
     }
 
@@ -727,25 +947,27 @@ public sealed partial class WidgetWindow : Window
         foreach (var item in ViewModel.Items)
         {
             item.IsSelected = selectedItems.Contains(item);
-            if (!item.IsSelected)
-            {
-                item.IsCut = false;
-            }
         }
 
+        ApplyCutState();
         UpdateInteractiveSurfaces();
     }
 
     private void RootGrid_DragOver(object sender, DragEventArgs e)
     {
-        if (!e.DataView.Contains(StandardDataFormats.StorageItems))
+        ClearFolderDropTarget();
+
+        if (!HasPathDropData(e.DataView))
         {
+            e.AcceptedOperation = DataPackageOperation.None;
             return;
         }
 
         string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
         if (!string.IsNullOrEmpty(ViewModel.MappedFolderPath) &&
-            string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal))
+            string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal) &&
+            !Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control) &&
+            !IsPointerOverFolderDropTarget())
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
@@ -754,29 +976,61 @@ public sealed partial class WidgetWindow : Window
         }
 
         bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
-        bool copyRequested = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
-        e.AcceptedOperation = movesIntoFolder
-            ? (copyRequested ? DataPackageOperation.Copy : DataPackageOperation.Move)
-            : DataPackageOperation.Link;
+        e.AcceptedOperation = GetAcceptedDropOperation(e.DataView.RequestedOperation, movesIntoFolder);
+        if (e.AcceptedOperation == DataPackageOperation.None)
+        {
+            e.DragUIOverride.IsGlyphVisible = false;
+            return;
+        }
+
         e.DragUIOverride.IsGlyphVisible = true;
         e.DragUIOverride.Caption = movesIntoFolder
             ? $"{(e.AcceptedOperation == DataPackageOperation.Copy ? "\u590d\u5236" : "\u79fb\u52a8")}\u5230\u6536\u7eb3\u7ec4\u4ef6"
             : "\u6dfb\u52a0\u5230\u5f15\u7528\u7ec4\u4ef6";
     }
 
+    private void RootGrid_DragLeave(object sender, DragEventArgs e)
+    {
+        ClearFolderDropTarget();
+    }
+
     private async void RootGrid_Drop(object sender, DragEventArgs e)
     {
-        if (!e.DataView.Contains(StandardDataFormats.StorageItems))
+        ClearFolderDropTarget();
+
+        if (!HasPathDropData(e.DataView))
         {
             return;
         }
 
-        var items = await e.DataView.GetStorageItemsAsync();
-        var paths = items.Select(item => item.Path).Where(path => !string.IsNullOrEmpty(path));
-        bool? moveWhenMapped = !string.IsNullOrEmpty(ViewModel.MappedFolderPath)
-            ? e.AcceptedOperation != DataPackageOperation.Copy
+        var paths = await GetDropPathsAsync(e.DataView);
+        if (paths.Length == 0)
+        {
+            return;
+        }
+
+        bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
+        var acceptedOperation = e.AcceptedOperation == DataPackageOperation.None
+            ? GetAcceptedDropOperation(e.DataView.RequestedOperation, movesIntoFolder)
+            : e.AcceptedOperation;
+        if (acceptedOperation == DataPackageOperation.None)
+        {
+            return;
+        }
+
+        bool? moveWhenMapped = movesIntoFolder
+            ? acceptedOperation != DataPackageOperation.Copy
             : null;
-        await ViewModel.ImportPathsAsync(paths, moveWhenMapped);
+
+        string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
+        if (movesIntoFolder &&
+            string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal) &&
+            moveWhenMapped == true)
+        {
+            return;
+        }
+
+        await ViewModel.ImportPathsAsync(paths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
 
         if (moveWhenMapped == true)
         {
@@ -833,7 +1087,17 @@ public sealed partial class WidgetWindow : Window
             ApplySelectionState(listView);
         }
 
+        var selectedItems = GetSelectedItems();
+        bool isMultiSelection = selectedItems.Count > 1;
         var flyout = new MenuFlyout();
+
+        if (isMultiSelection)
+        {
+            AddMultiSelectionItems(flyout, selectedItems.Count);
+            ShowFlyoutWithElevation(flyout, element, e.GetPosition(element));
+            e.Handled = true;
+            return;
+        }
 
         var openItem = new MenuFlyoutItem
         {
@@ -893,19 +1157,7 @@ public sealed partial class WidgetWindow : Window
         propItem.Click += (_, _) => ShellContextMenuHelper.ShowProperties(_hWnd, item.Path);
         flyout.Items.Add(propItem);
 
-        if (string.IsNullOrEmpty(ViewModel.MappedFolderPath))
-        {
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            var removeItem = new MenuFlyoutItem
-            {
-                Text = "\u4ece\u7ec4\u4ef6\u4e2d\u79fb\u9664",
-                Icon = new SymbolIcon(Symbol.Delete)
-            };
-            removeItem.Click += (_, _) => ViewModel.RemoveItemCommand.Execute(item);
-            flyout.Items.Add(removeItem);
-        }
-        else if (ViewModel.FollowsDefaultStoragePath)
+        if (CanMoveItemsBackToDesktop())
         {
             flyout.Items.Add(new MenuFlyoutSeparator());
 
@@ -918,7 +1170,8 @@ public sealed partial class WidgetWindow : Window
             {
                 try
                 {
-                    await ViewModel.MoveItemBackToDesktopAsync(item);
+                    int movedCount = await ViewModel.MoveItemsBackToDesktopAsync([item], useShellProgress: true);
+                    ShowStatusToast(movedCount > 0 ? "已移回桌面" : "没有项目被移动");
                 }
                 catch (Exception ex)
                 {
@@ -930,6 +1183,59 @@ public sealed partial class WidgetWindow : Window
 
         ShowFlyoutWithElevation(flyout, element, e.GetPosition(element));
         e.Handled = true;
+    }
+
+    private void AddMultiSelectionItems(MenuFlyout flyout, int selectedCount)
+    {
+        var titleItem = new MenuFlyoutItem
+        {
+            Text = $"已选择 {selectedCount} 项",
+            Icon = new FontIcon { Glyph = "\uE762" },
+            IsEnabled = false
+        };
+        flyout.Items.Add(titleItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var copyItem = new MenuFlyoutItem
+        {
+            Text = "复制",
+            Icon = new FontIcon { Glyph = "\uE8C8" }
+        };
+        copyItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: false);
+        flyout.Items.Add(copyItem);
+
+        var cutItem = new MenuFlyoutItem
+        {
+            Text = "剪切",
+            Icon = new FontIcon { Glyph = "\uE8C6" }
+        };
+        cutItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: true);
+        flyout.Items.Add(cutItem);
+
+        var deleteItem = new MenuFlyoutItem
+        {
+            Text = "删除",
+            Icon = new FontIcon
+            {
+                Glyph = "\uE74D",
+                Foreground = new SolidColorBrush(Colors.Red)
+            }
+        };
+        deleteItem.Click += async (_, _) => await DeleteSelectedItemsAsync();
+        flyout.Items.Add(deleteItem);
+
+        if (CanMoveItemsBackToDesktop())
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            var moveBackToDesktopItem = new MenuFlyoutItem
+            {
+                Text = "移回桌面",
+                Icon = new FontIcon { Glyph = "\uE74A" }
+            };
+            moveBackToDesktopItem.Click += async (_, _) => await MoveSelectedItemsBackToDesktopAsync();
+            flyout.Items.Add(moveBackToDesktopItem);
+        }
     }
 
     private void ItemsView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1015,39 +1321,131 @@ public sealed partial class WidgetWindow : Window
         }
     }
 
-    private async void ItemsView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    private void ItemsView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
-        var draggedItems = GetSelectedItems();
-        if (draggedItems.Count == 0)
-        {
-            draggedItems = e.Items.OfType<WidgetItem>().ToList();
-        }
+        e.Cancel = !TryPrepareItemDragPackage(
+            e.Data,
+            GetDragItems(e.Items.OfType<WidgetItem>().FirstOrDefault()));
+    }
 
-        if (draggedItems.Count == 0)
+    private async void ItemsView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    {
+        await HandleItemDragCompletedAsync(args.DropResult);
+    }
+
+    private async Task HandleItemDragCompletedAsync(DataPackageOperation dropResult)
+    {
+        var draggedPaths = _activeDragSourcePaths;
+        bool hasStorageItems = _activeDragHasStorageItems;
+        _activeDragSourcePaths = [];
+        _activeDragHasStorageItems = false;
+
+        if (draggedPaths.Length == 0)
         {
-            e.Cancel = true;
             return;
         }
 
-        e.Data.RequestedOperation = string.IsNullOrEmpty(ViewModel.MappedFolderPath)
-            ? DataPackageOperation.Copy
-            : DataPackageOperation.Move;
-
-        var storageItems = await App.Current.FileService.GetStorageItemsAsync(draggedItems.Select(item => item.Path));
-        if (storageItems.Count == 0)
+        if (ViewModel.FollowsDefaultStoragePath &&
+            IsCursorOnDesktop() &&
+            !IsCursorOverThisWindow())
         {
-            e.Cancel = true;
+            if (hasStorageItems || dropResult == DataPackageOperation.Move)
+            {
+                await Task.Delay(250);
+                await ViewModel.RefreshFromConfigAsync();
+                ClearRemovedCutPaths();
+                UpdateEmptyState();
+                return;
+            }
+
+            await MoveDraggedPathsBackToDesktopAsync(draggedPaths, useShellProgress: true);
             return;
         }
 
-        e.Data.SetStorageItems(storageItems);
-        e.Data.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
-        e.Data.Properties["DeskBoxSourcePaths"] = draggedItems.Select(item => item.Path).ToArray();
+        if (dropResult != DataPackageOperation.Move)
+        {
+            return;
+        }
+
+        ClearRemovedCutPaths();
+    }
+
+    private IReadOnlyList<WidgetItem> GetDragItems(WidgetItem? fallbackItem)
+    {
+        var selectedItems = GetSelectedItems();
+        if (fallbackItem is null)
+        {
+            return selectedItems;
+        }
+
+        if (selectedItems.Any(item => ReferenceEquals(item, fallbackItem)))
+        {
+            return selectedItems;
+        }
+
+        return [fallbackItem];
+    }
+
+    private bool TryPrepareItemDragPackage(DataPackage dataPackage, IReadOnlyList<WidgetItem> draggedItems)
+    {
+        if (draggedItems.Count == 0)
+        {
+            _activeDragSourcePaths = [];
+            _activeDragHasStorageItems = false;
+            return false;
+        }
+
+        var sourcePaths = draggedItems
+            .Select(item => item.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path) && (File.Exists(path) || Directory.Exists(path)))
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (sourcePaths.Length == 0)
+        {
+            _activeDragSourcePaths = [];
+            _activeDragHasStorageItems = false;
+            return false;
+        }
+
+        var storageItems = App.Current.FileService.GetStorageItems(sourcePaths);
+
+        dataPackage.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
+        dataPackage.SetText(string.Join(Environment.NewLine, sourcePaths));
+        if (storageItems.Count > 0)
+        {
+            dataPackage.SetStorageItems(storageItems, false);
+        }
+
+        dataPackage.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
+        dataPackage.Properties["DeskBoxSourcePaths"] = sourcePaths;
+        dataPackage.Properties.Title = sourcePaths.Length == 1
+            ? Path.GetFileName(sourcePaths[0])
+            : $"{sourcePaths.Length} 个项目";
+        _activeDragSourcePaths = sourcePaths;
+        _activeDragHasStorageItems = storageItems.Count > 0;
+        return true;
+    }
+
+    private async void ItemsView_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        await HandleItemsKeyDownAsync(e);
     }
 
     private async void RootGrid_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        await HandleItemsKeyDownAsync(e);
+    }
+
+    private async Task HandleItemsKeyDownAsync(KeyRoutedEventArgs e)
+    {
+        if (e.Handled)
+        {
+            return;
+        }
+
         bool ctrlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
+        bool shiftPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift);
         var listView = GetActiveItemsView();
         if (listView is null)
         {
@@ -1071,7 +1469,7 @@ public sealed partial class WidgetWindow : Window
 
         if (ctrlPressed && e.Key == Windows.System.VirtualKey.X)
         {
-            await CopySelectionToClipboardAsync(cut: !string.IsNullOrEmpty(ViewModel.MappedFolderPath));
+            await CopySelectionToClipboardAsync(cut: true);
             e.Handled = true;
             return;
         }
@@ -1083,8 +1481,70 @@ public sealed partial class WidgetWindow : Window
             return;
         }
 
+        if (ctrlPressed && shiftPressed && e.Key == Windows.System.VirtualKey.C)
+        {
+            CopySelectedPathsToClipboard();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrlPressed && shiftPressed && e.Key == Windows.System.VirtualKey.N)
+        {
+            if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
+            {
+                await CreateFolderInMappedLocationAsync();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (ctrlPressed && e.Key == Windows.System.VirtualKey.O)
+        {
+            if (GetPrimarySelectedItem() is { } openItem)
+            {
+                ViewModel.OpenItemCommand.Execute(openItem);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (ctrlPressed && e.Key == Windows.System.VirtualKey.R)
+        {
+            await ViewModel.RefreshFromConfigAsync();
+            ClearRemovedCutPaths();
+            UpdateEmptyState();
+            ShowStatusToast("已刷新");
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Windows.System.VirtualKey.F2)
+        {
+            if (GetPrimarySelectedItem() is { } renameItem)
+            {
+                await StartItemRenameAsync(renameItem);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (e.Key == Windows.System.VirtualKey.Delete)
+        {
+            if (GetSelectedItems().Count > 0)
+            {
+                await DeleteSelectedItemsAsync();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (e.Key == Windows.System.VirtualKey.Escape)
         {
+            ClearCutState();
             listView.SelectedItems.Clear();
             ApplySelectionState(listView);
             e.Handled = true;
@@ -1098,6 +1558,27 @@ public sealed partial class WidgetWindow : Window
         }
     }
 
+    private void CopySelectedPathsToClipboard()
+    {
+        var selectedPaths = GetSelectedItems()
+            .Select(item => item.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (selectedPaths.Length == 0)
+        {
+            return;
+        }
+
+        var package = new DataPackage();
+        package.SetText(string.Join(Environment.NewLine, selectedPaths));
+        Clipboard.SetContent(package);
+        Clipboard.Flush();
+        ShowStatusToast($"已复制路径 {selectedPaths.Length} 项");
+    }
+
     private async Task CopySelectionToClipboardAsync(bool cut)
     {
         var selectedItems = GetSelectedItems();
@@ -1106,53 +1587,75 @@ public sealed partial class WidgetWindow : Window
             return;
         }
 
-        var storageItems = await App.Current.FileService.GetStorageItemsAsync(selectedItems.Select(item => item.Path));
-        if (storageItems.Count == 0)
+        var sourcePaths = selectedItems
+            .Select(item => item.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path) && (File.Exists(path) || Directory.Exists(path)))
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (sourcePaths.Length == 0)
         {
+            ShowStatusToast("没有可复制的项目");
             return;
         }
 
         var package = new DataPackage();
         package.RequestedOperation = cut ? DataPackageOperation.Move : DataPackageOperation.Copy;
-        package.SetStorageItems(storageItems);
-        package.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
-        package.Properties["DeskBoxSourcePaths"] = selectedItems.Select(item => item.Path).ToArray();
-        Clipboard.SetContent(package);
-        Clipboard.Flush();
-
-        _cutClipboardPaths = cut
-            ? selectedItems.Select(item => item.Path).ToArray()
-            : [];
-
-        foreach (var item in ViewModel.Items)
+        bool shellClipboardSet = ShellClipboardHelper.TrySetFileDropList(sourcePaths, cut);
+        if (!shellClipboardSet)
         {
-            item.IsCut = cut && _cutClipboardPaths.Contains(item.Path, StringComparer.OrdinalIgnoreCase);
+            var storageItems = await App.Current.FileService.GetStorageItemsAsync(sourcePaths);
+            package.SetText(string.Join(Environment.NewLine, sourcePaths));
+            if (storageItems.Count > 0)
+            {
+                package.SetStorageItems(storageItems);
+            }
+
+            package.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
+            package.Properties["DeskBoxSourcePaths"] = sourcePaths;
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
         }
 
+        _cutClipboardPaths = cut
+            ? sourcePaths
+            : [];
+
+        ApplyCutState();
         UpdateInteractiveSurfaces();
+        ShowStatusToast(cut
+            ? $"已剪切 {sourcePaths.Length} 项"
+            : $"已复制 {sourcePaths.Length} 项");
     }
 
     private async Task PasteFromClipboardAsync()
     {
         var clipboard = Clipboard.GetContent();
-        if (!clipboard.Contains(StandardDataFormats.StorageItems))
+        IReadOnlyList<string> sourcePaths = TryGetPackageStringArray(clipboard.Properties, "DeskBoxSourcePaths")
+            .Where(path => !string.IsNullOrWhiteSpace(path) && (File.Exists(path) || Directory.Exists(path)))
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (sourcePaths.Count == 0 && clipboard.Contains(StandardDataFormats.StorageItems))
+        {
+            var items = await clipboard.GetStorageItemsAsync();
+            sourcePaths = items
+                .Select(item => item.Path)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToArray();
+        }
+
+        if (sourcePaths.Count == 0)
         {
             return;
         }
 
-        var items = await clipboard.GetStorageItemsAsync();
-        if (items.Count == 0)
-        {
-            return;
-        }
+        int itemCount = sourcePaths.Count;
 
-        bool? moveWhenMapped = !string.IsNullOrEmpty(ViewModel.MappedFolderPath)
-            ? clipboard.RequestedOperation != DataPackageOperation.Copy
-            : null;
+        bool? moveWhenMapped = clipboard.RequestedOperation != DataPackageOperation.Copy;
 
-        await ViewModel.ImportPathsAsync(
-            items.Select(item => item.Path).Where(path => !string.IsNullOrWhiteSpace(path)),
-            moveWhenMapped);
+        await ViewModel.ImportPathsAsync(sourcePaths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
 
         if (moveWhenMapped == true)
         {
@@ -1162,17 +1665,67 @@ public sealed partial class WidgetWindow : Window
         }
 
         ClearCutState();
+        ShowStatusToast(moveWhenMapped == true
+            ? $"已移动 {itemCount} 项"
+            : $"已粘贴 {itemCount} 项");
     }
 
     private void ClearCutState()
     {
         _cutClipboardPaths = [];
+        ApplyCutState();
+        UpdateInteractiveSurfaces();
+    }
+
+    private void ApplyCutState()
+    {
         foreach (var item in ViewModel.Items)
         {
-            item.IsCut = false;
+            item.IsCut = _cutClipboardPaths.Contains(item.Path, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private void ClearRemovedCutPaths()
+    {
+        if (_cutClipboardPaths.Length == 0)
+        {
+            return;
         }
 
+        var currentPaths = ViewModel.Items
+            .Select(item => item.Path)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _cutClipboardPaths = _cutClipboardPaths
+            .Where(currentPaths.Contains)
+            .ToArray();
+        ApplyCutState();
         UpdateInteractiveSurfaces();
+    }
+
+    private void ShowStatusToast(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        StatusToastText.Text = message;
+        StatusToast.Visibility = Visibility.Visible;
+        StatusToast.Opacity = 1;
+
+        _statusToastTimer ??= DispatcherQueue.CreateTimer();
+        _statusToastTimer.Stop();
+        _statusToastTimer.Interval = TimeSpan.FromSeconds(2.2);
+        _statusToastTimer.Tick -= StatusToastTimer_Tick;
+        _statusToastTimer.Tick += StatusToastTimer_Tick;
+        _statusToastTimer.Start();
+    }
+
+    private void StatusToastTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        StatusToast.Opacity = 0;
+        StatusToast.Visibility = Visibility.Collapsed;
     }
 
     private bool CanStartBoxSelection(object? originalSource)
@@ -1182,7 +1735,7 @@ public sealed partial class WidgetWindow : Window
             return false;
         }
 
-        return !HasAncestorOfType<SelectorItem>(source) &&
+        return !IsWithinInteractiveSurface(source) &&
                !HasAncestorOfType<ScrollBar>(source) &&
                !HasAncestorOfType<ButtonBase>(source) &&
                !HasAncestorOfType<TextBox>(source);
@@ -1215,13 +1768,14 @@ public sealed partial class WidgetWindow : Window
                 continue;
             }
 
-            var topLeft = container.TransformToVisual(SelectionOverlay)
+            var target = FindItemSurface(item) ?? container;
+            var topLeft = target.TransformToVisual(SelectionOverlay)
                 .TransformPoint(new Windows.Foundation.Point(0, 0));
             var itemRect = new Windows.Foundation.Rect(
                 topLeft.X,
                 topLeft.Y,
-                container.ActualWidth,
-                container.ActualHeight);
+                target.ActualWidth,
+                target.ActualHeight);
 
             if (RectsIntersect(selectionRect, itemRect))
             {
@@ -1332,6 +1886,55 @@ public sealed partial class WidgetWindow : Window
         };
     }
 
+    private static bool HasPathDropData(DataPackageView dataView)
+    {
+        return TryGetPackageStringArray(dataView.Properties, "DeskBoxSourcePaths").Count > 0 ||
+               dataView.Contains(StandardDataFormats.StorageItems) ||
+               dataView.Contains(StandardDataFormats.Text);
+    }
+
+    private static async Task<string[]> GetDropPathsAsync(DataPackageView dataView)
+    {
+        var sourcePaths = TryGetPackageStringArray(dataView.Properties, "DeskBoxSourcePaths")
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (sourcePaths.Length > 0)
+        {
+            return sourcePaths;
+        }
+
+        if (dataView.Contains(StandardDataFormats.StorageItems))
+        {
+            var items = await dataView.GetStorageItemsAsync();
+            sourcePaths = items
+                .Select(item => item.Path)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(Path.GetFullPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (sourcePaths.Length > 0)
+            {
+                return sourcePaths;
+            }
+        }
+
+        if (!dataView.Contains(StandardDataFormats.Text))
+        {
+            return [];
+        }
+
+        string text = await dataView.GetTextAsync();
+        return text
+            .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .Where(path => File.Exists(path) || Directory.Exists(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private void RootGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (e.OriginalSource is DependencyObject source && IsWithin(source, TitleBarGrid))
@@ -1350,7 +1953,9 @@ public sealed partial class WidgetWindow : Window
             return;
         }
 
-        ShowFlyoutWithElevation(CreateMoreFlyout(), TitleBarGrid, e.GetPosition(TitleBarGrid));
+        var position = e.GetPosition(TitleBarGrid);
+        TrackMoreFlyoutAnchor(TitleBarGrid, position);
+        ShowFlyoutWithElevation(CreateMoreFlyout(), TitleBarGrid, position);
         e.Handled = true;
     }
 
@@ -1381,10 +1986,44 @@ public sealed partial class WidgetWindow : Window
 
     private void WidgetItemSurface_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is Border border)
+        if (sender is not Border border || border.DataContext is not WidgetItem item)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(border);
+        if (!point.Properties.IsLeftButtonPressed)
         {
             ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Pressed);
+            return;
         }
+
+        var listView = GetActiveItemsView();
+        if (listView is not null)
+        {
+            if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
+            {
+                if (!item.IsSelected)
+                {
+                    listView.SelectedItems.Add(item);
+                }
+            }
+            else if (!item.IsSelected)
+            {
+                listView.SelectedItems.Clear();
+                listView.SelectedItems.Add(item);
+            }
+
+            ApplySelectionState(listView);
+        }
+
+        RootGrid.Focus(FocusState.Programmatic);
+        _surfaceDragCompletionHandled = false;
+        ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Pressed);
+    }
+
+    private void WidgetItemSurface_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
     }
 
     private void WidgetItemSurface_PointerReleased(object sender, PointerRoutedEventArgs e)
@@ -1399,6 +2038,272 @@ public sealed partial class WidgetWindow : Window
 
             ApplyWidgetItemSurfaceState(border, isInside ? ItemSurfaceState.Hover : ItemSurfaceState.Normal);
         }
+    }
+
+    private void WidgetItemSurface_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Border border)
+        {
+            ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Normal);
+        }
+    }
+
+    private void WidgetItemSurface_DragStarting(UIElement sender, DragStartingEventArgs args)
+    {
+        if (sender is not Border border || border.DataContext is not WidgetItem item)
+        {
+            args.Cancel = true;
+            _activeDragSourcePaths = [];
+            _activeDragHasStorageItems = false;
+            return;
+        }
+
+        if (!TryPrepareItemDragPackage(args.Data, GetDragItems(item)))
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        args.AllowedOperations = DataPackageOperation.Copy | DataPackageOperation.Move;
+    }
+
+    private async void WidgetItemSurface_DropCompleted(UIElement sender, DropCompletedEventArgs args)
+    {
+        if (_surfaceDragCompletionHandled)
+        {
+            return;
+        }
+
+        _surfaceDragCompletionHandled = true;
+        await HandleItemDragCompletedAsync(args.DropResult);
+    }
+
+    private void WidgetItemSurface_DragOver(object sender, DragEventArgs e)
+    {
+        if (!TryGetFolderDropTarget(sender, out var border, out var targetFolder))
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        if (!HasPathDropData(e.DataView))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = false;
+            ClearFolderDropTarget();
+            return;
+        }
+
+        var sourcePaths = TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths");
+        if (IsInvalidFolderDrop(sourcePaths, targetFolder.Path))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = false;
+            e.DragUIOverride.Caption = "不能移动到此文件夹";
+            ClearFolderDropTarget();
+            return;
+        }
+
+        e.AcceptedOperation = GetAcceptedDropOperation(e.DataView.RequestedOperation, movesIntoFolder: true);
+        if (e.AcceptedOperation == DataPackageOperation.None)
+        {
+            e.DragUIOverride.IsGlyphVisible = false;
+            ClearFolderDropTarget();
+            return;
+        }
+
+        SetFolderDropTarget(border);
+        e.DragUIOverride.IsGlyphVisible = true;
+        e.DragUIOverride.Caption = $"{(e.AcceptedOperation == DataPackageOperation.Copy ? "复制" : "移动")}到 “{targetFolder.Name}”";
+    }
+
+    private void WidgetItemSurface_DragLeave(object sender, DragEventArgs e)
+    {
+        if (ReferenceEquals(sender, _folderDropTarget))
+        {
+            ClearFolderDropTarget();
+        }
+    }
+
+    private async void WidgetItemSurface_Drop(object sender, DragEventArgs e)
+    {
+        if (!TryGetFolderDropTarget(sender, out _, out var targetFolder))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        ClearFolderDropTarget();
+
+        if (!HasPathDropData(e.DataView))
+        {
+            return;
+        }
+
+        var deferral = e.GetDeferral();
+        try
+        {
+            var sourcePaths = await GetDropPathsAsync(e.DataView);
+            if (sourcePaths.Length == 0)
+            {
+                return;
+            }
+
+            if (IsInvalidFolderDrop(sourcePaths, targetFolder.Path))
+            {
+                ShowStatusToast("不能移动到此文件夹");
+                return;
+            }
+
+            var acceptedOperation = e.AcceptedOperation == DataPackageOperation.None
+                ? GetAcceptedDropOperation(e.DataView.RequestedOperation, movesIntoFolder: true)
+                : e.AcceptedOperation;
+            if (acceptedOperation == DataPackageOperation.None)
+            {
+                return;
+            }
+
+            bool move = acceptedOperation != DataPackageOperation.Copy;
+            var results = await App.Current.FileService.TransferItemsWithResultAsync(sourcePaths, targetFolder.Path, move);
+            if (results.Count == 0)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
+            {
+                await ViewModel.RefreshFromConfigAsync();
+            }
+
+            if (move)
+            {
+                await SyncMoveSourceAsync(
+                    TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId"),
+                    TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths"));
+                ClearRemovedCutPaths();
+            }
+
+            ShowStatusToast($"{(move ? "已移动" : "已复制")}到 {targetFolder.Name} {results.Count} 项");
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync("移动到文件夹失败", ex.Message);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private static bool TryGetFolderDropTarget(object sender, out Border border, out WidgetItem folder)
+    {
+        if (sender is Border targetBorder &&
+            targetBorder.DataContext is WidgetItem item &&
+            item.IsFolder &&
+            Directory.Exists(item.Path))
+        {
+            border = targetBorder;
+            folder = item;
+            return true;
+        }
+
+        border = null!;
+        folder = null!;
+        return false;
+    }
+
+    private void SetFolderDropTarget(Border border)
+    {
+        if (ReferenceEquals(_folderDropTarget, border))
+        {
+            ApplyWidgetItemSurfaceState(border, ItemSurfaceState.DropTarget);
+            return;
+        }
+
+        ClearFolderDropTarget();
+        _folderDropTarget = border;
+        ApplyWidgetItemSurfaceState(border, ItemSurfaceState.DropTarget);
+    }
+
+    private void ClearFolderDropTarget()
+    {
+        if (_folderDropTarget is null)
+        {
+            return;
+        }
+
+        var border = _folderDropTarget;
+        _folderDropTarget = null;
+        ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Normal);
+    }
+
+    private bool IsPointerOverFolderDropTarget()
+    {
+        if (!Win32Helper.GetCursorPos(out var cursor))
+        {
+            return false;
+        }
+
+        foreach (var border in FindInteractiveSurfaceBorders(RootGrid))
+        {
+            if (border.DataContext is not WidgetItem { IsFolder: true } folder ||
+                !Directory.Exists(folder.Path) ||
+                border.ActualWidth <= 0 ||
+                border.ActualHeight <= 0)
+            {
+                continue;
+            }
+
+            var topLeft = border.TransformToVisual(null)
+                .TransformPoint(new Windows.Foundation.Point(0, 0));
+            double scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
+            var left = _appWindow.Position.X + (topLeft.X * scale);
+            var top = _appWindow.Position.Y + (topLeft.Y * scale);
+            var right = left + (border.ActualWidth * scale);
+            var bottom = top + (border.ActualHeight * scale);
+
+            if (cursor.X >= left &&
+                cursor.X <= right &&
+                cursor.Y >= top &&
+                cursor.Y <= bottom)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsInvalidFolderDrop(IReadOnlyList<string> sourcePaths, string destinationFolder)
+    {
+        if (string.IsNullOrWhiteSpace(destinationFolder) || sourcePaths.Count == 0)
+        {
+            return false;
+        }
+
+        string normalizedDestination = Path.GetFullPath(destinationFolder);
+        foreach (string sourcePath in sourcePaths)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath))
+            {
+                continue;
+            }
+
+            string normalizedSource = Path.GetFullPath(sourcePath);
+            if (string.Equals(normalizedSource, normalizedDestination, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (Directory.Exists(normalizedSource) &&
+                FileService.IsPathUnderDirectory(normalizedDestination, normalizedSource))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void TitleText_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -1428,10 +2333,10 @@ public sealed partial class WidgetWindow : Window
     private void PrepareRenameEditor()
     {
         double titleWidth = TitleText.ActualWidth > 0
-            ? TitleText.ActualWidth + 52
-            : (ViewModel.Name.Length * 11) + 52;
+            ? TitleText.ActualWidth + 36
+            : (ViewModel.Name.Length * 9.5) + 36;
 
-        TitleEditBox.Width = Math.Clamp(titleWidth, 168, 280);
+        TitleEditBox.Width = Math.Clamp(titleWidth, 120, 220);
         TitleEditBox.Text = ViewModel.Name;
     }
 
@@ -1479,28 +2384,9 @@ public sealed partial class WidgetWindow : Window
         }
     }
 
-    private async void AddFileButton_Click(object sender, RoutedEventArgs e)
+    private void AddFileButton_Click(object sender, RoutedEventArgs e)
     {
-        ElevateForInteraction();
-
-        try
-        {
-            var picker = new FileOpenPicker();
-            picker.SuggestedStartLocation = PickerLocationId.Desktop;
-            picker.FileTypeFilter.Add("*");
-            InitializeWithWindow.Initialize(picker, _hWnd);
-
-            var files = await picker.PickMultipleFilesAsync();
-            if (files is not null && files.Count > 0)
-            {
-                var paths = files.Select(file => file.Path);
-                await ViewModel.AddItemsCommand.ExecuteAsync(paths);
-            }
-        }
-        finally
-        {
-            RestoreDesktopLayer();
-        }
+        ShowFlyoutWithElevation(CreateNewWidgetFlyout(), AddButton);
     }
 
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -1580,6 +2466,11 @@ public sealed partial class WidgetWindow : Window
 
     private async void MapFolderButton_Click(object sender, RoutedEventArgs e)
     {
+        if (App.Current is not App app || app.WidgetManager is null)
+        {
+            return;
+        }
+
         ElevateForInteraction();
 
         try
@@ -1592,8 +2483,7 @@ public sealed partial class WidgetWindow : Window
             var folder = await picker.PickSingleFolderAsync();
             if (folder is not null)
             {
-                await ViewModel.MapToFolderAsync(folder.Path);
-                UpdateEmptyState();
+                await app.WidgetManager.CreateFolderWidgetAsync(folder.Path);
             }
         }
         finally
@@ -1604,35 +2494,22 @@ public sealed partial class WidgetWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        ShowDeleteConfirmation();
-    }
-
-    private void DeleteConfirmCancelButton_Click(object sender, RoutedEventArgs e)
-    {
-        HideDeleteConfirmation();
-    }
-
-    private void DeleteConfirmDeleteButton_Click(object sender, RoutedEventArgs e)
-    {
-        HideDeleteConfirmation();
-        QueueDeleteWidget();
-    }
-
-    private void ShowDeleteConfirmation()
-    {
-        ElevateForInteraction();
-        DeleteConfirmText.Text = $"确定删除“{ViewModel.Name}”吗？删除后不会恢复。";
-        DeleteConfirmBar.Visibility = Visibility.Visible;
+        TrackMoreFlyoutAnchor(CloseButton, null);
+        ShowDeleteWidgetFlyout(CloseButton);
     }
 
     private void MoreButton_Click(object sender, RoutedEventArgs e)
     {
+        TrackMoreFlyoutAnchor(MoreButton, null);
         ShowFlyoutWithElevation(CreateMoreFlyout(), MoreButton);
     }
 
     private MenuFlyout CreateContentAreaFlyout()
     {
         var flyout = new MenuFlyout();
+
+        AddCreateWidgetItems(flyout);
+        flyout.Items.Add(new MenuFlyoutSeparator());
 
         var pasteItem = new MenuFlyoutItem
         {
@@ -1690,35 +2567,20 @@ public sealed partial class WidgetWindow : Window
     private MenuFlyout CreateMoreFlyout()
     {
         var flyout = new MenuFlyout();
-        bool isMappedFolderWidget = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
 
         var modeInfo = new MenuFlyoutItem
         {
-            Text = $"\u5f53\u524d\u6a21\u5f0f\uff1a{ViewModel.ModeLabel}\u7ec4\u4ef6",
+            Text = $"\u7ec4\u4ef6\u7c7b\u578b\uff1a{ViewModel.ModeLabel}\u7ec4\u4ef6",
             Icon = new FontIcon
             {
-                Glyph = isMappedFolderWidget ? "\uE8B7" : "\uE71D"
+                Glyph = ViewModel.IconGlyph
             },
             IsEnabled = false
         };
         flyout.Items.Add(modeInfo);
         flyout.Items.Add(new MenuFlyoutSeparator());
 
-        var newWidget = new MenuFlyoutItem
-        {
-            Text = "\u65b0\u5efa\u7ec4\u4ef6",
-            Icon = new FontIcon { Glyph = "\uE710" }
-        };
-        newWidget.Click += NewWidget_Click;
-        flyout.Items.Add(newWidget);
-
-        var newManagedWidget = new MenuFlyoutItem
-        {
-            Text = "\u65b0\u5efa\u6536\u7eb3\u7ec4\u4ef6",
-            Icon = new FontIcon { Glyph = "\uE8B7" }
-        };
-        newManagedWidget.Click += NewManagedWidget_Click;
-        flyout.Items.Add(newManagedWidget);
+        AddCreateWidgetItems(flyout);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
@@ -1758,17 +2620,7 @@ public sealed partial class WidgetWindow : Window
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
-        if (!isMappedFolderWidget)
-        {
-            var enableManagedStorage = new MenuFlyoutItem
-            {
-                Text = "\u542f\u7528\u6536\u7eb3\u6a21\u5f0f",
-                Icon = new FontIcon { Glyph = "\uE8B7" }
-            };
-            enableManagedStorage.Click += EnableManagedStorage_Click;
-            flyout.Items.Add(enableManagedStorage);
-        }
-        else
+        if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
         {
             var openFolder = new MenuFlyoutItem
             {
@@ -1784,14 +2636,6 @@ public sealed partial class WidgetWindow : Window
             };
             flyout.Items.Add(openFolder);
         }
-
-        var mapFolder = new MenuFlyoutItem
-        {
-            Text = "\u6620\u5c04\u6587\u4ef6\u5939...",
-            Icon = new FontIcon { Glyph = "\uE8B7" }
-        };
-        mapFolder.Click += MapFolderButton_Click;
-        flyout.Items.Add(mapFolder);
 
         var rename = new MenuFlyoutItem
         {
@@ -1822,16 +2666,34 @@ public sealed partial class WidgetWindow : Window
     {
         if (App.Current is App app)
         {
-            _ = app.WidgetManager?.CreateNewWidgetAsync();
+            _ = app.WidgetManager?.CreateManagedWidgetAsync("\u65b0\u5efa\u7ec4\u4ef6");
         }
     }
 
-    private void NewManagedWidget_Click(object sender, RoutedEventArgs e)
+    private void AddCreateWidgetItems(MenuFlyout flyout)
     {
-        if (App.Current is App app)
+        var newWidget = new MenuFlyoutItem
         {
-            _ = app.WidgetManager?.CreateManagedWidgetAsync();
-        }
+            Text = "\u65b0\u5efa\u7ec4\u4ef6",
+            Icon = new FontIcon { Glyph = "\uE710" }
+        };
+        newWidget.Click += NewWidget_Click;
+        flyout.Items.Add(newWidget);
+
+        var mapFolder = new MenuFlyoutItem
+        {
+            Text = "\u65b0\u5efa\u6587\u4ef6\u5939\u6620\u5c04",
+            Icon = new FontIcon { Glyph = "\uE8B7" }
+        };
+        mapFolder.Click += MapFolderButton_Click;
+        flyout.Items.Add(mapFolder);
+    }
+
+    private MenuFlyout CreateNewWidgetFlyout()
+    {
+        var flyout = new MenuFlyout();
+        AddCreateWidgetItems(flyout);
+        return flyout;
     }
 
     private void SetIconView_Click(object sender, RoutedEventArgs e)
@@ -1894,13 +2756,171 @@ public sealed partial class WidgetWindow : Window
             return;
         }
 
+        if (RequiresDeleteConfirmation(selectedItems))
+        {
+            ShowDeleteItemsConfirmFlyout(selectedItems);
+            return;
+        }
+
+        await DeleteItemsWithoutConfirmAsync(selectedItems);
+    }
+
+    private static bool RequiresDeleteConfirmation(IReadOnlyList<WidgetItem> selectedItems)
+    {
+        return selectedItems.Any(item => item.IsFolder);
+    }
+
+    private void ShowDeleteItemsConfirmFlyout(IReadOnlyList<WidgetItem> selectedItems)
+    {
+        var items = selectedItems.ToArray();
+        int folderCount = items.Count(item => item.IsFolder);
+        if (folderCount == 0)
+        {
+            _ = DeleteItemsWithoutConfirmAsync(items);
+            return;
+        }
+
+        _itemDeleteConfirmFlyout?.Hide();
+
+        var flyout = new MenuFlyout
+        {
+            ShouldConstrainToRootBounds = false
+        };
+
+        var titleItem = new MenuFlyoutItem
+        {
+            Text = items.Length == 1 ? $"将“{items[0].Name}”移到回收站？" : $"将 {items.Length} 项移到回收站？",
+            Icon = new FontIcon { Glyph = "\uE946" },
+            IsEnabled = false
+        };
+        flyout.Items.Add(titleItem);
+
+        string message = items.Length == 1
+            ? "这是文件夹，里面的内容也会一起进入回收站"
+            : $"其中包含 {folderCount} 个文件夹，文件夹内容也会一起进入回收站";
+        flyout.Items.Add(new MenuFlyoutItem
+        {
+            Text = message,
+            Icon = new FontIcon { Glyph = "\uE783" },
+            IsEnabled = false
+        });
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var confirmItem = new MenuFlyoutItem
+        {
+            Text = "移到回收站",
+            Icon = new FontIcon
+            {
+                Glyph = "\uE74D",
+                Foreground = new SolidColorBrush(Colors.Red)
+            }
+        };
+        confirmItem.Click += async (_, _) => await DeleteItemsWithoutConfirmAsync(items);
+        flyout.Items.Add(confirmItem);
+
+        var cancelItem = new MenuFlyoutItem
+        {
+            Text = "取消",
+            Icon = new FontIcon { Glyph = "\uE711" }
+        };
+        cancelItem.Click += (_, _) => flyout.Hide();
+        flyout.Items.Add(cancelItem);
+
+        _itemDeleteConfirmFlyout = flyout;
+        flyout.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(_itemDeleteConfirmFlyout, flyout))
+            {
+                return;
+            }
+
+            _itemDeleteConfirmFlyout = null;
+            _isInlineFlyoutOpen = false;
+            RestoreDesktopLayer();
+        };
+
+        _isInlineFlyoutOpen = true;
+        ElevateForInteraction();
+
+        var target = items.Length == 1
+            ? FindItemSurface(items[0]) ?? GetActiveItemsView() as FrameworkElement ?? RootGrid
+            : GetActiveItemsView() as FrameworkElement ?? RootGrid;
+        flyout.ShowAt(target);
+    }
+
+    private async Task DeleteItemsWithoutConfirmAsync(IReadOnlyList<WidgetItem> selectedItems)
+    {
         try
         {
+            int deletedCount = selectedItems.Count;
             await ViewModel.DeleteItemsAsync(selectedItems);
+            ClearRemovedCutPaths();
+            ShowStatusToast($"已移到回收站 {deletedCount} 项");
         }
         catch (Exception ex)
         {
             await ShowErrorDialogAsync("\u5220\u9664\u5931\u8d25", ex.Message);
+        }
+    }
+
+    private async Task MoveSelectedItemsBackToDesktopAsync()
+    {
+        var selectedItems = GetSelectedItems();
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            int movedCount = await ViewModel.MoveItemsBackToDesktopAsync(selectedItems, useShellProgress: true);
+
+            ClearRemovedCutPaths();
+            ShowStatusToast(movedCount > 0 ? $"已移回桌面 {movedCount} 项" : "没有项目被移动");
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync("移回桌面失败", ex.Message);
+        }
+    }
+
+    private async Task MoveDraggedPathsBackToDesktopAsync(IReadOnlyList<string> sourcePaths, bool useShellProgress)
+    {
+        var pathSet = sourcePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (pathSet.Count == 0)
+        {
+            return;
+        }
+
+        var draggedItems = ViewModel.Items
+            .Where(item =>
+                pathSet.Contains(Path.GetFullPath(item.Path)) &&
+                (File.Exists(item.Path) || Directory.Exists(item.Path)))
+            .ToList();
+        if (draggedItems.Count == 0)
+        {
+            await ViewModel.RefreshFromConfigAsync();
+            ClearRemovedCutPaths();
+            UpdateEmptyState();
+            return;
+        }
+
+        try
+        {
+            int movedCount = await ViewModel.MoveItemsBackToDesktopAsync(draggedItems, useShellProgress);
+
+            ClearRemovedCutPaths();
+            ShowStatusToast(movedCount > 0 ? $"已移到桌面 {movedCount} 项" : "没有项目被移动");
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync("移到桌面失败", ex.Message);
+            await ViewModel.RefreshFromConfigAsync();
+            UpdateEmptyState();
         }
     }
 
@@ -2036,59 +3056,6 @@ public sealed partial class WidgetWindow : Window
         ApplySelectionState(listView);
     }
 
-    private async void EnableManagedStorage_Click(object sender, RoutedEventArgs e)
-    {
-        if (App.Current is not App app || app.WidgetManager is null)
-        {
-            return;
-        }
-
-        if (ItemsCountForManagedConversion() > 0)
-        {
-            var dialog = new ContentDialog
-            {
-                Title = "\u542f\u7528\u6536\u7eb3\u6a21\u5f0f",
-                PrimaryButtonText = "\u542f\u7528",
-                CloseButtonText = "\u53d6\u6d88",
-                DefaultButton = ContentDialogButton.Primary,
-                Content = new TextBlock
-                {
-                    Text = $"\u5f53\u524d\u7ec4\u4ef6\u5df2\u6709 {ItemsCountForManagedConversion()} \u4e2a\u9879\u76ee\u3002\u542f\u7528\u540e\u4f1a\u6309\u5f53\u524d\u8bbe\u7f6e\u5c06\u5b83\u4eec{GetManagedDropActionText()}\u5230\u9ed8\u8ba4\u6536\u7eb3\u8def\u5f84\u3002",
-                    TextWrapping = TextWrapping.Wrap
-                }
-            };
-
-            if (await app.ShowAppDialogAsync(dialog) != ContentDialogResult.Primary)
-            {
-                return;
-            }
-        }
-
-        try
-        {
-            if (await app.WidgetManager.EnableManagedStorageAsync(ViewModel.Config.Id))
-            {
-                UpdateEmptyState();
-            }
-        }
-        catch (Exception ex)
-        {
-            var errorDialog = new ContentDialog
-            {
-                Title = "\u542f\u7528\u6536\u7eb3\u5931\u8d25",
-                CloseButtonText = "\u786e\u5b9a",
-                DefaultButton = ContentDialogButton.Close,
-                Content = new TextBlock
-                {
-                    Text = ex.Message,
-                    TextWrapping = TextWrapping.Wrap
-                }
-            };
-
-            await app.ShowAppDialogAsync(errorDialog);
-        }
-    }
-
     private void TogglePositionLock_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.TogglePositionLockCommand.Execute(null);
@@ -2101,10 +3068,132 @@ public sealed partial class WidgetWindow : Window
 
     private void DeleteWidget_Click(object sender, RoutedEventArgs e)
     {
-        ShowDeleteConfirmation();
+        ShowDeleteWidgetFlyout(_lastMoreFlyoutTarget ?? MoreButton, _lastMoreFlyoutPosition);
     }
 
-    private async Task ConfirmAndDeleteWidgetAsync()
+    private void TrackMoreFlyoutAnchor(FrameworkElement target, Windows.Foundation.Point? position)
+    {
+        _lastMoreFlyoutTarget = target;
+        _lastMoreFlyoutPosition = position;
+    }
+
+    private void ShowDeleteWidgetFlyout(FrameworkElement target, Windows.Foundation.Point? position = null)
+    {
+        if (_deletePending || App.Current is not App app || app.WidgetManager is null)
+        {
+            return;
+        }
+
+        _deleteWidgetFlyout?.Hide();
+        var flyout = CreateDeleteWidgetFlyout(app.WidgetManager);
+        _deleteWidgetFlyout = flyout;
+        flyout.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(_deleteWidgetFlyout, flyout))
+            {
+                return;
+            }
+
+            _isDeleteWidgetFlyoutOpen = false;
+            _deleteWidgetFlyout = null;
+            RestoreDesktopLayer();
+        };
+
+        _isDeleteWidgetFlyoutOpen = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ElevateForInteraction();
+            if (position is Windows.Foundation.Point point)
+            {
+                flyout.ShowAt(target, point);
+            }
+            else
+            {
+                flyout.ShowAt(target);
+            }
+        });
+    }
+
+    private MenuFlyout CreateDeleteWidgetFlyout(WidgetManager widgetManager)
+    {
+        var flyout = new MenuFlyout();
+        flyout.ShouldConstrainToRootBounds = false;
+
+        var titleItem = new MenuFlyoutItem
+        {
+            Text = $"删除“{ViewModel.Name}”",
+            Icon = new FontIcon { Glyph = "\uE74D" },
+            IsEnabled = false
+        };
+        flyout.Items.Add(titleItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        bool canCleanupManagedFolder = widgetManager.CanCleanupManagedStorageForWidget(ViewModel.Config.Id);
+        if (!canCleanupManagedFolder)
+        {
+            var noteItem = new MenuFlyoutItem
+            {
+                Text = "只移除组件，不删除原文件",
+                Icon = new FontIcon { Glyph = "\uE946" },
+                IsEnabled = false
+            };
+            flyout.Items.Add(noteItem);
+
+            var confirmItem = CreateDeleteActionItem("确认删除组件", WidgetRemovalAction.RemoveWidgetOnly);
+            flyout.Items.Add(confirmItem);
+            flyout.Items.Add(CreateCancelDeleteItem());
+            return flyout;
+        }
+
+        var managedInfoItem = new MenuFlyoutItem
+        {
+            Text = "选择收纳文件夹处理方式",
+            Icon = new FontIcon { Glyph = "\uE8B7" },
+            IsEnabled = false
+        };
+        flyout.Items.Add(managedInfoItem);
+
+        flyout.Items.Add(CreateDeleteActionItem("保留收纳文件夹", WidgetRemovalAction.RemoveWidgetOnly, "\uE8B7", false));
+        flyout.Items.Add(CreateDeleteActionItem("移回桌面后删除空文件夹", WidgetRemovalAction.MoveManagedFolderContentsToDesktop, "\uE8CA", false));
+        flyout.Items.Add(CreateDeleteActionItem("删除文件夹，文件进回收站", WidgetRemovalAction.DeleteManagedFolder, "\uE74D", true));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(CreateCancelDeleteItem());
+        return flyout;
+    }
+
+    private MenuFlyoutItem CreateDeleteActionItem(
+        string text,
+        WidgetRemovalAction removalAction,
+        string glyph = "\uE74D",
+        bool isDanger = true)
+    {
+        var icon = new FontIcon { Glyph = glyph };
+        if (isDanger)
+        {
+            icon.Foreground = new SolidColorBrush(Colors.Red);
+        }
+
+        var item = new MenuFlyoutItem
+        {
+            Text = text,
+            Icon = icon
+        };
+        item.Click += (_, _) => QueueDeleteWidget(removalAction);
+        return item;
+    }
+
+    private MenuFlyoutItem CreateCancelDeleteItem()
+    {
+        var item = new MenuFlyoutItem
+        {
+            Text = "取消",
+            Icon = new FontIcon { Glyph = "\uE711" }
+        };
+        item.Click += (_, _) => _deleteWidgetFlyout?.Hide();
+        return item;
+    }
+
+    private async Task ConfirmAndDeleteWidgetAsync(WidgetRemovalAction removalAction)
     {
         if (App.Current is not App app || app.WidgetManager is null)
         {
@@ -2115,23 +3204,19 @@ public sealed partial class WidgetWindow : Window
         try
         {
             App.Log($"[WidgetDelete] Begin delete widget '{ViewModel.Name}' ({ViewModel.Config.Id})");
-            await app.WidgetManager.RemoveWidgetAsync(ViewModel.Config.Id);
+            await app.WidgetManager.RemoveWidgetAsync(ViewModel.Config.Id, removalAction);
         }
         catch (Exception ex)
         {
             App.Log($"[WidgetDelete] Delete failed for '{ViewModel.Name}' ({ViewModel.Config.Id}): {ex}");
             _deletePending = false;
             RootGrid.IsHitTestVisible = true;
-            throw;
+            await ShowErrorDialogAsync("删除组件失败", ex.Message);
+            RestoreDesktopLayer();
         }
     }
 
-    private void HideDeleteConfirmation()
-    {
-        DeleteConfirmBar.Visibility = Visibility.Collapsed;
-    }
-
-    private void QueueDeleteWidget()
+    private void QueueDeleteWidget(WidgetRemovalAction removalAction)
     {
         if (_deletePending)
         {
@@ -2144,7 +3229,7 @@ public sealed partial class WidgetWindow : Window
         DispatcherQueue.TryEnqueue(async () =>
         {
             await Task.Delay(16);
-            await ConfirmAndDeleteWidgetAsync();
+            await ConfirmAndDeleteWidgetAsync(removalAction);
         });
     }
 
@@ -2285,24 +3370,128 @@ public sealed partial class WidgetWindow : Window
 
     private async Task ShowErrorDialogAsync(string title, string message)
     {
-        if (App.Current is not App app)
-        {
-            return;
-        }
+        string displayMessage = FormatUserFacingError(message);
+        var completion = new TaskCompletionSource();
 
-        var dialog = new ContentDialog
+        _messageFlyout?.Hide();
+
+        var titleText = new TextBlock
         {
-            Title = title,
-            CloseButtonText = "\u786e\u5b9a",
-            DefaultButton = ContentDialogButton.Close,
-            Content = new TextBlock
-            {
-                Text = message,
-                TextWrapping = TextWrapping.Wrap
-            }
+            Text = title,
+            FontSize = 14,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Colors.Red),
+            TextWrapping = TextWrapping.Wrap
         };
 
-        await app.ShowAppDialogAsync(dialog);
+        var messageText = new TextBlock
+        {
+            Text = displayMessage,
+            MaxWidth = 280,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]
+        };
+
+        var closeButton = new Button
+        {
+            Content = "\u786e\u5b9a",
+            MinWidth = 88,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        var panel = new StackPanel
+        {
+            Width = 300,
+            Spacing = 12,
+            Padding = new Thickness(4)
+        };
+        panel.Children.Add(titleText);
+        panel.Children.Add(messageText);
+        panel.Children.Add(closeButton);
+
+        var flyout = new Flyout
+        {
+            Content = panel,
+            Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
+            ShouldConstrainToRootBounds = false
+        };
+
+        _messageFlyout = flyout;
+        closeButton.Click += (_, _) => flyout.Hide();
+        flyout.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_messageFlyout, flyout))
+            {
+                _messageFlyout = null;
+            }
+
+            _isInlineFlyoutOpen = false;
+            completion.TrySetResult();
+            RestoreDesktopLayer();
+        };
+
+        _isInlineFlyoutOpen = true;
+        ElevateForInteraction();
+        flyout.ShowAt(MoreButton);
+        await completion.Task;
+    }
+
+    private static string FormatUserFacingError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "操作没有完成。";
+        }
+
+        if (message.Contains("canceled", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("已取消", StringComparison.OrdinalIgnoreCase))
+        {
+            return "操作已取消。";
+        }
+
+        if (message.Contains("denied", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("没有权限", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("拒绝访问", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"没有权限完成这个操作。\n\n{message}";
+        }
+
+        if (message.Contains("being used", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("另一个进程", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("正由另一进程使用", StringComparison.OrdinalIgnoreCase))
+        {
+            string? path = TryExtractQuotedPath(message);
+            return string.IsNullOrWhiteSpace(path)
+                ? "文件正在被其他程序使用，请关闭相关程序后再试。"
+                : $"文件正在被其他程序使用，请关闭相关程序后再试。\n\n{path}";
+        }
+
+        if (message.Contains("already exists", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("已存在", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"目标位置已经有同名项目。\n\n{message}";
+        }
+
+        return message;
+    }
+
+    private static string? TryExtractQuotedPath(string message)
+    {
+        int start = message.IndexOf('\'');
+        if (start < 0)
+        {
+            return null;
+        }
+
+        int end = message.IndexOf('\'', start + 1);
+        if (end <= start + 1)
+        {
+            return null;
+        }
+
+        return message[(start + 1)..end];
     }
 
     private void ShowFlyoutWithElevation(MenuFlyout flyout, FrameworkElement target, Windows.Foundation.Point? position = null)
@@ -2431,6 +3620,60 @@ public sealed partial class WidgetWindow : Window
         return false;
     }
 
+    private static bool IsWithinInteractiveSurface(DependencyObject source)
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is Border border && border.Tag as string == "InteractiveSurface")
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
+    private bool IsCursorOverThisWindow()
+    {
+        if (!Win32Helper.GetCursorPos(out var cursor) ||
+            !Win32Helper.GetWindowRect(_hWnd, out var rect))
+        {
+            return false;
+        }
+
+        return cursor.X >= rect.Left &&
+               cursor.X <= rect.Right &&
+               cursor.Y >= rect.Top &&
+               cursor.Y <= rect.Bottom;
+    }
+
+    private bool IsCursorOnDesktop()
+    {
+        if (!Win32Helper.GetCursorPos(out var cursor))
+        {
+            return false;
+        }
+
+        try
+        {
+            var display = DisplayArea.GetFromPoint(
+                new Windows.Graphics.PointInt32(cursor.X, cursor.Y),
+                DisplayAreaFallback.Nearest);
+            var workArea = display.WorkArea;
+            return cursor.X >= workArea.X &&
+                   cursor.X <= workArea.X + workArea.Width &&
+                   cursor.Y >= workArea.Y &&
+                   cursor.Y <= workArea.Y + workArea.Height;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
     private void EnsureStoryboards()
     {
         if (_showButtonsStoryboard is not null)
@@ -2544,16 +3787,56 @@ public sealed partial class WidgetWindow : Window
             : DataPackageOperation.Move;
     }
 
-    private string GetManagedDropActionText()
+    private DataPackageOperation GetAcceptedDropOperation(DataPackageOperation requestedOperation, bool movesIntoFolder)
     {
-        return GetManagedDropOperation() == DataPackageOperation.Copy
-            ? "\u590d\u5236"
-            : "\u79fb\u52a8";
+        if (!movesIntoFolder)
+        {
+            if (SupportsOperation(requestedOperation, DataPackageOperation.Link))
+            {
+                return DataPackageOperation.Link;
+            }
+
+            return SupportsOperation(requestedOperation, DataPackageOperation.Copy) || requestedOperation == DataPackageOperation.None
+                ? DataPackageOperation.Copy
+                : DataPackageOperation.None;
+        }
+
+        bool ctrlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
+        if (ctrlPressed && CanUseRequestedOperation(requestedOperation, DataPackageOperation.Copy))
+        {
+            return DataPackageOperation.Copy;
+        }
+
+        var defaultOperation = GetManagedDropOperation();
+        if (CanUseRequestedOperation(requestedOperation, defaultOperation))
+        {
+            return defaultOperation;
+        }
+
+        if (CanUseRequestedOperation(requestedOperation, DataPackageOperation.Move))
+        {
+            return DataPackageOperation.Move;
+        }
+
+        return CanUseRequestedOperation(requestedOperation, DataPackageOperation.Copy)
+            ? DataPackageOperation.Copy
+            : DataPackageOperation.None;
     }
 
-    private int ItemsCountForManagedConversion()
+    private static bool CanUseRequestedOperation(DataPackageOperation requestedOperation, DataPackageOperation operation)
     {
-        return ViewModel.Items.Count;
+        return requestedOperation == DataPackageOperation.None ||
+               SupportsOperation(requestedOperation, operation);
     }
+
+    private static bool SupportsOperation(DataPackageOperation requestedOperation, DataPackageOperation operation)
+    {
+        return (requestedOperation & operation) == operation;
+    }
+
+    private bool CanMoveItemsBackToDesktop()
+    {
+        return !string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath);
+    }
+
 }
-

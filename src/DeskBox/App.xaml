@@ -17,6 +17,21 @@
                     <SolidColorBrush x:Key="WidgetTextSecondaryBrush" Color="#5A5A5A" />
                     <SolidColorBrush x:Key="WidgetDividerBrush" Color="#D0D0D0" />
                     <SolidColorBrush x:Key="WindowBackgroundBackgroundBrush" Color="Transparent" />
+                    <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
+                    <CornerRadius x:Key="ComboBoxItemCornerRadius">6</CornerRadius>
+                    <CornerRadius x:Key="ComboBoxHiglightBorderCornerRadius">8</CornerRadius>
+                    <CornerRadius x:Key="ComboBoxDropDownButtonBackgroundCornerRadius">6</CornerRadius>
+                    <Thickness x:Key="ComboBoxDropdownBorderThickness">1</Thickness>
+                    <Thickness x:Key="ComboBoxDropdownBorderPadding">0</Thickness>
+                    <Thickness x:Key="ComboBoxDropdownContentMargin">4</Thickness>
+                    <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
+                    <CornerRadius x:Key="SliderThumbCornerRadius">10</CornerRadius>
+                    <x:Double x:Key="SliderInnerThumbWidth">12</x:Double>
+                    <x:Double x:Key="SliderInnerThumbHeight">12</x:Double>
+                    <x:Double x:Key="SliderHorizontalThumbWidth">18</x:Double>
+                    <x:Double x:Key="SliderHorizontalThumbHeight">18</x:Double>
+                    <x:Double x:Key="SliderVerticalThumbWidth">18</x:Double>
+                    <x:Double x:Key="SliderVerticalThumbHeight">18</x:Double>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="WidgetBackgroundBrush" Color="#1F1F1F" />
@@ -24,6 +39,21 @@
                     <SolidColorBrush x:Key="WidgetTextSecondaryBrush" Color="#A5A5A5" />
                     <SolidColorBrush x:Key="WidgetDividerBrush" Color="#3C3C3C" />
                     <SolidColorBrush x:Key="WindowBackgroundBackgroundBrush" Color="Transparent" />
+                    <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
+                    <CornerRadius x:Key="ComboBoxItemCornerRadius">6</CornerRadius>
+                    <CornerRadius x:Key="ComboBoxHiglightBorderCornerRadius">8</CornerRadius>
+                    <CornerRadius x:Key="ComboBoxDropDownButtonBackgroundCornerRadius">6</CornerRadius>
+                    <Thickness x:Key="ComboBoxDropdownBorderThickness">1</Thickness>
+                    <Thickness x:Key="ComboBoxDropdownBorderPadding">0</Thickness>
+                    <Thickness x:Key="ComboBoxDropdownContentMargin">4</Thickness>
+                    <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
+                    <CornerRadius x:Key="SliderThumbCornerRadius">10</CornerRadius>
+                    <x:Double x:Key="SliderInnerThumbWidth">12</x:Double>
+                    <x:Double x:Key="SliderInnerThumbHeight">12</x:Double>
+                    <x:Double x:Key="SliderHorizontalThumbWidth">18</x:Double>
+                    <x:Double x:Key="SliderHorizontalThumbHeight">18</x:Double>
+                    <x:Double x:Key="SliderVerticalThumbWidth">18</x:Double>
+                    <x:Double x:Key="SliderVerticalThumbHeight">18</x:Double>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

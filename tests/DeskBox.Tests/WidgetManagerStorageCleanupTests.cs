@@ -1,0 +1,160 @@
+using DeskBox.Models;
+using DeskBox.Services;
+
+namespace DeskBox.Tests;
+
+public sealed class WidgetManagerStorageCleanupTests : IDisposable
+{
+    private readonly string _tempRoot;
+    private readonly string _storageRoot;
+    private readonly string _desktopRoot;
+    private readonly SettingsService _settingsService;
+    private readonly WidgetManager _widgetManager;
+
+    public WidgetManagerStorageCleanupTests()
+    {
+        _tempRoot = Path.Combine(Path.GetTempPath(), "DeskBox.Tests", Guid.NewGuid().ToString("N"));
+        _storageRoot = Directory.CreateDirectory(Path.Combine(_tempRoot, "storage")).FullName;
+        _desktopRoot = Directory.CreateDirectory(Path.Combine(_tempRoot, "desktop")).FullName;
+
+        _settingsService = new SettingsService(Path.Combine(_tempRoot, "settings"));
+        _settingsService.Settings.DefaultManagedStorageRootPath = _storageRoot;
+
+        var fileService = new FileService();
+        var organizerService = new OrganizerService(_settingsService, fileService);
+        var themeService = new ThemeService(_settingsService);
+        _widgetManager = new WidgetManager(
+            _settingsService,
+            fileService,
+            organizerService,
+            themeService,
+            () => _desktopRoot,
+            recycleManagedFolderDeletes: false);
+    }
+
+    [Fact]
+    public void GetOrphanManagedStorageFolders_ReturnsOnlyUntrackedRootChildren()
+    {
+        string activeFolder = Directory.CreateDirectory(Path.Combine(_storageRoot, "Active")).FullName;
+        string orphanFolder = Directory.CreateDirectory(Path.Combine(_storageRoot, "Orphan")).FullName;
+        string mappedFolderOutsideRoot = Directory.CreateDirectory(Path.Combine(_tempRoot, "mapped")).FullName;
+        File.WriteAllText(Path.Combine(orphanFolder, "note.txt"), "orphan");
+
+        _settingsService.Settings.Widgets.Add(CreateManagedWidget("Active", activeFolder));
+        _settingsService.Settings.Widgets.Add(new WidgetConfig
+        {
+            Name = "Mapped",
+            MappedFolderPath = mappedFolderOutsideRoot,
+            FollowsDefaultStoragePath = false
+        });
+
+        var candidates = _widgetManager.GetOrphanManagedStorageFolders();
+
+        var candidate = Assert.Single(candidates);
+        Assert.Equal("Orphan", candidate.Name);
+        Assert.Equal(orphanFolder, candidate.Path);
+        Assert.Equal(1, candidate.ItemCount);
+    }
+
+    [Fact]
+    public async Task MoveOrphanManagedStorageFolderContentsToDesktopAsync_MovesContentsAndDeletesEmptyFolder()
+    {
+        string orphanFolder = Directory.CreateDirectory(Path.Combine(_storageRoot, "Orphan")).FullName;
+        string sourcePath = Path.Combine(orphanFolder, "note.txt");
+        string existingDesktopPath = Path.Combine(_desktopRoot, "note.txt");
+        File.WriteAllText(sourcePath, "orphan");
+        File.WriteAllText(existingDesktopPath, "existing");
+
+        await _widgetManager.MoveOrphanManagedStorageFolderContentsToDesktopAsync(orphanFolder);
+
+        Assert.False(Directory.Exists(orphanFolder));
+        Assert.Equal("existing", File.ReadAllText(existingDesktopPath));
+        Assert.Equal("orphan", File.ReadAllText(Path.Combine(_desktopRoot, "note (2).txt")));
+    }
+
+    [Fact]
+    public async Task MoveOrphanManagedStorageFolderContentsToDesktopAsync_RejectsActiveManagedFolder()
+    {
+        string activeFolder = Directory.CreateDirectory(Path.Combine(_storageRoot, "Active")).FullName;
+        string activeFile = Path.Combine(activeFolder, "note.txt");
+        File.WriteAllText(activeFile, "active");
+        _settingsService.Settings.Widgets.Add(CreateManagedWidget("Active", activeFolder));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _widgetManager.MoveOrphanManagedStorageFolderContentsToDesktopAsync(activeFolder));
+
+        Assert.True(Directory.Exists(activeFolder));
+        Assert.Equal("active", File.ReadAllText(activeFile));
+    }
+
+    [Fact]
+    public async Task DeleteOrphanManagedStorageFolderAsync_DeletesValidatedOrphanFolder()
+    {
+        string orphanFolder = Directory.CreateDirectory(Path.Combine(_storageRoot, "Orphan")).FullName;
+        File.WriteAllText(Path.Combine(orphanFolder, "note.txt"), "orphan");
+
+        await _widgetManager.DeleteOrphanManagedStorageFolderAsync(orphanFolder);
+
+        Assert.False(Directory.Exists(orphanFolder));
+    }
+
+    [Fact]
+    public async Task RemoveWidgetAsync_MoveManagedFolderContentsToDesktop_RemovesConfigAndMovesFiles()
+    {
+        string managedFolder = Directory.CreateDirectory(Path.Combine(_storageRoot, "Managed")).FullName;
+        string sourcePath = Path.Combine(managedFolder, "note.txt");
+        File.WriteAllText(sourcePath, "managed");
+        var widget = CreateManagedWidget("Managed", managedFolder);
+        _settingsService.Settings.Widgets.Add(widget);
+
+        await _widgetManager.RemoveWidgetAsync(widget.Id, WidgetRemovalAction.MoveManagedFolderContentsToDesktop);
+
+        Assert.DoesNotContain(_settingsService.Settings.Widgets, item => item.Id == widget.Id);
+        Assert.Contains(widget.Id, _settingsService.Settings.DeletedWidgetIds);
+        Assert.False(Directory.Exists(managedFolder));
+        Assert.Equal("managed", File.ReadAllText(Path.Combine(_desktopRoot, "note.txt")));
+    }
+
+    [Fact]
+    public async Task RemoveWidgetAsync_RejectsFolderCleanupForMappedFolder()
+    {
+        string mappedFolder = Directory.CreateDirectory(Path.Combine(_tempRoot, "mapped")).FullName;
+        string mappedFile = Path.Combine(mappedFolder, "note.txt");
+        File.WriteAllText(mappedFile, "mapped");
+        var widget = new WidgetConfig
+        {
+            Name = "Mapped",
+            MappedFolderPath = mappedFolder,
+            FollowsDefaultStoragePath = false
+        };
+        _settingsService.Settings.Widgets.Add(widget);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _widgetManager.RemoveWidgetAsync(widget.Id, WidgetRemovalAction.DeleteManagedFolder));
+
+        Assert.Contains(_settingsService.Settings.Widgets, item => item.Id == widget.Id);
+        Assert.DoesNotContain(widget.Id, _settingsService.Settings.DeletedWidgetIds);
+        Assert.True(Directory.Exists(mappedFolder));
+        Assert.Equal("mapped", File.ReadAllText(mappedFile));
+    }
+
+    private static WidgetConfig CreateManagedWidget(string name, string folderPath)
+    {
+        return new WidgetConfig
+        {
+            Name = name,
+            WidgetKind = WidgetKind.File,
+            MappedFolderPath = folderPath,
+            FollowsDefaultStoragePath = true,
+            ManagedFolderName = Path.GetFileName(folderPath)
+        };
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempRoot))
+        {
+            Directory.Delete(_tempRoot, recursive: true);
+        }
+    }
+}

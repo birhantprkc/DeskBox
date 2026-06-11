@@ -6,11 +6,16 @@ public sealed class OrganizerService
 {
     private readonly SettingsService _settingsService;
     private readonly FileService _fileService;
+    private readonly Func<string> _desktopPathProvider;
 
-    public OrganizerService(SettingsService settingsService, FileService fileService)
+    public OrganizerService(
+        SettingsService settingsService,
+        FileService fileService,
+        Func<string>? desktopPathProvider = null)
     {
         _settingsService = settingsService;
         _fileService = fileService;
+        _desktopPathProvider = desktopPathProvider ?? (() => Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
     }
 
     public IReadOnlyList<OrganizationHistoryEntry> GetRecentHistory(int maxCount = 6)
@@ -33,7 +38,8 @@ public sealed class OrganizerService
         WidgetConfig widget,
         string widgetName,
         IEnumerable<string> sourcePaths,
-        bool move)
+        bool move,
+        bool useShellProgress = false)
     {
         if (string.IsNullOrWhiteSpace(widget.MappedFolderPath))
         {
@@ -66,7 +72,7 @@ public sealed class OrganizerService
                 })
                 .ToList();
 
-            var results = await _fileService.ExecuteTransferPlanAsync(plans, move);
+            var results = await _fileService.ExecuteTransferPlanAsync(plans, move, useShellProgress);
             var historyEntry = CreateHistoryEntry(
                 widget.Id,
                 widgetName,
@@ -99,27 +105,45 @@ public sealed class OrganizerService
     public async Task<OrganizationHistoryEntry> MoveItemBackToDesktopAsync(
         WidgetConfig widget,
         string widgetName,
-        WidgetItem item)
+        WidgetItem item,
+        bool useShellProgress = false)
     {
-        if (!widget.FollowsDefaultStoragePath || string.IsNullOrWhiteSpace(widget.MappedFolderPath))
+        return await MoveItemsBackToDesktopAsync(widget, widgetName, [item.Path], useShellProgress);
+    }
+
+    public async Task<OrganizationHistoryEntry> MoveItemsBackToDesktopAsync(
+        WidgetConfig widget,
+        string widgetName,
+        IEnumerable<string> sourcePaths,
+        bool useShellProgress = false)
+    {
+        if (string.IsNullOrWhiteSpace(widget.MappedFolderPath))
         {
-            throw new InvalidOperationException("Only managed storage widgets can move items back to the desktop.");
+            throw new InvalidOperationException("This widget does not have a folder path.");
         }
 
-        string sourcePath = Path.GetFullPath(item.Path);
-        if (!File.Exists(sourcePath) && !Directory.Exists(sourcePath))
+        var normalizedSourcePaths = sourcePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(path => File.Exists(path) || Directory.Exists(path))
+            .ToList();
+        if (normalizedSourcePaths.Count == 0)
         {
-            throw new FileNotFoundException("The item to restore could not be found.", sourcePath);
+            throw new FileNotFoundException("No items to restore could be found.");
         }
 
-        string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        string destinationPath = FileService.GetAvailablePath(Path.Combine(desktopPath, Path.GetFileName(sourcePath)));
+        string desktopPath = _desktopPathProvider();
+        var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var plans = normalizedSourcePaths
+            .Select(sourcePath => new FileService.FileTransferPlan(
+                sourcePath,
+                FileService.GetAvailablePath(Path.Combine(desktopPath, Path.GetFileName(sourcePath)), reservedPaths)))
+            .ToList();
 
         try
         {
-            var results = await _fileService.ExecuteTransferPlanAsync(
-                [new FileService.FileTransferPlan(sourcePath, destinationPath)],
-                move: true);
+            var results = await _fileService.ExecuteTransferPlanAsync(plans, move: true, useShellProgress);
 
             var historyEntry = CreateHistoryEntry(
                 widget.Id,
@@ -144,7 +168,7 @@ public sealed class OrganizerService
                 widgetName,
                 OrganizationActionType.MoveBackToDesktop,
                 move: true,
-                [sourcePath],
+                normalizedSourcePaths,
                 ex.Message));
             throw;
         }

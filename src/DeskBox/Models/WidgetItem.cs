@@ -30,10 +30,17 @@ public partial class WidgetItem : ObservableObject
 
     /// <summary>File size in bytes (0 for folders).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
     private long _fileSize;
+
+    /// <summary>Number of visible direct children when this item represents a folder.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
+    private int _folderItemCount;
 
     /// <summary>Last modification timestamp.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
     private DateTime _lastModified;
 
     /// <summary>Whether this item is a .lnk shortcut file.</summary>
@@ -42,6 +49,7 @@ public partial class WidgetItem : ObservableObject
 
     /// <summary>Whether this item represents a directory.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
     private bool _isFolder;
 
     /// <summary>Display order within the parent widget.</summary>
@@ -55,4 +63,41 @@ public partial class WidgetItem : ObservableObject
     /// <summary>Whether the item is currently marked as cut.</summary>
     [ObservableProperty]
     private bool _isCut;
+
+    public string SecondaryInfo
+    {
+        get
+        {
+            if (IsFolder)
+            {
+                return $"{FolderItemCount} 项";
+            }
+
+            string typeText = FormatFileSize(FileSize);
+            return LastModified == default
+                ? typeText
+                : $"{typeText} · {LastModified:yyyy/M/d HH:mm}";
+        }
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return "文件";
+        }
+
+        string[] units = ["B", "KB", "MB", "GB"];
+        double value = bytes;
+        int unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.Length - 1)
+        {
+            value /= 1024;
+            unitIndex++;
+        }
+
+        return unitIndex == 0
+            ? $"{bytes} B"
+            : $"{value:0.#} {units[unitIndex]}";
+    }
 }

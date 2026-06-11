@@ -10,6 +10,18 @@ public sealed record ManagedStorageMigrationResult(
     string OldRootPath,
     string NewRootPath);
 
+public enum WidgetRemovalAction
+{
+    RemoveWidgetOnly,
+    MoveManagedFolderContentsToDesktop,
+    DeleteManagedFolder
+}
+
+public sealed record ManagedStorageFolderCleanupCandidate(
+    string Name,
+    string Path,
+    int ItemCount);
+
 /// <summary>
 /// Manages the lifecycle of all desktop organizer widgets.
 /// </summary>
@@ -19,21 +31,47 @@ public sealed class WidgetManager
     private readonly FileService _fileService;
     private readonly OrganizerService _organizerService;
     private readonly ThemeService _themeService;
+    private readonly Func<string> _desktopPathProvider;
+    private readonly bool _recycleManagedFolderDeletes;
     private readonly Dictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> _widgets = new();
     private readonly HashSet<string> _deletedWidgetIds = [];
     private readonly List<WidgetWindow> _retiredWindows = [];
+    private bool _widgetsRaisedFromTray;
+    private bool _isTogglingWidgetsDesktopLayer;
+    private DateTime _lastTrayLayerToggleUtc = DateTime.MinValue;
 
     public IReadOnlyDictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> Widgets => _widgets;
+
+    public bool WidgetsRaisedFromTray => _widgetsRaisedFromTray;
 
     public event Action<WidgetWindow>? WidgetCreated;
     public event Action<string>? WidgetRemoved;
 
     public WidgetManager(SettingsService settingsService, FileService fileService, OrganizerService organizerService, ThemeService themeService)
+        : this(
+            settingsService,
+            fileService,
+            organizerService,
+            themeService,
+            () => Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            recycleManagedFolderDeletes: true)
+    {
+    }
+
+    internal WidgetManager(
+        SettingsService settingsService,
+        FileService fileService,
+        OrganizerService organizerService,
+        ThemeService themeService,
+        Func<string> desktopPathProvider,
+        bool recycleManagedFolderDeletes)
     {
         _settingsService = settingsService;
         _fileService = fileService;
         _organizerService = organizerService;
         _themeService = themeService;
+        _desktopPathProvider = desktopPathProvider;
+        _recycleManagedFolderDeletes = recycleManagedFolderDeletes;
     }
 
     /// <summary>
@@ -58,25 +96,6 @@ public sealed class WidgetManager
 
             await Task.Yield();
         }
-    }
-
-    /// <summary>
-    /// Create a new empty reference widget.
-    /// </summary>
-    public async Task<WidgetWindow> CreateNewWidgetAsync(string name = "新建组件")
-    {
-        var config = new WidgetConfig
-        {
-            Name = name,
-            WidgetKind = WidgetKind.File,
-            Width = _settingsService.Settings.DefaultWidgetWidth,
-            Height = _settingsService.Settings.DefaultWidgetHeight
-        };
-
-        _settingsService.Settings.Widgets.Add(config);
-        await _settingsService.SaveAsync();
-
-        return await CreateWidgetFromConfigAsync(config);
     }
 
     /// <summary>
@@ -129,7 +148,7 @@ public sealed class WidgetManager
     /// <summary>
     /// Show a specific widget by id.
     /// </summary>
-    public async Task<bool> ShowWidgetAsync(string widgetId, bool reveal = true)
+    public async Task<bool> ShowWidgetAsync(string widgetId, bool reveal = true, bool autoRestoreOnReveal = true)
     {
         if (IsDeleted(widgetId))
         {
@@ -146,7 +165,7 @@ public sealed class WidgetManager
         {
             if (reveal)
             {
-                entry.Window.RevealFromTray();
+                entry.Window.RevealFromTray(autoRestoreOnReveal);
             }
             else
             {
@@ -160,10 +179,66 @@ public sealed class WidgetManager
         var window = await CreateWidgetFromConfigAsync(config);
         if (reveal)
         {
-            window.RevealFromTray();
+            window.RevealFromTray(autoRestoreOnReveal);
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Toggle desktop widgets between the front of the normal Z-order and the desktop bottom layer.
+    /// </summary>
+    public async Task<bool?> ToggleWidgetsDesktopLayerAsync()
+    {
+        var now = DateTime.UtcNow;
+        if (_isTogglingWidgetsDesktopLayer || now - _lastTrayLayerToggleUtc < TimeSpan.FromMilliseconds(450))
+        {
+            return null;
+        }
+
+        _isTogglingWidgetsDesktopLayer = true;
+        _lastTrayLayerToggleUtc = now;
+        try
+        {
+            if (_widgetsRaisedFromTray)
+            {
+                foreach (var (_, (window, _)) in _widgets.ToList())
+                {
+                    window.PushToBottom();
+                }
+
+                _widgetsRaisedFromTray = false;
+                return false;
+            }
+
+            var windowsToRaise = new List<WidgetWindow>();
+            foreach (var widget in _settingsService.Settings.Widgets
+                         .Where(widget => widget.WidgetKind == WidgetKind.File && !widget.IsDisabled && !IsDeleted(widget.Id))
+                         .ToList())
+            {
+                if (!await ShowWidgetAsync(widget.Id, reveal: false))
+                {
+                    continue;
+                }
+
+                if (_widgets.TryGetValue(widget.Id, out var entry))
+                {
+                    windowsToRaise.Add(entry.Window);
+                }
+            }
+
+            foreach (var window in windowsToRaise)
+            {
+                window.RaiseTemporarilyFromTray();
+            }
+
+            _widgetsRaisedFromTray = windowsToRaise.Count > 0;
+            return _widgetsRaisedFromTray;
+        }
+        finally
+        {
+            _isTogglingWidgetsDesktopLayer = false;
+        }
     }
 
     /// <summary>
@@ -187,13 +262,21 @@ public sealed class WidgetManager
         {
             window.HideWindow();
         }
+
+        _widgetsRaisedFromTray = false;
     }
 
     /// <summary>
     /// Remove a widget and close its window.
     /// </summary>
-    public async Task RemoveWidgetAsync(string widgetId)
+    public async Task RemoveWidgetAsync(string widgetId, WidgetRemovalAction removalAction = WidgetRemovalAction.RemoveWidgetOnly)
     {
+        var config = FindConfig(widgetId);
+        if (config is not null)
+        {
+            await ApplyWidgetRemovalActionAsync(config, removalAction);
+        }
+
         _deletedWidgetIds.Add(widgetId);
 
         if (_widgets.TryGetValue(widgetId, out var entry))
@@ -214,6 +297,52 @@ public sealed class WidgetManager
     public void RemoveWidget(string widgetId)
     {
         _ = RemoveWidgetAsync(widgetId);
+    }
+
+    public bool CanCleanupManagedStorageForWidget(string widgetId)
+    {
+        var config = FindConfig(widgetId);
+        return config is not null &&
+               IsDefaultManagedStorageFolder(config.MappedFolderPath) &&
+               config.FollowsDefaultStoragePath;
+    }
+
+    public IReadOnlyList<ManagedStorageFolderCleanupCandidate> GetOrphanManagedStorageFolders()
+    {
+        string rootPath = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
+        if (!Directory.Exists(rootPath))
+        {
+            return [];
+        }
+
+        var activePaths = _settingsService.Settings.Widgets
+            .Where(widget => widget.WidgetKind == WidgetKind.File &&
+                             widget.FollowsDefaultStoragePath &&
+                             !IsDeleted(widget.Id))
+            .SelectMany(widget => GetPossibleManagedStoragePaths(widget, rootPath))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return Directory.EnumerateDirectories(rootPath)
+            .Select(Path.GetFullPath)
+            .Where(path => !activePaths.Contains(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
+            .Select(path => new ManagedStorageFolderCleanupCandidate(
+                Path.GetFileName(path),
+                path,
+                CountDirectoryEntries(path)))
+            .OrderBy(candidate => candidate.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    public async Task MoveOrphanManagedStorageFolderContentsToDesktopAsync(string folderPath)
+    {
+        string normalizedPath = ValidateOrphanManagedStorageFolderPath(folderPath);
+        await MoveManagedFolderContentsToDesktopAsync(normalizedPath);
+    }
+
+    public async Task DeleteOrphanManagedStorageFolderAsync(string folderPath)
+    {
+        string normalizedPath = ValidateOrphanManagedStorageFolderPath(folderPath);
+        await _fileService.DeleteEntryAsync(normalizedPath, recycle: _recycleManagedFolderDeletes);
     }
 
     /// <summary>
@@ -339,53 +468,6 @@ public sealed class WidgetManager
             !IsDeleted(widget.Id));
     }
 
-    public async Task<bool> EnableManagedStorageAsync(string widgetId)
-    {
-        var config = FindConfig(widgetId);
-        if (config is null || config.WidgetKind != WidgetKind.File || IsDeleted(widgetId))
-        {
-            return false;
-        }
-
-        if (_widgets.TryGetValue(widgetId, out var entry))
-        {
-            string managedFolderName = string.IsNullOrWhiteSpace(config.ManagedFolderName)
-                ? CreateManagedFolderName(config.Name, widgetId)
-                : config.ManagedFolderName;
-            string folderPath = BuildManagedFolderPath(managedFolderName);
-            Directory.CreateDirectory(folderPath);
-
-            await entry.ViewModel.EnableManagedStorageAsync(folderPath, managedFolderName);
-            return true;
-        }
-
-        string hiddenFolderName = string.IsNullOrWhiteSpace(config.ManagedFolderName)
-            ? CreateManagedFolderName(config.Name, widgetId)
-            : config.ManagedFolderName;
-        string hiddenFolderPath = BuildManagedFolderPath(hiddenFolderName);
-        Directory.CreateDirectory(hiddenFolderPath);
-
-        var importPaths = string.IsNullOrEmpty(config.MappedFolderPath)
-            ? config.Items
-                .Select(item => item.Path)
-                .Where(path => !string.IsNullOrWhiteSpace(path) && (File.Exists(path) || Directory.Exists(path)))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList()
-            : [];
-
-        if (importPaths.Count > 0)
-        {
-            await _fileService.TransferItemsAsync(importPaths, hiddenFolderPath, ShouldMoveManagedItems());
-        }
-
-        config.MappedFolderPath = hiddenFolderPath;
-        config.FollowsDefaultStoragePath = true;
-        config.ManagedFolderName = hiddenFolderName;
-        config.Items.Clear();
-        await _settingsService.SaveAsync();
-        return true;
-    }
-
     public async Task<ManagedStorageMigrationResult> UpdateDefaultManagedStorageRootAsync(string newRootPath)
     {
         string oldRootPath = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
@@ -471,6 +553,144 @@ public sealed class WidgetManager
     private WidgetConfig? FindConfig(string widgetId)
     {
         return _settingsService.Settings.Widgets.FirstOrDefault(widget => widget.Id == widgetId);
+    }
+
+    private async Task ApplyWidgetRemovalActionAsync(WidgetConfig config, WidgetRemovalAction removalAction)
+    {
+        if (removalAction == WidgetRemovalAction.RemoveWidgetOnly)
+        {
+            return;
+        }
+
+        if (!config.FollowsDefaultStoragePath || !IsDefaultManagedStorageFolder(config.MappedFolderPath))
+        {
+            throw new InvalidOperationException("只有默认收纳路径下的收纳组件可以同步处理文件夹。");
+        }
+
+        string folderPath = Path.GetFullPath(config.MappedFolderPath!);
+        if (!Directory.Exists(folderPath))
+        {
+            return;
+        }
+
+        if (removalAction == WidgetRemovalAction.MoveManagedFolderContentsToDesktop)
+        {
+            await MoveManagedFolderContentsToDesktopAsync(folderPath);
+            return;
+        }
+
+        if (removalAction == WidgetRemovalAction.DeleteManagedFolder)
+        {
+            await _fileService.DeleteEntryAsync(folderPath, recycle: _recycleManagedFolderDeletes);
+        }
+    }
+
+    private async Task MoveManagedFolderContentsToDesktopAsync(string folderPath)
+    {
+        if (!Directory.Exists(folderPath))
+        {
+            return;
+        }
+
+        string desktopPath = _desktopPathProvider();
+        var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var plans = Directory.EnumerateFileSystemEntries(folderPath)
+            .Select(path => new FileService.FileTransferPlan(
+                path,
+                FileService.GetAvailablePath(Path.Combine(desktopPath, Path.GetFileName(path)), reservedPaths)))
+            .ToList();
+
+        if (plans.Count > 0)
+        {
+            await _fileService.ExecuteTransferPlanAsync(plans, move: true);
+        }
+
+        if (Directory.Exists(folderPath) && !Directory.EnumerateFileSystemEntries(folderPath).Any())
+        {
+            Directory.Delete(folderPath, recursive: false);
+        }
+    }
+
+    private string ValidateOrphanManagedStorageFolderPath(string folderPath)
+    {
+        string normalizedPath = Path.GetFullPath(folderPath);
+        if (!IsDefaultManagedStorageFolder(normalizedPath))
+        {
+            throw new InvalidOperationException("只能清理默认收纳路径下的直属文件夹。");
+        }
+
+        if (!Directory.Exists(normalizedPath))
+        {
+            return normalizedPath;
+        }
+
+        var activePaths = _settingsService.Settings.Widgets
+            .Where(widget => widget.WidgetKind == WidgetKind.File &&
+                             widget.FollowsDefaultStoragePath &&
+                             !IsDeleted(widget.Id))
+            .SelectMany(widget => GetPossibleManagedStoragePaths(
+                widget,
+                SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (activePaths.Contains(normalizedPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
+        {
+            throw new InvalidOperationException("这个文件夹仍然属于现有收纳组件，不能作为孤立文件夹清理。");
+        }
+
+        return normalizedPath;
+    }
+
+    private bool IsDefaultManagedStorageFolder(string? folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            return false;
+        }
+
+        string rootPath = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string normalizedPath = Path.GetFullPath(folderPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (string.Equals(rootPath, normalizedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string? parentPath = Path.GetDirectoryName(normalizedPath);
+        return parentPath is not null &&
+               string.Equals(
+                   parentPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                   rootPath,
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> GetPossibleManagedStoragePaths(WidgetConfig widget, string rootPath)
+    {
+        if (!string.IsNullOrWhiteSpace(widget.MappedFolderPath))
+        {
+            yield return Path.GetFullPath(widget.MappedFolderPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+
+        if (!string.IsNullOrWhiteSpace(widget.ManagedFolderName))
+        {
+            yield return Path.GetFullPath(Path.Combine(rootPath, widget.ManagedFolderName))
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+    }
+
+    private static int CountDirectoryEntries(string folderPath)
+    {
+        try
+        {
+            return Directory.EnumerateFileSystemEntries(folderPath).Count();
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private bool IsDeleted(string widgetId)

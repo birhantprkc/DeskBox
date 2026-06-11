@@ -14,6 +14,8 @@ public static partial class Win32Helper
     /// <summary>Places the window at the bottom of the Z order.</summary>
     public static readonly IntPtr HWND_TOP = IntPtr.Zero;
     public static readonly IntPtr HWND_BOTTOM = 1;
+    public static readonly IntPtr HWND_TOPMOST = -1;
+    public static readonly IntPtr HWND_NOTOPMOST = -2;
 
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOSIZE = 0x0001;
@@ -86,50 +88,8 @@ public static partial class Win32Helper
         IntPtr hwnd,
         ref WindowCompositionAttributeData data);
 
-    [LibraryImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool SetWindowRgn(IntPtr hWnd, IntPtr hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);
-
-    [LibraryImport("gdi32.dll", SetLastError = true)]
-    public static partial IntPtr CreateRoundRectRgn(
-        int x1,
-        int y1,
-        int x2,
-        int y2,
-        int w,
-        int h);
-
-    [LibraryImport("gdi32.dll", SetLastError = true)]
-    public static partial IntPtr CreateRectRgn(
-        int left,
-        int top,
-        int right,
-        int bottom);
-
-    [LibraryImport("gdi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool DeleteObject(IntPtr hObject);
-
-    // ────────────────────────────────────────────────────────────────
-    //  SendMessage – native resize
-    // ────────────────────────────────────────────────────────────────
-
-    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
-    public static partial IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
     [LibraryImport("user32.dll")]
     public static partial short GetKeyState(int nVirtKey);
-
-    public const uint WM_SYSCOMMAND = 0x0112;
-
-    /// <summary>
-    /// Base value for the SC_SIZE system command.
-    /// Add a direction constant (1–8) for edge/corner resize:
-    /// WMSZ_LEFT = 1, WMSZ_RIGHT = 2, WMSZ_TOP = 3,
-    /// WMSZ_TOPLEFT = 4, WMSZ_TOPRIGHT = 5, WMSZ_BOTTOM = 6,
-    /// WMSZ_BOTTOMLEFT = 7, WMSZ_BOTTOMRIGHT = 8.
-    /// </summary>
-    public const int SC_SIZE = 0xF000;
 
     // ────────────────────────────────────────────────────────────────
     //  Shell operations
@@ -154,6 +114,8 @@ public static partial class Win32Helper
     /// </summary>
     public static void SetWindowToBottom(IntPtr hWnd)
     {
+        SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
@@ -168,15 +130,23 @@ public static partial class Win32Helper
     }
 
     /// <summary>
-    /// Initiate a native window resize operation from the specified edge or corner.
+    /// Raise a window above normal application windows without leaving it always-on-top.
     /// </summary>
-    /// <param name="hWnd">Window handle.</param>
-    /// <param name="direction">
-    /// Resize direction (1 = left, 2 = right, 3 = top, 6 = bottom, etc.).
-    /// </param>
-    public static void StartResize(IntPtr hWnd, int direction)
+    public static void BringWindowTemporarilyToFront(IntPtr hWnd)
     {
-        SendMessage(hWnd, WM_SYSCOMMAND, (IntPtr)(SC_SIZE + direction), IntPtr.Zero);
+        SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+
+    /// <summary>
+    /// Remove topmost state from a window without changing its size or position.
+    /// </summary>
+    public static void ClearWindowTopMost(IntPtr hWnd)
+    {
+        SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -344,21 +314,6 @@ public static partial class Win32Helper
         return (GetKeyState((int)key) & 0x8000) != 0;
     }
 
-    public const uint WM_NCLBUTTONDOWN = 0x00A1;
-    public const int HTCAPTION = 2;
-    public const int HTLEFT = 10;
-    public const int HTRIGHT = 11;
-    public const int HTTOP = 12;
-    public const int HTTOPLEFT = 13;
-    public const int HTTOPRIGHT = 14;
-    public const int HTBOTTOM = 15;
-    public const int HTBOTTOMLEFT = 16;
-    public const int HTBOTTOMRIGHT = 17;
-
-    [LibraryImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool ReleaseCapture();
-
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {
@@ -369,6 +324,19 @@ public static partial class Win32Helper
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetCursorPos(out POINT lpPoint);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
     /// <summary>
     /// Open a file or URL using the default associated application.

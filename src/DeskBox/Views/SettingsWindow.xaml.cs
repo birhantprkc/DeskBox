@@ -6,8 +6,10 @@ using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using System.Runtime.InteropServices;
+using System.Text;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -37,10 +39,10 @@ public sealed partial class SettingsWindow : Window
 
     public SettingsViewModel ViewModel { get; }
 
-    public SettingsWindow(SettingsService settingsService, OrganizerService organizerService, ThemeService themeService)
+    public SettingsWindow(SettingsService settingsService, ThemeService themeService)
     {
         _themeService = themeService;
-        ViewModel = new SettingsViewModel(settingsService, organizerService, themeService);
+        ViewModel = new SettingsViewModel(settingsService, themeService);
         InitializeComponent();
 
         SettingsRoot.DataContext = ViewModel;
@@ -143,6 +145,87 @@ public sealed partial class SettingsWindow : Window
         ViewModel.SetCustomAccentColor(color);
     }
 
+    private void SettingsDropDownButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DropDownButton button || button.Tag is not string menuKind)
+        {
+            return;
+        }
+
+        string selectedValue;
+        IReadOnlyList<string> values;
+        Action<string> applyValue;
+
+        switch (menuKind)
+        {
+            case "Theme":
+                selectedValue = ViewModel.SelectedTheme;
+                values = ViewModel.AvailableThemes;
+                applyValue = value => ViewModel.SelectedTheme = value;
+                break;
+
+            case "WidgetCorner":
+                selectedValue = ViewModel.SelectedWidgetCornerPreference;
+                values = ViewModel.AvailableWidgetCornerPreferences;
+                applyValue = value => ViewModel.SelectedWidgetCornerPreference = value;
+                break;
+
+            case "ManagedDropAction":
+                selectedValue = ViewModel.SelectedManagedDropAction;
+                values = ViewModel.AvailableManagedDropActions;
+                applyValue = value => ViewModel.SelectedManagedDropAction = value;
+                break;
+
+            default:
+                return;
+        }
+
+        var flyout = new MenuFlyout
+        {
+            ShouldConstrainToRootBounds = false
+        };
+
+        foreach (string value in values)
+        {
+            var item = new MenuFlyoutItem
+            {
+                Text = value,
+                MinWidth = button.ActualWidth > 0 ? button.ActualWidth : button.MinWidth,
+                Icon = string.Equals(value, selectedValue, StringComparison.Ordinal)
+                    ? new FontIcon { Glyph = "\uE73E" }
+                    : null
+            };
+            item.Click += (_, _) => applyValue(value);
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(button);
+    }
+
+    private void EditableSettingsTextBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox textBox)
+        {
+            textBox.Tag = textBox.Text;
+        }
+    }
+
+    private void EditableSettingsTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Escape || sender is not TextBox textBox)
+        {
+            return;
+        }
+
+        if (textBox.Tag is string originalText)
+        {
+            textBox.Text = originalText;
+        }
+
+        SettingsRoot.Focus(FocusState.Programmatic);
+        e.Handled = true;
+    }
+
     private async void ChangeManagedStoragePathButton_Click(object sender, RoutedEventArgs e)
     {
         if (SettingsRoot.XamlRoot is null)
@@ -181,7 +264,7 @@ public sealed partial class SettingsWindow : Window
                 DefaultButton = ContentDialogButton.Primary,
                 Content = new TextBlock
                 {
-                    Text = $"将把 {affectedCount} 个跟随默认路径的收纳组件从\n{ViewModel.ManagedStorageRootPath}\n迁移到\n{normalizedPath}\n\n手动映射的文件夹不会受到影响。",
+                    Text = $"将把 {affectedCount} 个跟随默认路径的收纳组件从\n{ViewModel.ManagedStorageRootPath}\n迁移到\n{normalizedPath}\n\n文件夹映射组件不会受到影响。",
                     TextWrapping = TextWrapping.Wrap
                 }
             };
@@ -226,6 +309,193 @@ public sealed partial class SettingsWindow : Window
         string path = ViewModel.ManagedStorageRootPath;
         Directory.CreateDirectory(path);
         Win32Helper.OpenFile(path);
+    }
+
+    private void OpenRepositoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        Win32Helper.OpenFile(ViewModel.OpenSourceRepositoryUrl);
+    }
+
+    private async void ShowProductReasonButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        var content = new StackPanel
+        {
+            MaxWidth = 560,
+            Spacing = 12
+        };
+
+        content.Children.Add(CreateDialogParagraph(
+            "很多桌面管理工具会接管桌面，替换原来的桌面交互，甚至把桌面变成另一套文件入口。DeskBox 不想这么做。"));
+        content.Children.Add(CreateDialogParagraph(
+            "它更像是一层轻量整理能力：桌面仍然是桌面，文件仍然是普通文件，组件只负责把文件移动、复制或映射到合适的位置。"));
+        content.Children.Add(CreateDialogParagraph(
+            "界面上，DeskBox 尽量围绕 WinUI 3、Windows App SDK、Mica 和 DWM 圆角构建，目标是在保留 Windows 原生质感的同时，把桌面整理这件事变得更顺手。"));
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = "为什么做 DeskBox",
+            CloseButtonText = "知道了",
+            DefaultButton = ContentDialogButton.Close,
+            Content = content
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private async void CleanupManagedStorageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null || App.Current.WidgetManager is null)
+        {
+            return;
+        }
+
+        var candidates = App.Current.WidgetManager.GetOrphanManagedStorageFolders();
+        if (candidates.Count == 0)
+        {
+            await ShowInfoDialogAsync("清理收纳文件夹", "没有发现孤立的收纳文件夹。");
+            return;
+        }
+
+        var optionBox = new RadioButtons
+        {
+            MaxWidth = 520,
+            SelectedIndex = 0
+        };
+        optionBox.Items.Add(new TextBlock
+        {
+            Text = "打开默认收纳路径，稍后自行处理",
+            TextWrapping = TextWrapping.Wrap
+        });
+        optionBox.Items.Add(new TextBlock
+        {
+            Text = "把这些文件夹的内容移回桌面，然后删除空文件夹",
+            TextWrapping = TextWrapping.Wrap
+        });
+        optionBox.Items.Add(new TextBlock
+        {
+            Text = "把这些孤立文件夹移到回收站",
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        var content = new StackPanel
+        {
+            Spacing = 12
+        };
+        content.Children.Add(new TextBlock
+        {
+            Text = $"发现 {candidates.Count} 个不再属于现有组件的收纳文件夹。请选择处理方式：",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(optionBox);
+        content.Children.Add(new TextBlock
+        {
+            Text = BuildCleanupCandidateSummary(candidates),
+            FontSize = 12,
+            Opacity = 0.78,
+            TextWrapping = TextWrapping.WrapWholeWords
+        });
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = "清理孤立收纳文件夹",
+            PrimaryButtonText = "继续",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = content
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        try
+        {
+            switch (optionBox.SelectedIndex)
+            {
+                case 1:
+                    foreach (var candidate in candidates)
+                    {
+                        await App.Current.WidgetManager.MoveOrphanManagedStorageFolderContentsToDesktopAsync(candidate.Path);
+                    }
+                    await ShowInfoDialogAsync("清理完成", "孤立收纳文件夹的内容已移回桌面。");
+                    break;
+
+                case 2:
+                    foreach (var candidate in candidates)
+                    {
+                        await App.Current.WidgetManager.DeleteOrphanManagedStorageFolderAsync(candidate.Path);
+                    }
+                    await ShowInfoDialogAsync("清理完成", "孤立收纳文件夹已移到回收站。");
+                    break;
+
+                default:
+                    Directory.CreateDirectory(ViewModel.ManagedStorageRootPath);
+                    Win32Helper.OpenFile(ViewModel.ManagedStorageRootPath);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            await ShowInfoDialogAsync("清理失败", $"收纳文件夹没有完全清理。\n\n{ex.Message}");
+        }
+    }
+
+    private async Task ShowInfoDialogAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = title,
+            CloseButtonText = "确定",
+            DefaultButton = ContentDialogButton.Close,
+            Content = new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private static TextBlock CreateDialogParagraph(string text)
+    {
+        return new TextBlock
+        {
+            Text = text,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            LineHeight = 22
+        };
+    }
+
+    private static string BuildCleanupCandidateSummary(IReadOnlyList<ManagedStorageFolderCleanupCandidate> candidates)
+    {
+        var builder = new StringBuilder();
+        foreach (var candidate in candidates.Take(8))
+        {
+            builder.Append("• ");
+            builder.Append(candidate.Name);
+            builder.Append("（");
+            builder.Append(candidate.ItemCount);
+            builder.AppendLine(" 项）");
+        }
+
+        if (candidates.Count > 8)
+        {
+            builder.Append("还有 ");
+            builder.Append(candidates.Count - 8);
+            builder.AppendLine(" 个文件夹未显示。");
+        }
+
+        return builder.ToString().TrimEnd();
     }
 
     private void OnAppearanceChanged()
@@ -287,6 +557,7 @@ public sealed partial class SettingsWindow : Window
         PathActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
         OpenPathButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         ChangePathButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        CleanupStorageButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
 
         foreach (var row in _settingRows)
         {

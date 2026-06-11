@@ -35,7 +35,6 @@ public class OrganizationHistoryEntry
     {
         OrganizationActionType.ManagedDrop => TransferMode == "Copy" ? "复制到收纳组件" : "移动到收纳组件",
         OrganizationActionType.MoveBackToDesktop => "移回桌面",
-        OrganizationActionType.EnableManagedStorage => "启用收纳模式",
         _ => "桌面整理"
     };
 
@@ -110,5 +109,4 @@ public static class OrganizationActionType
 {
     public const string ManagedDrop = "ManagedDrop";
     public const string MoveBackToDesktop = "MoveBackToDesktop";
-    public const string EnableManagedStorage = "EnableManagedStorage";
 }

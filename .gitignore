@@ -2,6 +2,8 @@
 bin/
 obj/
 artifacts/
+Output/
+TestResults/
 
 *.log
 stdout.txt
@@ -14,3 +16,9 @@ build_*.txt
 *.pdb
 *.exe
 *.dll
+
+/彩色.svg
+/白色.svg
+/黑色.svg
+/白色.ico
+/黑色.ico

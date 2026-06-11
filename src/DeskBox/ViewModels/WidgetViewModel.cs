@@ -29,7 +29,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private string? _mappedFolderPath;
     private double _widgetOpacity;
     private string _iconGlyph = string.Empty;
-    private Visibility _manualModeVisibility;
     private Visibility _iconViewVisibility;
     private Visibility _listViewVisibility;
     private Visibility _loadingVisibility;
@@ -37,7 +36,9 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private bool _isIconMode;
     private bool _isListMode;
     private bool _hideShortcutArrowOverlay;
+    private bool _showListItemDetails = true;
     private string _modeLabel = string.Empty;
+    private string _modeDescription = string.Empty;
     private string _emptyStateTitle = string.Empty;
     private string _emptyStateText = string.Empty;
     private string _emptyStateGlyph = string.Empty;
@@ -49,6 +50,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private Thickness _iconTilePadding;
     private double _iconContentSpacing;
     private double _iconImageSize;
+    private double _iconLabelMaxWidth;
     private double _iconLabelFontSize;
     private Thickness _listItemMargin;
     private Thickness _listItemPadding;
@@ -109,12 +111,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _iconGlyph, value);
     }
 
-    public Visibility ManualModeVisibility
-    {
-        get => _manualModeVisibility;
-        set => SetProperty(ref _manualModeVisibility, value);
-    }
-
     public Visibility IconViewVisibility
     {
         get => _iconViewVisibility;
@@ -151,10 +147,22 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _isListMode, value);
     }
 
+    public bool ShowListItemDetails
+    {
+        get => _showListItemDetails;
+        set => SetProperty(ref _showListItemDetails, value);
+    }
+
     public string ModeLabel
     {
         get => _modeLabel;
         set => SetProperty(ref _modeLabel, value);
+    }
+
+    public string ModeDescription
+    {
+        get => _modeDescription;
+        set => SetProperty(ref _modeDescription, value);
     }
 
     public string EmptyStateTitle
@@ -225,6 +233,12 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _iconImageSize, value);
     }
 
+    public double IconLabelMaxWidth
+    {
+        get => _iconLabelMaxWidth;
+        set => SetProperty(ref _iconLabelMaxWidth, value);
+    }
+
     public double IconLabelFontSize
     {
         get => _iconLabelFontSize;
@@ -274,6 +288,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         Config = config;
         Config.WidgetKind = WidgetKind.File;
         Config.IsDisabled = false;
+        EnsureFolderBackedConfig();
 
         _name = config.Name;
         _viewMode = config.ViewMode;
@@ -283,6 +298,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             SettingsService.MinWidgetOpacity,
             SettingsService.MaxWidgetOpacity);
         _hideShortcutArrowOverlay = _settingsService.Settings.HideShortcutArrowOverlay;
+        _showListItemDetails = _settingsService.Settings.ShowListItemDetails;
         _isPositionLocked = config.IsPositionLocked;
         _isSizeLocked = config.IsSizeLocked;
 
@@ -300,28 +316,28 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
 
     private void UpdateDependentProperties()
     {
-        bool isMappedFolderMode = !string.IsNullOrEmpty(MappedFolderPath);
         string mappedFolderName = GetMappedFolderDisplayName();
         string managedAction = GetManagedActionText();
+        bool isManagedStorage = FollowsDefaultStoragePath;
 
-        IconGlyph = isMappedFolderMode ? "\uE8B7" : "\uE71D";
-        ManualModeVisibility = isMappedFolderMode ? Visibility.Collapsed : Visibility.Visible;
-        TopAddButtonVisibility = isMappedFolderMode ? Visibility.Collapsed : Visibility.Visible;
+        IconGlyph = isManagedStorage ? "\uE8B7" : "\uE71B";
+        TopAddButtonVisibility = Visibility.Visible;
         IconViewVisibility = ViewMode == ViewMode.Icon ? Visibility.Visible : Visibility.Collapsed;
         ListViewVisibility = ViewMode == ViewMode.List ? Visibility.Visible : Visibility.Collapsed;
         IsIconMode = ViewMode == ViewMode.Icon;
         IsListMode = ViewMode == ViewMode.List;
         LoadingVisibility = IsLoading ? Visibility.Visible : Visibility.Collapsed;
-        ModeLabel = !isMappedFolderMode
-            ? "\u5f15\u7528"
-            : FollowsDefaultStoragePath
-                ? "\u6536\u7eb3"
-                : "\u6620\u5c04";
-        EmptyStateGlyph = isMappedFolderMode ? "\uE8B7" : "\uE71D";
-        EmptyStateTitle = isMappedFolderMode ? "\u8fd9\u4e2a\u6587\u4ef6\u5939\u8fd8\u662f\u7a7a\u7684" : "\u6dfb\u52a0\u7b2c\u4e00\u4e2a\u9879\u76ee";
-        EmptyStateText = isMappedFolderMode
-            ? $"\u628a\u684c\u9762\u6587\u4ef6\u62d6\u5230\u8fd9\u91cc\uff0c\u4f1a\u81ea\u52a8{managedAction}\u5230 {mappedFolderName}\u3002"
-            : "\u628a\u6587\u4ef6\u62d6\u5230\u8fd9\u91cc\uff0c\u6216\u4f7f\u7528\u53f3\u4e0a\u89d2\u7684\u6dfb\u52a0\u6309\u94ae\u3002";
+        ModeLabel = isManagedStorage ? "\u6536\u7eb3" : "\u6620\u5c04";
+        ModeDescription = isManagedStorage
+            ? "\u6536\u7eb3\u7ec4\u4ef6\uff0c\u62d6\u5165\u6587\u4ef6\u4f1a\u81ea\u52a8\u6574\u7406\u5230\u9ed8\u8ba4\u6536\u7eb3\u8def\u5f84\u3002"
+            : "\u6587\u4ef6\u5939\u6620\u5c04\u7ec4\u4ef6\uff0c\u76f4\u63a5\u5c55\u793a\u6307\u5b9a\u6587\u4ef6\u5939\u5185\u5bb9\u3002";
+        EmptyStateGlyph = IconGlyph;
+        EmptyStateTitle = isManagedStorage
+            ? "\u8fd8\u6ca1\u6709\u6536\u7eb3\u5185\u5bb9"
+            : "\u6587\u4ef6\u5939\u91cc\u6682\u65e0\u6587\u4ef6";
+        EmptyStateText = isManagedStorage
+            ? $"\u628a\u6587\u4ef6\u62d6\u5230\u8fd9\u91cc\uff0cDeskBox \u4f1a\u81ea\u52a8{managedAction}\u5230 {mappedFolderName}\u3002"
+            : $"\u8fd9\u91cc\u4f1a\u540c\u6b65\u663e\u793a {mappedFolderName} \u4e2d\u7684\u5185\u5bb9\u3002";
     }
 
     private string GetManagedActionText()
@@ -341,39 +357,63 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         var settings = _settingsService.Settings;
         double iconSize = Math.Clamp(settings.IconSize, SettingsService.MinIconSize, SettingsService.MaxIconSize);
         double textSize = Math.Clamp(settings.TextSize, SettingsService.MinTextSize, SettingsService.MaxTextSize);
-        double densityScale = Math.Clamp(
-            settings.LayoutDensityScale,
-            SettingsService.MinLayoutDensityScale,
-            SettingsService.MaxLayoutDensityScale);
-        double t = (densityScale - SettingsService.MinLayoutDensityScale) /
-                   (SettingsService.MaxLayoutDensityScale - SettingsService.MinLayoutDensityScale);
+        double horizontalScale = Math.Clamp(
+            settings.HorizontalSpacingScale,
+            SettingsService.MinSpacingScale,
+            SettingsService.MaxSpacingScale);
+        double verticalScale = Math.Clamp(
+            settings.VerticalSpacingScale,
+            SettingsService.MinSpacingScale,
+            SettingsService.MaxSpacingScale);
+        double fileNameWidthScale = Math.Clamp(
+            settings.FileNameWidthScale,
+            SettingsService.MinSpacingScale,
+            SettingsService.MaxSpacingScale);
 
-        IconTileWidth = Math.Max(iconSize + Lerp(18, 34, t), (textSize * 5.8) + 10);
-        IconTileHeight = iconSize + Lerp(40, 72, t);
-        IconTileMargin = new Thickness(Lerp(0, 2, t));
+        double horizontalT = NormalizeScale(horizontalScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
+        double verticalT = NormalizeScale(verticalScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
+        double nameWidthT = NormalizeScale(fileNameWidthScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
+
+        double labelMaxWidth = Math.Max(iconSize + 18, Lerp(textSize * 5.7, textSize * 10.5, nameWidthT));
+        IconLabelMaxWidth = labelMaxWidth;
+        IconTileWidth = Math.Max(iconSize + Lerp(14, 36, horizontalT), labelMaxWidth + Lerp(8, 16, horizontalT));
+        IconTileHeight = iconSize + Lerp(24, 70, verticalT);
+        IconTileMargin = new Thickness(
+            Lerp(0, 2, horizontalT),
+            Lerp(0, 2, verticalT),
+            Lerp(0, 2, horizontalT),
+            Lerp(0, 2, verticalT));
         IconTilePadding = new Thickness(
-            Lerp(3, 6, t),
-            Lerp(3, 6, t),
-            Lerp(3, 6, t),
-            Lerp(2, 6, t));
-        IconContentSpacing = Lerp(3, 7, t);
+            Lerp(1, 5, horizontalT),
+            Lerp(1, 6, verticalT),
+            Lerp(1, 5, horizontalT),
+            Lerp(1, 6, verticalT));
+        IconContentSpacing = Lerp(1, 7, verticalT);
         IconImageSize = iconSize;
         IconLabelFontSize = textSize;
 
-        double listItemMarginY = Lerp(0, 2, t);
-        ListItemMargin = new Thickness(0, listItemMarginY, 0, listItemMarginY);
+        const double listScale = 0.8;
+        double listItemMarginY = Lerp(0, 2, verticalT);
+        ListItemMargin = new Thickness(0, listItemMarginY * listScale, 0, listItemMarginY * listScale);
         ListItemPadding = new Thickness(
-            Lerp(6, 12, t),
-            Lerp(4, 9, t),
-            Lerp(6, 12, t),
-            Lerp(4, 9, t));
-        ListIconSize = Math.Clamp(Math.Round(iconSize * 0.72), 16, 40);
+            Lerp(4, 12, horizontalT) * listScale,
+            Lerp(2, 9, verticalT) * listScale,
+            Lerp(4, 12, horizontalT) * listScale,
+            Lerp(2, 9, verticalT) * listScale);
+        ListIconSize = Math.Clamp(Math.Round(iconSize * 0.72 * listScale), 16, 32);
         ListLabelFontSize = textSize;
     }
 
     private static double Lerp(double min, double max, double t)
     {
         return min + ((max - min) * t);
+    }
+
+    private static double NormalizeScale(double value, double min, double max)
+    {
+        return Math.Abs(max - min) < 0.0001
+            ? 0
+            : (value - min) / (max - min);
     }
 
     private string GetMappedFolderDisplayName()
@@ -411,6 +451,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             _settingsService.Settings.WidgetOpacity,
             SettingsService.MinWidgetOpacity,
             SettingsService.MaxWidgetOpacity);
+        ShowListItemDetails = _settingsService.Settings.ShowListItemDetails;
         ApplyLayoutSettings();
         UpdateDependentProperties();
 
@@ -432,16 +473,10 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
-            if (!string.IsNullOrEmpty(MappedFolderPath))
-            {
-                await LoadFolderContentsAsync(MappedFolderPath);
-                ConfigureFolderWatchers(MappedFolderPath);
-            }
-            else
-            {
-                await LoadManualItemsAsync();
-                ConfigureFolderWatchers(null);
-            }
+            EnsureFolderBackedConfig();
+            MappedFolderPath = Config.MappedFolderPath;
+            await LoadFolderContentsAsync(MappedFolderPath!);
+            ConfigureFolderWatchers(MappedFolderPath);
         }
         finally
         {
@@ -458,7 +493,10 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         await ImportPathsAsync(paths);
     }
 
-    public async Task ImportPathsAsync(IEnumerable<string> paths, bool? moveWhenMapped = null)
+    public async Task ImportPathsAsync(
+        IEnumerable<string> paths,
+        bool? moveWhenMapped = null,
+        bool useShellProgress = false)
     {
         var normalizedPaths = paths
             .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -470,11 +508,13 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (!string.IsNullOrEmpty(MappedFolderPath))
-        {
-            bool shouldMove = moveWhenMapped ?? ShouldMoveManagedItems();
-            var historyEntry = await _organizerService.OrganizeDropAsync(Config, Name, normalizedPaths, shouldMove);
+        EnsureFolderBackedConfig();
+        MappedFolderPath = Config.MappedFolderPath;
+        bool shouldMove = moveWhenMapped ?? ShouldMoveManagedItems();
+        var historyEntry = await _organizerService.OrganizeDropAsync(Config, Name, normalizedPaths, shouldMove, useShellProgress);
 
+        if (shouldMove)
+        {
             foreach (var sourcePath in historyEntry.Items.Select(item => item.SourcePath))
             {
                 if (Path.GetDirectoryName(sourcePath)?.Equals(MappedFolderPath, StringComparison.OrdinalIgnoreCase) == true)
@@ -482,44 +522,12 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
                     RemoveItemByPath(sourcePath);
                 }
             }
-
-            foreach (var destinationPath in historyEntry.Items.Select(item => item.DestinationPath))
-            {
-                await UpsertFolderItemAsync(destinationPath);
-            }
-
-            return;
         }
 
-        int nextOrder = Items.Count > 0 ? Items.Max(item => item.SortOrder) + 1 : 0;
-        foreach (var path in normalizedPaths)
+        foreach (var destinationPath in historyEntry.Items.Select(item => item.DestinationPath))
         {
-            if (Items.Any(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
-            var item = await _fileService.CreateWidgetItemAsync(path, _hideShortcutArrowOverlay);
-            item.SortOrder = nextOrder++;
-            Items.Add(item);
+            await UpsertFolderItemAsync(destinationPath);
         }
-
-        SyncConfigItems();
-    }
-
-    /// <summary>
-    /// Remove an item from a manual widget.
-    /// </summary>
-    [RelayCommand]
-    public void RemoveItem(WidgetItem item)
-    {
-        if (!string.IsNullOrEmpty(MappedFolderPath))
-        {
-            return;
-        }
-
-        Items.Remove(item);
-        SyncConfigItems();
     }
 
     /// <summary>
@@ -551,59 +559,67 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         FileService.ShowInExplorer(item);
     }
 
-    /// <summary>
-    /// Map this widget to a folder.
-    /// </summary>
-    public async Task MapToFolderAsync(string folderPath)
-    {
-        await ApplyMappedFolderConfigurationAsync(folderPath, followsDefaultStoragePath: false, managedFolderName: null);
-    }
-
-    public async Task MoveItemBackToDesktopAsync(WidgetItem item)
+    public async Task<int> MoveItemBackToDesktopAsync(WidgetItem item, bool useShellProgress = false)
     {
         if (string.IsNullOrWhiteSpace(MappedFolderPath))
         {
-            return;
+            return 0;
         }
 
-        await _organizerService.MoveItemBackToDesktopAsync(Config, Name, item);
-        RemoveItemByPath(item.Path);
+        var historyEntry = await _organizerService.MoveItemBackToDesktopAsync(Config, Name, item, useShellProgress);
+        if (historyEntry.Items.Any(entry => string.Equals(entry.SourcePath, item.Path, StringComparison.OrdinalIgnoreCase)))
+        {
+            RemoveItemByPath(item.Path);
+            return 1;
+        }
+
+        return 0;
     }
 
-    public async Task EnableManagedStorageAsync(string folderPath, string managedFolderName)
+    public async Task<int> MoveItemsBackToDesktopAsync(IEnumerable<WidgetItem> items, bool useShellProgress = false)
     {
-        var importPaths = string.IsNullOrEmpty(MappedFolderPath)
-            ? Items.Select(item => item.Path)
-                .Where(path => !string.IsNullOrWhiteSpace(path))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList()
-            : [];
-
-        if (importPaths.Count > 0)
+        if (string.IsNullOrWhiteSpace(MappedFolderPath))
         {
-            await _fileService.TransferItemsAsync(importPaths, folderPath, ShouldMoveManagedItems());
+            return 0;
         }
 
-        await ApplyMappedFolderConfigurationAsync(folderPath, followsDefaultStoragePath: true, managedFolderName);
+        var targets = items
+            .Where(item => item is not null)
+            .Distinct()
+            .ToList();
+        if (targets.Count == 0)
+        {
+            return 0;
+        }
+
+        var historyEntry = await _organizerService.MoveItemsBackToDesktopAsync(
+            Config,
+            Name,
+            targets.Select(item => item.Path),
+            useShellProgress);
+
+        var movedSourcePaths = historyEntry.Items
+            .Select(item => item.SourcePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in targets.Where(item => movedSourcePaths.Contains(item.Path)))
+        {
+            RemoveItemByPath(item.Path);
+        }
+
+        return movedSourcePaths.Count;
     }
 
     public async Task RefreshFromConfigAsync()
     {
         Config.WidgetKind = WidgetKind.File;
         Config.IsDisabled = false;
+        EnsureFolderBackedConfig();
 
         MappedFolderPath = Config.MappedFolderPath;
         OnPropertyChanged(nameof(FollowsDefaultStoragePath));
 
-        if (!string.IsNullOrEmpty(MappedFolderPath))
-        {
-            await LoadFolderContentsAsync(MappedFolderPath);
-        }
-        else
-        {
-            await LoadManualItemsAsync();
-        }
-
+        await LoadFolderContentsAsync(MappedFolderPath!);
         ConfigureFolderWatchers(MappedFolderPath);
         UpdateDependentProperties();
     }
@@ -620,31 +636,16 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             return Task.CompletedTask;
         }
 
-        if (!string.IsNullOrEmpty(MappedFolderPath))
-        {
-            foreach (var path in normalizedPaths)
-            {
-                RemoveItemByPath(path);
-            }
-
-            return Task.CompletedTask;
-        }
-
-        var removedItems = Items
-            .Where(item => normalizedPaths.Contains(item.Path))
-            .ToList();
-
-        if (removedItems.Count == 0)
+        if (string.IsNullOrEmpty(MappedFolderPath))
         {
             return Task.CompletedTask;
         }
 
-        foreach (var item in removedItems)
+        foreach (var path in normalizedPaths)
         {
-            Items.Remove(item);
+            RemoveItemByPath(path);
         }
 
-        SyncConfigItems();
         return Task.CompletedTask;
     }
 
@@ -681,12 +682,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         var refreshedItem = await _fileService.CreateWidgetItemAsync(destinationPath, _hideShortcutArrowOverlay);
         ApplyRuntimeItemData(item, refreshedItem);
 
-        if (string.IsNullOrEmpty(MappedFolderPath))
-        {
-            SyncConfigItems();
-            return;
-        }
-
         int originalIndex = Items.IndexOf(item);
         if (originalIndex >= 0)
         {
@@ -708,22 +703,30 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var existingTargets = new List<WidgetItem>();
         foreach (var item in targets)
+        {
+            if (File.Exists(item.Path) || Directory.Exists(item.Path))
+            {
+                existingTargets.Add(item);
+            }
+            else
+            {
+                Items.Remove(item);
+            }
+        }
+
+        foreach (var item in existingTargets)
         {
             await _fileService.DeleteEntryAsync(item.Path, recycle: true);
         }
 
-        foreach (var item in targets)
+        foreach (var item in existingTargets)
         {
             Items.Remove(item);
         }
 
         NormalizeSortOrder();
-
-        if (string.IsNullOrEmpty(MappedFolderPath))
-        {
-            SyncConfigItems();
-        }
     }
 
     public void UpdateBounds(double x, double y, double width, double height, bool persist)
@@ -785,21 +788,51 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         SetSizeLocked(!IsSizeLocked);
     }
 
-    private async Task LoadManualItemsAsync()
+    private void EnsureFolderBackedConfig()
     {
-        Items.Clear();
-
-        foreach (var itemConfig in Config.Items.OrderBy(item => item.SortOrder))
+        if (!string.IsNullOrWhiteSpace(Config.MappedFolderPath))
         {
-            if (!File.Exists(itemConfig.Path) && !Directory.Exists(itemConfig.Path))
-            {
-                continue;
-            }
-
-            var item = await _fileService.CreateWidgetItemAsync(itemConfig.Path, _hideShortcutArrowOverlay);
-            item.SortOrder = itemConfig.SortOrder;
-            Items.Add(item);
+            Config.MappedFolderPath = Path.GetFullPath(Config.MappedFolderPath);
+            return;
         }
+
+        Config.FollowsDefaultStoragePath = true;
+        Config.ManagedFolderName = string.IsNullOrWhiteSpace(Config.ManagedFolderName)
+            ? CreateAvailableManagedFolderName(Config.Name, Config.Id)
+            : Config.ManagedFolderName;
+        Config.MappedFolderPath = Path.Combine(
+            SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath),
+            Config.ManagedFolderName);
+        Directory.CreateDirectory(Config.MappedFolderPath);
+        Config.Items.Clear();
+        _settingsService.SaveDebounced();
+    }
+
+    private string CreateAvailableManagedFolderName(string displayName, string widgetId)
+    {
+        string baseFolderName = FileService.SanitizeFileSystemName(displayName);
+        if (string.IsNullOrWhiteSpace(baseFolderName))
+        {
+            baseFolderName = "收纳组件";
+        }
+
+        string rootPath = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
+        var usedNames = _settingsService.Settings.Widgets
+            .Where(widget => widget.WidgetKind == WidgetKind.File &&
+                             widget.FollowsDefaultStoragePath &&
+                             !string.IsNullOrWhiteSpace(widget.ManagedFolderName) &&
+                             !string.Equals(widget.Id, widgetId, StringComparison.Ordinal))
+            .Select(widget => widget.ManagedFolderName!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        string candidate = baseFolderName;
+        int suffix = 2;
+        while (usedNames.Contains(candidate) || Directory.Exists(Path.Combine(rootPath, candidate)))
+        {
+            candidate = $"{baseFolderName} ({suffix++})";
+        }
+
+        return candidate;
     }
 
     private async Task LoadFolderContentsAsync(string folderPath)
@@ -837,23 +870,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         {
             item.Icon = await _fileService.GetIconAsync(item.Path, _hideShortcutArrowOverlay);
         }
-    }
-
-    private async Task ApplyMappedFolderConfigurationAsync(string folderPath, bool followsDefaultStoragePath, string? managedFolderName)
-    {
-        MappedFolderPath = folderPath;
-        Config.MappedFolderPath = folderPath;
-        Config.FollowsDefaultStoragePath = followsDefaultStoragePath;
-        Config.ManagedFolderName = followsDefaultStoragePath ? managedFolderName : null;
-        Config.WidgetKind = WidgetKind.File;
-        Config.Items.Clear();
-
-        OnPropertyChanged(nameof(FollowsDefaultStoragePath));
-        UpdateDependentProperties();
-
-        await LoadFolderContentsAsync(folderPath);
-        ConfigureFolderWatchers(folderPath);
-        _settingsService.SaveDebounced();
     }
 
     private void ConfigureFolderWatchers(string? folderPath)
@@ -1028,6 +1044,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         target.TargetPath = source.TargetPath;
         target.Icon = source.Icon;
         target.FileSize = source.FileSize;
+        target.FolderItemCount = source.FolderItemCount;
         target.LastModified = source.LastModified;
         target.IsShortcut = source.IsShortcut;
         target.IsFolder = source.IsFolder;
@@ -1047,20 +1064,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         }
 
         return StringComparer.OrdinalIgnoreCase.Compare(left.Path, right.Path);
-    }
-
-    /// <summary>
-    /// Sync the in-memory items back to persisted widget config.
-    /// </summary>
-    private void SyncConfigItems()
-    {
-        Config.Items = Items.Select((item, index) => new WidgetItemConfig
-        {
-            Path = item.Path,
-            SortOrder = index
-        }).ToList();
-
-        _settingsService.UpdateWidget(Config);
     }
 
     public void Dispose()

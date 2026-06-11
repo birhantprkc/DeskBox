@@ -12,23 +12,9 @@
         x:Name="SettingsRoot"
         MinWidth="600"
         MinHeight="560"
+        IsTabStop="True"
         Background="Transparent">
         <Grid.Resources>
-            <SolidColorBrush x:Key="ToggleSwitchFillOff" Color="#172629" />
-            <Color x:Key="ToggleSwitchFillOffPointerOver">#1C2E31</Color>
-            <Color x:Key="ToggleSwitchFillOffPressed">#132124</Color>
-            <Color x:Key="ToggleSwitchFillOffDisabled">#10191B</Color>
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="#879598" />
-            <Color x:Key="ToggleSwitchStrokeOffPointerOver">#9BA7AA</Color>
-            <Color x:Key="ToggleSwitchStrokeOffPressed">#778588</Color>
-            <Color x:Key="ToggleSwitchStrokeOffDisabled">#5B676A</Color>
-            <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
-            <x:Double x:Key="SliderInnerThumbWidth">16</x:Double>
-            <x:Double x:Key="SliderInnerThumbHeight">16</x:Double>
-            <x:Double x:Key="SliderHorizontalThumbWidth">16</x:Double>
-            <x:Double x:Key="SliderHorizontalThumbHeight">16</x:Double>
-            <CornerRadius x:Key="SliderThumbCornerRadius">10</CornerRadius>
-
             <Style x:Key="PageTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="28" />
                 <Setter Property="FontWeight" Value="SemiBold" />
@@ -95,21 +81,33 @@
                 <Setter Property="Opacity" Value="0.72" />
             </Style>
 
-            <Style x:Key="InlineComboBoxStyle" TargetType="ComboBox">
+            <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
+            <CornerRadius x:Key="SliderThumbCornerRadius">10</CornerRadius>
+            <x:Double x:Key="SliderInnerThumbWidth">12</x:Double>
+            <x:Double x:Key="SliderInnerThumbHeight">12</x:Double>
+            <x:Double x:Key="SliderHorizontalThumbWidth">18</x:Double>
+            <x:Double x:Key="SliderHorizontalThumbHeight">18</x:Double>
+            <x:Double x:Key="SliderVerticalThumbWidth">18</x:Double>
+            <x:Double x:Key="SliderVerticalThumbHeight">18</x:Double>
+
+            <Style x:Key="InlineDropDownButtonStyle" TargetType="DropDownButton">
                 <Setter Property="MinWidth" Value="176" />
                 <Setter Property="MaxWidth" Value="260" />
                 <Setter Property="MinHeight" Value="34" />
                 <Setter Property="Height" Value="34" />
                 <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Padding" Value="12,0,10,0" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             </Style>
 
             <Style x:Key="InlineNumberTextBoxStyle" TargetType="TextBox">
                 <Setter Property="Width" Value="128" />
                 <Setter Property="MinWidth" Value="128" />
                 <Setter Property="MaxWidth" Value="128" />
-                <Setter Property="Height" Value="34" />
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="Height" Value="32" />
                 <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="Padding" Value="12,0,10,0" />
+                <Setter Property="Padding" Value="10,4,10,5" />
                 <Setter Property="TextAlignment" Value="Left" />
                 <Setter Property="HorizontalContentAlignment" Value="Left" />
                 <Setter Property="VerticalAlignment" Value="Center" />
@@ -167,6 +165,11 @@
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
                 Spacing="8">
+                <Image
+                    Width="18"
+                    Height="18"
+                    VerticalAlignment="Center"
+                    Source="ms-appx:///Assets/deskbox.svg" />
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="14"
@@ -211,15 +214,17 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="应用主题" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="跟随系统，或固定为浅色/深色。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="跟随系统，或固定浅色/深色" />
                                 </StackPanel>
-                                <ComboBox
+                                <DropDownButton
+                                    x:Name="ThemeDropDownButton"
                                     Grid.Column="1"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableThemes}"
-                                    SelectedItem="{Binding SelectedTheme, Mode=TwoWay}"
-                                    Style="{StaticResource InlineComboBoxStyle}" />
+                                    Click="SettingsDropDownButton_Click"
+                                    Content="{Binding SelectedTheme}"
+                                    Style="{StaticResource InlineDropDownButtonStyle}"
+                                    Tag="Theme" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -231,7 +236,7 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="使用 Windows 主题色" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="开启后跟随系统强调色。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="开启后使用 Windows 当前强调色" />
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
@@ -338,11 +343,13 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="默认宽度" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建组件时使用，单位为像素。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建组件时使用，单位为像素" />
                                 </StackPanel>
                                 <TextBox
                                     Grid.Column="1"
+                                    GotFocus="EditableSettingsTextBox_GotFocus"
                                     InputScope="Number"
+                                    KeyDown="EditableSettingsTextBox_KeyDown"
                                     Style="{StaticResource InlineNumberTextBoxStyle}"
                                     Text="{Binding DefaultWidthInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
@@ -356,11 +363,13 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="默认高度" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建组件时使用，单位为像素。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建组件时使用，单位为像素" />
                                 </StackPanel>
                                 <TextBox
                                     Grid.Column="1"
+                                    GotFocus="EditableSettingsTextBox_GotFocus"
                                     InputScope="Number"
+                                    KeyDown="EditableSettingsTextBox_KeyDown"
                                     Style="{StaticResource InlineNumberTextBoxStyle}"
                                     Text="{Binding DefaultHeightInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
@@ -372,6 +381,28 @@
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="显示密度" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="组件圆角" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="控制桌面组件窗口的原生 DWM 圆角" />
+                                </StackPanel>
+                                <DropDownButton
+                                    x:Name="WidgetCornerDropDownButton"
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Click="SettingsDropDownButton_Click"
+                                    Content="{Binding SelectedWidgetCornerPreference}"
+                                    Style="{StaticResource InlineDropDownButtonStyle}"
+                                    Tag="WidgetCorner" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
                             <Grid
                                 Padding="16,14"
                                 ColumnSpacing="16"
@@ -394,7 +425,9 @@
                                     Value="{Binding WidgetOpacity, Mode=TwoWay}" />
                                 <TextBox
                                     Grid.Column="2"
+                                    GotFocus="EditableSettingsTextBox_GotFocus"
                                     InputScope="Number"
+                                    KeyDown="EditableSettingsTextBox_KeyDown"
                                     Style="{StaticResource InlineNumberTextBoxStyle}"
                                     Text="{Binding WidgetOpacityPercentInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
@@ -423,7 +456,9 @@
                                     Value="{Binding IconSize, Mode=TwoWay}" />
                                 <TextBox
                                     Grid.Column="2"
+                                    GotFocus="EditableSettingsTextBox_GotFocus"
                                     InputScope="Number"
+                                    KeyDown="EditableSettingsTextBox_KeyDown"
                                     Style="{StaticResource InlineNumberTextBoxStyle}"
                                     Text="{Binding IconSizeInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
@@ -452,7 +487,9 @@
                                     Value="{Binding TextSize, Mode=TwoWay}" />
                                 <TextBox
                                     Grid.Column="2"
+                                    GotFocus="EditableSettingsTextBox_GotFocus"
                                     InputScope="Number"
+                                    KeyDown="EditableSettingsTextBox_KeyDown"
                                     Style="{StaticResource InlineNumberTextBoxStyle}"
                                     Text="{Binding TextSizeInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
@@ -469,21 +506,85 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="布局密度" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding LayoutDensityValueText}" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="横向间距" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding HorizontalSpacingValueText}" />
                                 </StackPanel>
                                 <Slider
                                     Grid.Column="1"
                                     Maximum="1"
-                                    Minimum="0.55"
+                                    Minimum="0"
                                     StepFrequency="0.02"
                                     Style="{StaticResource InlineMetricSliderStyle}"
-                                    Value="{Binding LayoutDensityScale, Mode=TwoWay}" />
+                                    Value="{Binding HorizontalSpacingScale, Mode=TwoWay}" />
                                 <TextBox
                                     Grid.Column="2"
+                                    GotFocus="EditableSettingsTextBox_GotFocus"
                                     InputScope="Number"
+                                    KeyDown="EditableSettingsTextBox_KeyDown"
                                     Style="{StaticResource InlineNumberTextBoxStyle}"
-                                    Text="{Binding LayoutDensityPercentInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                    Text="{Binding HorizontalSpacingPercentInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid
+                                Padding="16,14"
+                                ColumnSpacing="16"
+                                RowSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="176" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="纵向间距" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding VerticalSpacingValueText}" />
+                                </StackPanel>
+                                <Slider
+                                    Grid.Column="1"
+                                    Maximum="1"
+                                    Minimum="0"
+                                    StepFrequency="0.02"
+                                    Style="{StaticResource InlineMetricSliderStyle}"
+                                    Value="{Binding VerticalSpacingScale, Mode=TwoWay}" />
+                                <TextBox
+                                    Grid.Column="2"
+                                    GotFocus="EditableSettingsTextBox_GotFocus"
+                                    InputScope="Number"
+                                    KeyDown="EditableSettingsTextBox_KeyDown"
+                                    Style="{StaticResource InlineNumberTextBoxStyle}"
+                                    Text="{Binding VerticalSpacingPercentInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid
+                                Padding="16,14"
+                                ColumnSpacing="16"
+                                RowSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="176" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="文件名宽度" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding FileNameWidthValueText}" />
+                                </StackPanel>
+                                <Slider
+                                    Grid.Column="1"
+                                    Maximum="1"
+                                    Minimum="0"
+                                    StepFrequency="0.02"
+                                    Style="{StaticResource InlineMetricSliderStyle}"
+                                    Value="{Binding FileNameWidthScale, Mode=TwoWay}" />
+                                <TextBox
+                                    Grid.Column="2"
+                                    GotFocus="EditableSettingsTextBox_GotFocus"
+                                    InputScope="Number"
+                                    KeyDown="EditableSettingsTextBox_KeyDown"
+                                    Style="{StaticResource InlineNumberTextBoxStyle}"
+                                    Text="{Binding FileNameWidthPercentInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -500,15 +601,17 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="拖入后的处理方式" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="移动用于整理桌面，复制会保留原文件。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="移动用于整理桌面，复制会保留原文件" />
                                 </StackPanel>
-                                <ComboBox
+                                <DropDownButton
+                                    x:Name="ManagedDropActionDropDownButton"
                                     Grid.Column="1"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableManagedDropActions}"
-                                    SelectedItem="{Binding SelectedManagedDropAction, Mode=TwoWay}"
-                                    Style="{StaticResource InlineComboBoxStyle}" />
+                                    Click="SettingsDropDownButton_Click"
+                                    Content="{Binding SelectedManagedDropAction}"
+                                    Style="{StaticResource InlineDropDownButtonStyle}"
+                                    Tag="ManagedDropAction" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -516,7 +619,7 @@
                             <StackPanel Padding="16,14" Spacing="12">
                                 <StackPanel Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="默认收纳路径" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建收纳组件会在这里创建独立文件夹。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建收纳组件会在这里创建独立文件夹" />
                                 </StackPanel>
                                 <TextBox
                                     IsReadOnly="True"
@@ -547,6 +650,16 @@
                                             <TextBlock Text="更改" />
                                         </StackPanel>
                                     </Button>
+                                    <Button
+                                        x:Name="CleanupStorageButton"
+                                        Click="CleanupManagedStorageButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        ToolTipService.ToolTip="清理不再属于现有组件的收纳文件夹">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="Delete" />
+                                            <TextBlock Text="清理" />
+                                        </StackPanel>
+                                    </Button>
                                 </StackPanel>
                             </StackPanel>
                         </StackPanel>
@@ -564,7 +677,7 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="双击打开项目" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="关闭后单击即可打开。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="关闭后单击即可打开" />
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
@@ -581,11 +694,28 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="隐藏快捷方式小箭头" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="只影响 DeskBox 组件内的图标显示。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="只影响 DeskBox 组件内的图标显示" />
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
                                     IsOn="{Binding HideShortcutArrowOverlay, Mode=TwoWay}"
+                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="列表详细信息" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="列表模式下显示大小、时间或文件夹项目数量" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    Grid.Column="1"
+                                    IsOn="{Binding ShowListItemDetails, Mode=TwoWay}"
                                     Style="{StaticResource SettingToggleSwitchStyle}" />
                             </Grid>
                         </StackPanel>
@@ -602,7 +732,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="开机自动启动" />
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="登录 Windows 后在后台启动 DeskBox。" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="登录 Windows 后在后台启动 DeskBox" />
                             </StackPanel>
                             <ToggleSwitch
                                 Grid.Column="1"
@@ -623,13 +753,34 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="DeskBox" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="桌面收纳与整理工具。" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="桌面收纳与整理工具" />
                                 </StackPanel>
                                 <TextBlock
                                     Grid.Column="1"
                                     VerticalAlignment="Center"
                                     Style="{StaticResource SettingValueTextStyle}"
                                     Text="{Binding AboutVersionText}" />
+                            </Grid>
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="为什么做 DeskBox" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="了解产品的设计取向和边界" />
+                                </StackPanel>
+                                <Button
+                                    Grid.Column="1"
+                                    Click="ShowProductReasonButton_Click"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    ToolTipService.ToolTip="查看 DeskBox 的设计理念">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontSize="14" Glyph="&#xE946;" />
+                                        <TextBlock Text="查看" />
+                                    </StackPanel>
+                                </Button>
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -640,14 +791,19 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="界面框架" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="基于 Windows App SDK 构建。" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="开源仓库" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding OpenSourceRepositoryDisplayText}" />
                                 </StackPanel>
-                                <TextBlock
+                                <Button
                                     Grid.Column="1"
-                                    VerticalAlignment="Center"
-                                    Style="{StaticResource SettingValueTextStyle}"
-                                    Text="WinUI 3" />
+                                    Click="OpenRepositoryButton_Click"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    ToolTipService.ToolTip="{Binding OpenSourceRepositoryUrl}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <SymbolIcon Symbol="OpenFile" />
+                                        <TextBlock Text="打开" />
+                                    </StackPanel>
+                                </Button>
                             </Grid>
                         </StackPanel>
                     </Border>

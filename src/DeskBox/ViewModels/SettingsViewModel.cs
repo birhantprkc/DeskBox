@@ -1,11 +1,8 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DeskBox.Helpers;
-using DeskBox.Models;
 using DeskBox.Services;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
@@ -21,30 +18,35 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string ThemeDark = "\u6df1\u8272";
     private const string ManagedActionMove = "\u79fb\u52a8";
     private const string ManagedActionCopy = "\u590d\u5236";
+    private const string CornerDefault = "\u7cfb\u7edf\u9ed8\u8ba4";
+    private const string CornerSquare = "\u76f4\u89d2";
+    private const string CornerSmall = "\u5c0f\u5706\u89d2";
+    private const string CornerRound = "\u5927\u5706\u89d2";
+    private const string RepositoryUrl = "https://github.com/Tianyu199509/DeskBox";
 
     private readonly SettingsService _settingsService;
-    private readonly OrganizerService _organizerService;
     private readonly ThemeService _themeService;
-    private readonly DispatcherQueue _dispatcherQueue;
     private Color _currentAccentColor;
     private string _selectedTheme = ThemeSystem;
     private string _selectedManagedDropAction = ManagedActionMove;
+    private string _selectedWidgetCornerPreference = CornerSmall;
     private bool _useSystemAccentColor;
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
     private string _managedStorageRootPath = SettingsService.GetDefaultManagedStorageRootPath();
-    private string _latestOrganizationSummary = "\u6700\u8fd1\u6ca1\u6709\u65b0\u7684\u6536\u7eb3\u8bb0\u5f55";
-    private string _undoLatestActionText = "\u64a4\u9500\u4e0a\u6b21\u79fb\u52a8";
 
     [ObservableProperty] private bool _autoStart;
     [ObservableProperty] private bool _doubleClickToOpen;
     [ObservableProperty] private double _defaultWidth;
     [ObservableProperty] private double _defaultHeight;
     [ObservableProperty] private bool _hideShortcutArrowOverlay;
+    [ObservableProperty] private bool _showListItemDetails = true;
     [ObservableProperty] private double _widgetOpacity = SettingsService.DefaultWidgetOpacity;
     [ObservableProperty] private double _iconSize = SettingsService.DefaultIconSize;
     [ObservableProperty] private double _textSize = SettingsService.DefaultTextSize;
     [ObservableProperty] private double _layoutDensityScale = SettingsService.DefaultLayoutDensityScale;
-    [ObservableProperty] private bool _hasUndoableOrganization;
+    [ObservableProperty] private double _horizontalSpacingScale = SettingsService.DefaultHorizontalSpacingScale;
+    [ObservableProperty] private double _verticalSpacingScale = SettingsService.DefaultVerticalSpacingScale;
+    [ObservableProperty] private double _fileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
 
     public string SelectedTheme
     {
@@ -103,6 +105,28 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
+    public string SelectedWidgetCornerPreference
+    {
+        get => _selectedWidgetCornerPreference;
+        set
+        {
+            if (!SetProperty(ref _selectedWidgetCornerPreference, value))
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetCornerPreference = value switch
+            {
+                CornerDefault => SettingsService.WidgetCornerPreferenceDefault,
+                CornerSquare => SettingsService.WidgetCornerPreferenceSquare,
+                CornerSmall => SettingsService.WidgetCornerPreferenceSmall,
+                CornerRound => SettingsService.WidgetCornerPreferenceRound,
+                _ => SettingsService.WidgetCornerPreferenceSmall
+            };
+            _settingsService.SaveDebounced();
+        }
+    }
+
     public string AccentColorHex
     {
         get => _accentColorHex;
@@ -119,6 +143,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string WidgetOpacityValueText => $"{Math.Round(WidgetOpacity * 100):0}%";
     public string TextSizeValueText => $"{TextSize:0.#}pt";
     public string LayoutDensityValueText => $"{Math.Round(LayoutDensityScale * 100):0}%";
+    public string HorizontalSpacingValueText => $"{Math.Round(HorizontalSpacingScale * 100):0}%";
+    public string VerticalSpacingValueText => $"{Math.Round(VerticalSpacingScale * 100):0}%";
+    public string FileNameWidthValueText => $"{Math.Round(FileNameWidthScale * 100):0}%";
     public string DefaultWidthInput
     {
         get => FormatNumber(DefaultWidth, 0);
@@ -152,7 +179,25 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string LayoutDensityPercentInput
     {
         get => FormatNumber(LayoutDensityPercent, 0);
-        set => ApplyNumberInput(value, () => LayoutDensityPercent, next => LayoutDensityPercent = next, 55d, 100d, 0);
+        set => ApplyNumberInput(value, () => LayoutDensityPercent, next => LayoutDensityPercent = next, 0d, 100d, 0);
+    }
+
+    public string HorizontalSpacingPercentInput
+    {
+        get => FormatNumber(HorizontalSpacingPercent, 0);
+        set => ApplyNumberInput(value, () => HorizontalSpacingPercent, next => HorizontalSpacingPercent = next, 0d, 100d, 0);
+    }
+
+    public string VerticalSpacingPercentInput
+    {
+        get => FormatNumber(VerticalSpacingPercent, 0);
+        set => ApplyNumberInput(value, () => VerticalSpacingPercent, next => VerticalSpacingPercent = next, 0d, 100d, 0);
+    }
+
+    public string FileNameWidthPercentInput
+    {
+        get => FormatNumber(FileNameWidthPercent, 0);
+        set => ApplyNumberInput(value, () => FileNameWidthPercent, next => FileNameWidthPercent = next, 0d, 100d, 0);
     }
 
     public double WidgetOpacityPercent
@@ -167,40 +212,47 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         set => LayoutDensityScale = Math.Clamp(value / 100d, SettingsService.MinLayoutDensityScale, SettingsService.MaxLayoutDensityScale);
     }
 
+    public double HorizontalSpacingPercent
+    {
+        get => Math.Round(HorizontalSpacingScale * 100);
+        set => HorizontalSpacingScale = Math.Clamp(value / 100d, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
+    }
+
+    public double VerticalSpacingPercent
+    {
+        get => Math.Round(VerticalSpacingScale * 100);
+        set => VerticalSpacingScale = Math.Clamp(value / 100d, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
+    }
+
+    public double FileNameWidthPercent
+    {
+        get => Math.Round(FileNameWidthScale * 100);
+        set => FileNameWidthScale = Math.Clamp(value / 100d, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
+    }
+
     public string AccentColorDescription => UseSystemAccentColor
-        ? "\u4f7f\u7528 Windows \u5f53\u524d\u7684\u4e3b\u9898\u8272\u3002"
-        : "\u70b9\u51fb\u53f3\u4fa7\u989c\u8272\u6309\u94ae\uff0c\u6216\u76f4\u63a5\u4f7f\u7528\u9884\u8bbe\u989c\u8272\u3002";
+        ? "\u4f7f\u7528 Windows \u5f53\u524d\u7684\u4e3b\u9898\u8272"
+        : "\u70b9\u51fb\u53f3\u4fa7\u989c\u8272\u6309\u94ae\uff0c\u6216\u4f7f\u7528\u9884\u8bbe\u989c\u8272";
 
     public SolidColorBrush AccentPreviewBrush { get; } = new(AccentColorHelper.DefaultAccentColor);
-    public ObservableCollection<OrganizationHistoryEntry> RecentOrganizationEntries { get; } = [];
-
-    public string LatestOrganizationSummary
-    {
-        get => _latestOrganizationSummary;
-        private set => SetProperty(ref _latestOrganizationSummary, value);
-    }
-
-    public string UndoLatestActionText
-    {
-        get => _undoLatestActionText;
-        private set => SetProperty(ref _undoLatestActionText, value);
-    }
 
     public string[] AvailableThemes { get; } = [ThemeSystem, ThemeLight, ThemeDark];
     public string[] AvailableManagedDropActions { get; } = [ManagedActionMove, ManagedActionCopy];
+    public string[] AvailableWidgetCornerPreferences { get; } = [CornerSmall, CornerRound, CornerSquare, CornerDefault];
 
     public string AppVersion => System.Reflection.Assembly
         .GetExecutingAssembly()
         .GetName()
         .Version?.ToString() ?? "1.0.0";
-    public string AboutVersionText => $"版本 {AppVersion}";
+    public string AboutVersionText => $"版本 {AppVersion} · WinUI 3 / .NET 8";
+    public string OpenSourceRepositoryUrl => RepositoryUrl;
+    public string OpenSourceRepositoryDisplayText =>
+        $"开发者：朱天雨 · GitHub：{RepositoryUrl.Replace("https://", string.Empty).Replace("http://", string.Empty).TrimEnd('/')}";
 
-    public SettingsViewModel(SettingsService settingsService, OrganizerService organizerService, ThemeService themeService)
+    public SettingsViewModel(SettingsService settingsService, ThemeService themeService)
     {
         _settingsService = settingsService;
-        _organizerService = organizerService;
         _themeService = themeService;
-        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         var settings = settingsService.Settings;
         _selectedTheme = settings.Theme switch
@@ -216,19 +268,29 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _defaultWidth = settings.DefaultWidgetWidth;
         _defaultHeight = settings.DefaultWidgetHeight;
         _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
+        _showListItemDetails = settings.ShowListItemDetails;
         _widgetOpacity = settings.WidgetOpacity;
+        _selectedWidgetCornerPreference = settings.WidgetCornerPreference switch
+        {
+            SettingsService.WidgetCornerPreferenceDefault => CornerDefault,
+            SettingsService.WidgetCornerPreferenceSquare => CornerSquare,
+            SettingsService.WidgetCornerPreferenceSmall => CornerSmall,
+            SettingsService.WidgetCornerPreferenceRound => CornerRound,
+            _ => CornerSmall
+        };
         _iconSize = settings.IconSize;
         _textSize = settings.TextSize;
         _layoutDensityScale = settings.LayoutDensityScale;
+        _horizontalSpacingScale = settings.HorizontalSpacingScale;
+        _verticalSpacingScale = settings.VerticalSpacingScale;
+        _fileNameWidthScale = settings.FileNameWidthScale;
         _selectedManagedDropAction = string.Equals(settings.ManagedDropAction, SettingsService.ManagedDropActionCopy, StringComparison.OrdinalIgnoreCase)
             ? ManagedActionCopy
             : ManagedActionMove;
         _managedStorageRootPath = settings.DefaultManagedStorageRootPath;
 
         RefreshAccentPreview();
-        RefreshOrganizationState();
         _themeService.AppearanceChanged += OnAppearanceChanged;
-        _settingsService.SettingsChanged += OnSettingsChanged;
     }
 
     public Color GetCurrentAccentColor() => _currentAccentColor;
@@ -320,6 +382,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     partial void OnHideShortcutArrowOverlayChanged(bool value)
     {
         _settingsService.Settings.HideShortcutArrowOverlay = value;
+        _settingsService.SaveDebounced();
+    }
+
+    partial void OnShowListItemDetailsChanged(bool value)
+    {
+        _settingsService.Settings.ShowListItemDetails = value;
         _settingsService.SaveDebounced();
     }
 
@@ -426,6 +494,42 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(LayoutDensityPercentInput));
     }
 
+    partial void OnHorizontalSpacingScaleChanged(double value)
+    {
+        ApplySpacingScaleChange(
+            value,
+            _settingsService.Settings.HorizontalSpacingScale,
+            next => HorizontalSpacingScale = next,
+            next => _settingsService.Settings.HorizontalSpacingScale = next,
+            nameof(HorizontalSpacingValueText),
+            nameof(HorizontalSpacingPercent),
+            nameof(HorizontalSpacingPercentInput));
+    }
+
+    partial void OnVerticalSpacingScaleChanged(double value)
+    {
+        ApplySpacingScaleChange(
+            value,
+            _settingsService.Settings.VerticalSpacingScale,
+            next => VerticalSpacingScale = next,
+            next => _settingsService.Settings.VerticalSpacingScale = next,
+            nameof(VerticalSpacingValueText),
+            nameof(VerticalSpacingPercent),
+            nameof(VerticalSpacingPercentInput));
+    }
+
+    partial void OnFileNameWidthScaleChanged(double value)
+    {
+        ApplySpacingScaleChange(
+            value,
+            _settingsService.Settings.FileNameWidthScale,
+            next => FileNameWidthScale = next,
+            next => _settingsService.Settings.FileNameWidthScale = next,
+            nameof(FileNameWidthValueText),
+            nameof(FileNameWidthPercent),
+            nameof(FileNameWidthPercentInput));
+    }
+
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -435,7 +539,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _themeService.AppearanceChanged -= OnAppearanceChanged;
-        _settingsService.SettingsChanged -= OnSettingsChanged;
     }
 
     private void OnAppearanceChanged()
@@ -443,40 +546,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         RefreshAccentPreview();
     }
 
-    private void OnSettingsChanged()
-    {
-        if (_dispatcherQueue.HasThreadAccess)
-        {
-            RefreshOrganizationState();
-            return;
-        }
-
-        _dispatcherQueue.TryEnqueue(RefreshOrganizationState);
-    }
-
     private void RefreshAccentPreview()
     {
         _currentAccentColor = _themeService.GetEffectiveAccentColor();
         AccentPreviewBrush.Color = _currentAccentColor;
         AccentColorHex = AccentColorHelper.ToHex(_currentAccentColor);
-    }
-
-    private void RefreshOrganizationState()
-    {
-        RecentOrganizationEntries.Clear();
-        foreach (var entry in _organizerService.GetRecentHistory())
-        {
-            RecentOrganizationEntries.Add(entry);
-        }
-
-        var latestEntry = RecentOrganizationEntries.FirstOrDefault();
-        LatestOrganizationSummary = latestEntry is null
-            ? "\u6700\u8fd1\u6ca1\u6709\u65b0\u7684\u6536\u7eb3\u8bb0\u5f55"
-            : $"{latestEntry.DisplayTitle} - {latestEntry.DisplayDetail}";
-
-        var undoableEntry = _organizerService.GetLatestUndoableEntry();
-        HasUndoableOrganization = undoableEntry is not null;
-        UndoLatestActionText = undoableEntry?.UndoButtonText ?? "\u64a4\u9500\u4e0a\u6b21\u79fb\u52a8";
     }
 
     private static string FormatNumber(double value, int decimals)
@@ -530,5 +604,40 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IconSizeInput));
         OnPropertyChanged(nameof(TextSizeInput));
         OnPropertyChanged(nameof(LayoutDensityPercentInput));
+        OnPropertyChanged(nameof(HorizontalSpacingPercentInput));
+        OnPropertyChanged(nameof(VerticalSpacingPercentInput));
+        OnPropertyChanged(nameof(FileNameWidthPercentInput));
+    }
+
+    private void ApplySpacingScaleChange(
+        double value,
+        double currentStoredValue,
+        Action<double> setViewModelValue,
+        Action<double> setStoredValue,
+        params string[] dependentPropertyNames)
+    {
+        if (double.IsNaN(value))
+        {
+            setViewModelValue(currentStoredValue);
+            return;
+        }
+
+        double normalizedValue = Math.Clamp(
+            Math.Round(value / 0.02d, MidpointRounding.AwayFromZero) * 0.02d,
+            SettingsService.MinSpacingScale,
+            SettingsService.MaxSpacingScale);
+
+        if (Math.Abs(normalizedValue - value) > 0.0001)
+        {
+            setViewModelValue(normalizedValue);
+            return;
+        }
+
+        setStoredValue(normalizedValue);
+        _settingsService.SaveDebounced();
+        foreach (string propertyName in dependentPropertyNames)
+        {
+            OnPropertyChanged(propertyName);
+        }
     }
 }

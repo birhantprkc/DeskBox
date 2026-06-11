@@ -24,7 +24,7 @@ public sealed class ThemeService
         _settingsService = settingsService;
         _uiSettings.ColorValuesChanged += (_, _) =>
         {
-            App.MainWindowDispatcherQueue?.TryEnqueue(
+            App.UiDispatcherQueue?.TryEnqueue(
                 Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
                 RefreshAppearance);
         };

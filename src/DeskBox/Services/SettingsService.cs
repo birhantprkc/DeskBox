@@ -1,7 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Runtime.CompilerServices;
 using DeskBox.Helpers;
 using DeskBox.Models;
+
+[assembly: InternalsVisibleTo("DeskBox.Tests")]
 
 namespace DeskBox.Services;
 
@@ -13,6 +16,10 @@ public sealed class SettingsService
     public const double DefaultWidgetOpacity = 0.64;
     public const double MinWidgetOpacity = 0.0;
     public const double MaxWidgetOpacity = 1.0;
+    public const string WidgetCornerPreferenceDefault = "Default";
+    public const string WidgetCornerPreferenceSquare = "Square";
+    public const string WidgetCornerPreferenceSmall = "Small";
+    public const string WidgetCornerPreferenceRound = "Round";
     public const bool FixedNativeBackdropBlur = true;
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
@@ -26,9 +33,14 @@ public sealed class SettingsService
     public const double DefaultTextSize = 11;
     public const double MinTextSize = 10;
     public const double MaxTextSize = 16;
-    public const double DefaultLayoutDensityScale = 1.0;
-    public const double MinLayoutDensityScale = 0.55;
+    public const double DefaultLayoutDensityScale = 0.56;
+    public const double MinLayoutDensityScale = 0.0;
     public const double MaxLayoutDensityScale = 1.0;
+    public const double DefaultHorizontalSpacingScale = 0.56;
+    public const double DefaultVerticalSpacingScale = 0.56;
+    public const double DefaultFileNameWidthScale = 0.56;
+    public const double MinSpacingScale = 0.0;
+    public const double MaxSpacingScale = 1.0;
     public const int MaxRecentOrganizationHistoryCount = 24;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
@@ -52,12 +64,22 @@ public sealed class SettingsService
 
     public SettingsService()
     {
-        var dataDir = Path.Combine(
+        string dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "DeskBox",
             "data");
+        _settingsPath = InitializeSettingsPath(dataDir);
+    }
+
+    internal SettingsService(string dataDir)
+    {
+        _settingsPath = InitializeSettingsPath(dataDir);
+    }
+
+    private static string InitializeSettingsPath(string dataDir)
+    {
         Directory.CreateDirectory(dataDir);
-        _settingsPath = Path.Combine(dataDir, "settings.json");
+        return Path.Combine(dataDir, "settings.json");
     }
 
     /// <summary>
@@ -239,6 +261,16 @@ public sealed class SettingsService
             changed = true;
         }
 
+        if (settings.WidgetCornerPreference is not (
+            WidgetCornerPreferenceDefault or
+            WidgetCornerPreferenceSquare or
+            WidgetCornerPreferenceSmall or
+            WidgetCornerPreferenceRound))
+        {
+            settings.WidgetCornerPreference = WidgetCornerPreferenceSmall;
+            changed = true;
+        }
+
         double normalizedIconSize = double.IsFinite(settings.IconSize)
             ? Math.Clamp(settings.IconSize, MinIconSize, MaxIconSize)
             : DefaultIconSize;
@@ -258,10 +290,10 @@ public sealed class SettingsService
         }
 
         double legacyLayoutDensityScale = settings.LayoutDensityScale;
-        if (!double.IsFinite(legacyLayoutDensityScale) || legacyLayoutDensityScale <= 0)
+        if (!double.IsFinite(legacyLayoutDensityScale))
         {
             legacyLayoutDensityScale = string.Equals(settings.LayoutDensity, "Compact", StringComparison.OrdinalIgnoreCase)
-                ? 0.72
+                ? DefaultLayoutDensityScale
                 : DefaultLayoutDensityScale;
         }
 
@@ -269,6 +301,40 @@ public sealed class SettingsService
         if (Math.Abs(settings.LayoutDensityScale - normalizedLayoutDensityScale) > 0.0001)
         {
             settings.LayoutDensityScale = normalizedLayoutDensityScale;
+            changed = true;
+        }
+
+        double normalizedHorizontalSpacingScale = NormalizeScale(
+            settings.HorizontalSpacingScale,
+            DefaultHorizontalSpacingScale,
+            MinSpacingScale,
+            MaxSpacingScale);
+        double normalizedVerticalSpacingScale = NormalizeScale(
+            settings.VerticalSpacingScale,
+            DefaultVerticalSpacingScale,
+            MinSpacingScale,
+            MaxSpacingScale);
+        double normalizedFileNameWidthScale = NormalizeScale(
+            settings.FileNameWidthScale,
+            DefaultFileNameWidthScale,
+            MinSpacingScale,
+            MaxSpacingScale);
+
+        if (Math.Abs(settings.HorizontalSpacingScale - normalizedHorizontalSpacingScale) > 0.0001)
+        {
+            settings.HorizontalSpacingScale = normalizedHorizontalSpacingScale;
+            changed = true;
+        }
+
+        if (Math.Abs(settings.VerticalSpacingScale - normalizedVerticalSpacingScale) > 0.0001)
+        {
+            settings.VerticalSpacingScale = normalizedVerticalSpacingScale;
+            changed = true;
+        }
+
+        if (Math.Abs(settings.FileNameWidthScale - normalizedFileNameWidthScale) > 0.0001)
+        {
+            settings.FileNameWidthScale = normalizedFileNameWidthScale;
             changed = true;
         }
 
@@ -306,6 +372,13 @@ public sealed class SettingsService
         }
 
         return changed;
+    }
+
+    private static double NormalizeScale(double value, double defaultValue, double min, double max)
+    {
+        return double.IsFinite(value)
+            ? Math.Clamp(value, min, max)
+            : defaultValue;
     }
 
     private static bool NormalizeAppearanceSettings(AppSettings settings)

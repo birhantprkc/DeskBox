@@ -34,6 +34,12 @@ public class AppSettings
     /// </summary>
     public double WidgetOpacity { get; set; } = 0.64;
 
+    /// <summary>
+    /// Native DWM corner style for widget windows.
+    /// Valid values: <c>"Default"</c>, <c>"Square"</c>, <c>"Small"</c>, <c>"Round"</c>.
+    /// </summary>
+    public string WidgetCornerPreference { get; set; } = "Small";
+
     /// <summary>Whether to double click to open files.</summary>
     public bool DoubleClickToOpen { get; set; } = true;
 
@@ -41,6 +47,11 @@ public class AppSettings
     /// Whether shortcut icons should hide the arrow overlay inside DeskBox.
     /// </summary>
     public bool HideShortcutArrowOverlay { get; set; }
+
+    /// <summary>
+    /// Whether list view should show secondary file details under item names.
+    /// </summary>
+    public bool ShowListItemDetails { get; set; } = true;
 
     /// <summary>
     /// How files should be handled when dropped into a managed storage widget.
@@ -77,7 +88,25 @@ public class AppSettings
     /// Continuous layout density scale used by widget content.
     /// Smaller values create a tighter layout.
     /// </summary>
-    public double LayoutDensityScale { get; set; } = 1.0;
+    public double LayoutDensityScale { get; set; } = 0.56;
+
+    /// <summary>
+    /// Horizontal spacing scale used by widget content.
+    /// Smaller values place items closer together horizontally.
+    /// </summary>
+    public double HorizontalSpacingScale { get; set; } = 0.56;
+
+    /// <summary>
+    /// Vertical spacing scale used by widget content.
+    /// Smaller values place items closer together vertically.
+    /// </summary>
+    public double VerticalSpacingScale { get; set; } = 0.56;
+
+    /// <summary>
+    /// File name width scale used by icon-view labels.
+    /// Smaller values keep labels narrower.
+    /// </summary>
+    public double FileNameWidthScale { get; set; } = 0.56;
 
     /// <summary>
     /// Whether widgets should use the native Windows acrylic backdrop blur.

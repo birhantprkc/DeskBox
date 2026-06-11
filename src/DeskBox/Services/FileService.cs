@@ -1,7 +1,8 @@
 using DeskBox.Helpers;
 using DeskBox.Models;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Microsoft.VisualBasic.FileIO;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Windows.Storage;
 
 namespace DeskBox.Services;
@@ -16,6 +17,14 @@ public sealed class FileService
     public sealed record FileTransferPlan(string SourcePath, string DestinationPath);
 
     public sealed record FileTransferResult(string SourcePath, string DestinationPath);
+
+    private const uint FoMove = 0x0001;
+    private const uint FoDelete = 0x0003;
+    private const ushort FofNoConfirmMkDir = 0x0200;
+    private const ushort FofAllowUndo = 0x0040;
+    private const ushort FofNoConfirmation = 0x0010;
+    private const ushort FofNoErrorUi = 0x0400;
+    private const ushort FofSilent = 0x0004;
 
     /// <summary>
     /// Enumerate all files and folders in a directory and create WidgetItem models.
@@ -109,6 +118,16 @@ public sealed class FileService
         else if (item.IsFolder)
         {
             item.Name = Path.GetFileName(path);
+            try
+            {
+                item.FolderItemCount = Directory.EnumerateFileSystemEntries(path)
+                    .Count(ShouldDisplayEntry);
+                item.LastModified = Directory.GetLastWriteTime(path);
+            }
+            catch
+            {
+                item.FolderItemCount = 0;
+            }
         }
 
         item.Icon = await GetIconAsync(path, hideShortcutArrowOverlay);
@@ -176,7 +195,11 @@ public sealed class FileService
                 }
                 else if (File.Exists(path))
                 {
-                    items.Add(await StorageFile.GetFileFromPathAsync(path));
+                    var file = await TryGetStorageFileAsync(path);
+                    if (file is not null)
+                    {
+                        items.Add(file);
+                    }
                 }
             }
             catch (Exception ex)
@@ -186,6 +209,97 @@ public sealed class FileService
         }
 
         return items;
+    }
+
+    public IReadOnlyList<IStorageItem> GetStorageItems(IEnumerable<string> sourcePaths)
+    {
+        var items = new List<IStorageItem>();
+
+        foreach (string path in sourcePaths
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    items.Add(StorageFolder.GetFolderFromPathAsync(path).AsTask().GetAwaiter().GetResult());
+                }
+                else if (File.Exists(path))
+                {
+                    var file = TryGetStorageFile(path);
+                    if (file is not null)
+                    {
+                        items.Add(file);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[StorageItems] Failed to access '{path}': {ex.Message}");
+            }
+        }
+
+        return items;
+    }
+
+    private static async Task<StorageFile?> TryGetStorageFileAsync(string path)
+    {
+        try
+        {
+            return await StorageFile.GetFileFromPathAsync(path);
+        }
+        catch (Exception directEx)
+        {
+            try
+            {
+                string? parentPath = Path.GetDirectoryName(path);
+                string fileName = Path.GetFileName(path);
+                if (string.IsNullOrWhiteSpace(parentPath) || string.IsNullOrWhiteSpace(fileName))
+                {
+                    App.Log($"[StorageItems] Failed to access '{path}': {directEx.Message}");
+                    return null;
+                }
+
+                var parent = await StorageFolder.GetFolderFromPathAsync(parentPath);
+                return await parent.GetFileAsync(fileName);
+            }
+            catch (Exception parentEx)
+            {
+                App.Log($"[StorageItems] Failed to access '{path}': {directEx.Message}; parent lookup: {parentEx.Message}");
+                return null;
+            }
+        }
+    }
+
+    private static StorageFile? TryGetStorageFile(string path)
+    {
+        try
+        {
+            return StorageFile.GetFileFromPathAsync(path).AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception directEx)
+        {
+            try
+            {
+                string? parentPath = Path.GetDirectoryName(path);
+                string fileName = Path.GetFileName(path);
+                if (string.IsNullOrWhiteSpace(parentPath) || string.IsNullOrWhiteSpace(fileName))
+                {
+                    App.Log($"[StorageItems] Failed to access '{path}': {directEx.Message}");
+                    return null;
+                }
+
+                var parent = StorageFolder.GetFolderFromPathAsync(parentPath).AsTask().GetAwaiter().GetResult();
+                return parent.GetFileAsync(fileName).AsTask().GetAwaiter().GetResult();
+            }
+            catch (Exception parentEx)
+            {
+                App.Log($"[StorageItems] Failed to access '{path}': {directEx.Message}; parent lookup: {parentEx.Message}");
+                return null;
+            }
+        }
     }
 
     /// <summary>
@@ -226,7 +340,10 @@ public sealed class FileService
     /// <summary>
     /// Execute a precomputed transfer plan and return the realized destination paths.
     /// </summary>
-    public async Task<IReadOnlyList<FileTransferResult>> ExecuteTransferPlanAsync(IEnumerable<FileTransferPlan> plans, bool move)
+    public async Task<IReadOnlyList<FileTransferResult>> ExecuteTransferPlanAsync(
+        IEnumerable<FileTransferPlan> plans,
+        bool move,
+        bool useShellProgress = false)
     {
         var operations = plans
             .Where(plan => !string.IsNullOrWhiteSpace(plan.SourcePath) && !string.IsNullOrWhiteSpace(plan.DestinationPath))
@@ -237,6 +354,11 @@ public sealed class FileService
                 (File.Exists(operation.SourcePath) || Directory.Exists(operation.SourcePath)) &&
                 !string.Equals(operation.SourcePath, operation.DestinationPath, StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+        if (move && useShellProgress)
+        {
+            return await ExecuteShellMovePlanAsync(operations);
+        }
 
         var completedOperations = new List<TransferOperation>(operations.Count);
         try
@@ -262,6 +384,30 @@ public sealed class FileService
         }
 
         return completedOperations
+            .Select(operation => new FileTransferResult(operation.SourcePath, operation.DestinationPath))
+            .ToList();
+    }
+
+    private static async Task<IReadOnlyList<FileTransferResult>> ExecuteShellMovePlanAsync(IReadOnlyList<TransferOperation> operations)
+    {
+        if (operations.Count == 0)
+        {
+            return [];
+        }
+
+        foreach (var operation in operations)
+        {
+            string? destinationDirectory = Path.GetDirectoryName(operation.DestinationPath);
+            if (!string.IsNullOrWhiteSpace(destinationDirectory))
+            {
+                Directory.CreateDirectory(destinationDirectory);
+            }
+        }
+
+        await Task.Run(() => MoveEntriesWithShellProgress(operations));
+
+        return operations
+            .Where(operation => File.Exists(operation.DestinationPath) || Directory.Exists(operation.DestinationPath))
             .Select(operation => new FileTransferResult(operation.SourcePath, operation.DestinationPath))
             .ToList();
     }
@@ -310,23 +456,133 @@ public sealed class FileService
 
         await Task.Run(() =>
         {
-            if (File.Exists(normalizedPath))
-            {
-                FileSystem.DeleteFile(
-                    normalizedPath,
-                    UIOption.OnlyErrorDialogs,
-                    RecycleOption.SendToRecycleBin);
-                return;
-            }
-
-            if (Directory.Exists(normalizedPath))
-            {
-                FileSystem.DeleteDirectory(
-                    normalizedPath,
-                    UIOption.OnlyErrorDialogs,
-                    RecycleOption.SendToRecycleBin);
-            }
+            DeleteEntryToRecycleBin(normalizedPath);
         });
+    }
+
+    private static void DeleteEntryToRecycleBin(string path)
+    {
+        if (!File.Exists(path) && !Directory.Exists(path))
+        {
+            return;
+        }
+
+        string from = path + "\0\0";
+        unsafe
+        {
+            fixed (char* fromPointer = from)
+            {
+                var operation = new ShFileOperation
+                {
+                    WindowHandle = IntPtr.Zero,
+                    Function = FoDelete,
+                    From = fromPointer,
+                    To = null,
+                    Flags = FofAllowUndo | FofNoConfirmation | FofNoErrorUi | FofSilent
+                };
+
+                int result = SHFileOperation(ref operation);
+                if (result != 0 && result is not 2 and not 3 and not 1223)
+                {
+                    throw new Win32Exception(result);
+                }
+            }
+        }
+    }
+
+    private static void MoveEntriesWithShellProgress(IReadOnlyList<TransferOperation> operations)
+    {
+        if (TryMoveEntriesToSameFolderWithShellProgress(operations))
+        {
+            return;
+        }
+
+        foreach (var operation in operations)
+        {
+            string from = operation.SourcePath + "\0\0";
+            string to = operation.DestinationPath + "\0\0";
+            unsafe
+            {
+                fixed (char* fromPointer = from)
+                fixed (char* toPointer = to)
+                {
+                    var fileOperation = new ShFileOperation
+                    {
+                        WindowHandle = IntPtr.Zero,
+                        Function = FoMove,
+                        From = fromPointer,
+                        To = toPointer,
+                        Flags = FofNoConfirmMkDir
+                    };
+
+                    int result = SHFileOperation(ref fileOperation);
+                    if (result == 1223 || fileOperation.AnyOperationsAborted != 0)
+                    {
+                        return;
+                    }
+
+                    if (result != 0 && result != 1223)
+                    {
+                        throw new Win32Exception(result);
+                    }
+                }
+            }
+        }
+    }
+
+    private static bool TryMoveEntriesToSameFolderWithShellProgress(IReadOnlyList<TransferOperation> operations)
+    {
+        if (operations.Count == 0)
+        {
+            return true;
+        }
+
+        string? destinationFolder = Path.GetDirectoryName(operations[0].DestinationPath);
+        if (string.IsNullOrWhiteSpace(destinationFolder))
+        {
+            return false;
+        }
+
+        if (operations.Any(operation =>
+                !string.Equals(Path.GetDirectoryName(operation.DestinationPath), destinationFolder, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    Path.GetFileName(operation.SourcePath),
+                    Path.GetFileName(operation.DestinationPath),
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        string from = string.Join('\0', operations.Select(operation => operation.SourcePath)) + "\0\0";
+        string to = destinationFolder + "\0\0";
+        unsafe
+        {
+            fixed (char* fromPointer = from)
+            fixed (char* toPointer = to)
+            {
+                var fileOperation = new ShFileOperation
+                {
+                    WindowHandle = IntPtr.Zero,
+                    Function = FoMove,
+                    From = fromPointer,
+                    To = toPointer,
+                    Flags = FofNoConfirmMkDir
+                };
+
+                int result = SHFileOperation(ref fileOperation);
+                if (result == 1223 || fileOperation.AnyOperationsAborted != 0)
+                {
+                    return true;
+                }
+
+                if (result != 0 && result != 1223)
+                {
+                    throw new Win32Exception(result);
+                }
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -686,4 +942,20 @@ public sealed class FileService
 
         return reservedPaths.Add(path);
     }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private unsafe struct ShFileOperation
+    {
+        public IntPtr WindowHandle;
+        public uint Function;
+        public char* From;
+        public char* To;
+        public ushort Flags;
+        public int AnyOperationsAborted;
+        public IntPtr NameMappings;
+        public char* ProgressTitle;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHFileOperation(ref ShFileOperation fileOperation);
 }
