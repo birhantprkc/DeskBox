@@ -1,6 +1,43 @@
-﻿# DeskBox
+# DeskBox
+
+[![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](#构建)
 
 DeskBox 是一个基于 WinUI 3 的 Windows 桌面整理工具。它可以创建轻量桌面组件，用于收纳文件、映射文件夹，并通过系统托盘快速管理组件。
+
+## 下载
+
+可以在 [Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
+
+当前公开测试版本：
+
+- [DeskBox_Setup_1.0.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.0/DeskBox_Setup_1.0.0_x64.exe)
+
+安装器会按需检测并下载 .NET 8 Runtime x64 和 Windows App Runtime 2.1 x64。离线环境可先手动安装这两个运行时后再运行安装器。
+
+## 项目截图
+
+### 浅色模式
+
+![DeskBox 浅色模式](docs/images/light-mode.png)
+
+### 暗色模式
+
+![DeskBox 暗色模式](docs/images/dark-mode.png)
+
+### 外观设置
+
+![DeskBox 外观设置](docs/images/appearance-settings.png)
+
+### 显示密度
+
+![DeskBox 显示密度](docs/images/display-density.png)
+
+### 收纳交互
+
+![DeskBox 收纳交互](docs/images/storage-interaction.png)
 
 ## 为什么做这个产品
 
@@ -10,47 +47,36 @@ DeskBox 是一个基于 WinUI 3 的 Windows 桌面整理工具。它可以创建
 
 界面层面我比较重视 WinUI 3 的设计一致性。项目中的设置页、桌面组件、对话交互和窗口质感都尽量围绕 Windows App SDK、WinUI 3、Mica、DWM 圆角等原生能力构建，目标是让它看起来像一个 Windows 应用，而不是套了一层桌面皮肤的网页工具。
 
-### 📸 项目截图
-
-#### 1. 暗色模式
-这是应用在深色主题下的视觉效果。
-![](https://raw.githubusercontent.com/Tianyu199509/DeskBox/4b78badc773ffbc2780b8824fd11695b89795a91/%E6%9A%97%E8%89%B2.png)
-
-#### 2. 外观默认设置
-展示组件的基础样式和布局。
-![](https://raw.githubusercontent.com/Tianyu199509/DeskBox/4b78badc773ffbc280b8824fd11695b89795a91/%E5%A4%96%E8%A7%82%E9%BB%98%E8%AE%A4%E8%AE%BE%E7%BD%AE.png)
-
-#### 3. 显示密度调节
-展示不同密度下的组件形态。
-![](https://raw.githubusercontent.com/Tianyu199509/DeskBox/4b78badc773ffbc2780b8824fd11695b89795a91/%E6%98%BE%E7%A4%BA%E5%AF%86%E5%BA%A6.png)
-
-#### 4. 收纳交互系统
-展示文件收纳和管理的核心交互流程。
-![](https://raw.githubusercontent.com/Tianyu199509/DeskBox/4b78badc773ffbc2780b8824fd11695b89795a91/%E6%94%B6%E7%BA%B3%E4%BA%A4%E4%BA%92%E7%B3%BB%E7%BB%9F.png)
-
 ## 功能
 
-- 桌面文件组件，使用接近 Windows 原生的亚克力、DWM 圆角和窗口质感。
-- 收纳组件，可将拖入的文件移动或复制到专属收纳文件夹。
-- 文件夹映射组件，可直接展示已有文件夹内容。
-- 系统托盘支持新建组件、显示/隐藏组件、打开设置、开机启动和退出。
-- 设置页采用紧凑的 WinUI 风格单页布局。
+- 新建组件：创建用于收纳文件的桌面组件，支持拖入、拖出、复制、剪切、删除、重命名等常用文件操作。
+- 新建文件夹映射：将已有文件夹映射为桌面组件，直接展示文件夹内容，不改变原文件位置。
+- 原生窗口质感：尽量使用 WinUI 3、Windows App SDK、Mica、DWM 圆角和系统托盘能力。
+- 组件外观调节：支持主题、透明度、圆角、图标大小、字号、显示密度和列表详情开关。
+- 系统托盘管理：支持新建组件、显示/隐藏组件、打开设置、开机启动和退出。
+- 文件安全提示：删除组件、清理收纳目录、卸载应用时尽量明确提示用户文件所在位置和影响范围。
 
 ## 环境要求
 
 - Windows 11。
-- 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1 x64，缺失时自动联网下载并静默安装。
-- 安装器需要管理员权限，用于按需安装系统运行时依赖。
+- .NET 8 Runtime x64。
+- Windows App Runtime 2.1 x64。
 
 目前项目只在 Windows 11 下测试过。Windows 10 或其他系统版本没有做完整验证，如果遇到兼容性问题，欢迎提交 Issue 或反馈复现路径。
 
 开发环境需要 .NET 8 SDK。推荐使用安装了 Windows App SDK 工作负载的 Visual Studio 2022。
 
+## 安装和卸载
+
+安装器基于 Inno Setup 构建，安装时会检测运行时依赖。若目标电脑缺少 .NET 8 Runtime 或 Windows App Runtime，安装过程会显示运行环境准备页，并联网下载、静默安装缺失依赖。
+
+卸载时安装器会先停止正在运行的 DeskBox 进程。如果检测到默认收纳目录中仍有文件或文件夹，会在卸载前提示用户确认；卸载过程不会删除用户移动到收纳目录中的内容。
+
 ## 构建
 
 ```powershell
-dotnet restore .\DeskBox.sln
-dotnet build .\src\DeskBox\DeskBox.csproj -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
+dotnet restore .\DeskBox.sln -p:Platform=x64 -p:RuntimeIdentifier=win-x64
+dotnet build .\src\DeskBox\DeskBox.csproj --configuration Debug --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
 ```
 
 应用输出目录：
@@ -58,26 +84,6 @@ dotnet build .\src\DeskBox\DeskBox.csproj -p:Platform=x64 -p:RuntimeIdentifier=w
 ```text
 src\DeskBox\bin\x64\Debug\net8.0-windows10.0.22621.0\win-x64
 ```
-
-## 测试
-
-```powershell
-dotnet test .\DeskBox.sln -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
-```
-
-当前测试项目覆盖了核心文件转移、路径处理和收纳历史行为。
-
-## 安装包
-
-项目提供一个 Inno Setup 安装脚本：
-
-```text
-installer\DeskBox.iss  单安装包，安装时按需获取 .NET 8 Runtime 和 Windows App Runtime。
-```
-
-安装包本身不内置完整运行时，体积更小。若目标电脑缺少 .NET 8 Runtime 或 Windows App Runtime，安装过程会显示运行环境准备页，并联网下载、静默安装缺失依赖；离线环境可先手动安装这两个运行时后再运行安装器。
-
-卸载时安装器会先停止正在运行的 DeskBox 进程。如果检测到默认收纳目录中仍有文件或文件夹，会在卸载前提示用户确认；卸载过程不会删除用户移动到收纳目录中的内容。
 
 构建 Release x64 输出并生成安装包：
 
@@ -92,11 +98,32 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 artifacts\publish\DeskBox\x64
 ```
 
-## 开发说明
+## 测试
+
+```powershell
+dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
+```
+
+当前测试项目覆盖了核心文件转移、路径处理和收纳历史行为。删除、清理收纳目录这类涉及真实文件移动的逻辑，后续仍建议继续补充更多回归测试。
+
+## 项目结构
+
+```text
+src\DeskBox                 WinUI 3 应用源码
+tests\DeskBox.Tests         核心服务测试
+installer                   Inno Setup 安装脚本
+docs\images                 README 截图资源
+```
+
+## 数据位置
 
 - 应用设置保存在 `%LocalAppData%\DeskBox\data`。
 - 默认收纳路径为 `%UserProfile%\DeskBox`。
 - `bin`、`obj`、`Output`、`artifacts` 和 `TestResults` 等生成目录已被 Git 忽略。
+
+## 反馈
+
+这个项目目前仍处于早期公开版本。如果你遇到文件拖拽、系统运行时、窗口层级、卸载残留或不同 Windows 版本兼容性问题，欢迎通过 [Issues](https://github.com/Tianyu199509/DeskBox/issues) 提供复现路径。
 
 ## 开发者
 
