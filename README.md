@@ -10,9 +10,11 @@ DeskBox 是一个基于 WinUI 3 的 Windows 桌面整理工具。它可以创建
 
 界面层面我比较重视 WinUI 3 的设计一致性。项目中的设置页、桌面组件、对话交互和窗口质感都尽量围绕 Windows App SDK、WinUI 3、Mica、DWM 圆角等原生能力构建，目标是让它看起来像一个 Windows 应用，而不是套了一层桌面皮肤的网页工具。
 
-![Uploading 暗色.png…]()
-
-![Uploading 浅色.png…]()
+https://github.com/Tianyu199509/DeskBox/blob/4b78badc773ffbc2780b8824fd11695b89795a91/%E6%9A%97%E8%89%B2.png
+https://github.com/Tianyu199509/DeskBox/blob/4b78badc773ffbc2780b8824fd11695b89795a91/%E6%9A%97%E8%89%B2.png
+https://github.com/Tianyu199509/DeskBox/blob/4b78badc773ffbc2780b8824fd11695b89795a91/%E5%A4%96%E8%A7%82%E9%BB%98%E8%AE%A4%E8%AE%BE%E7%BD%AE.png
+https://github.com/Tianyu199509/DeskBox/blob/4b78badc773ffbc2780b8824fd11695b89795a91/%E6%98%BE%E7%A4%BA%E5%AF%86%E5%BA%A6.png
+https://github.com/Tianyu199509/DeskBox/blob/4b78badc773ffbc2780b8824fd11695b89795a91/%E6%94%B6%E7%BA%B3%E4%BA%A4%E4%BA%92%E7%B3%BB%E7%BB%9F.png
 
 ## 功能
 
