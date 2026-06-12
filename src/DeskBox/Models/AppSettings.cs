@@ -23,8 +23,11 @@ public class AppSettings
     /// <summary>Whether DeskBox should launch automatically at Windows startup.</summary>
     public bool AutoStart { get; set; }
 
+    /// <summary>Whether the first-run onboarding has been completed or skipped.</summary>
+    public bool HasCompletedOnboarding { get; set; }
+
     /// <summary>Default width applied to newly created widgets.</summary>
-    public double DefaultWidgetWidth { get; set; } = 300;
+    public double DefaultWidgetWidth { get; set; } = 280;
 
     /// <summary>Default height applied to newly created widgets.</summary>
     public double DefaultWidgetHeight { get; set; } = 400;
@@ -32,7 +35,7 @@ public class AppSettings
     /// <summary>
     /// Background opacity for widget windows (0.0 - 1.0).
     /// </summary>
-    public double WidgetOpacity { get; set; } = 0.64;
+    public double WidgetOpacity { get; set; } = 0.30;
 
     /// <summary>
     /// Native DWM corner style for widget windows.
@@ -46,12 +49,12 @@ public class AppSettings
     /// <summary>
     /// Whether shortcut icons should hide the arrow overlay inside DeskBox.
     /// </summary>
-    public bool HideShortcutArrowOverlay { get; set; }
+    public bool HideShortcutArrowOverlay { get; set; } = true;
 
     /// <summary>
     /// Whether list view should show secondary file details under item names.
     /// </summary>
-    public bool ShowListItemDetails { get; set; } = true;
+    public bool ShowListItemDetails { get; set; }
 
     /// <summary>
     /// How files should be handled when dropped into a managed storage widget.
@@ -72,7 +75,7 @@ public class AppSettings
     /// <summary>
     /// Icon size used by widgets in icon view.
     /// </summary>
-    public double IconSize { get; set; } = 36;
+    public double IconSize { get; set; } = 30;
 
     /// <summary>
     /// Label text size used by widgets in both icon and list views.
@@ -94,19 +97,19 @@ public class AppSettings
     /// Horizontal spacing scale used by widget content.
     /// Smaller values place items closer together horizontally.
     /// </summary>
-    public double HorizontalSpacingScale { get; set; } = 0.56;
+    public double HorizontalSpacingScale { get; set; } = 0.40;
 
     /// <summary>
     /// Vertical spacing scale used by widget content.
     /// Smaller values place items closer together vertically.
     /// </summary>
-    public double VerticalSpacingScale { get; set; } = 0.56;
+    public double VerticalSpacingScale { get; set; } = 0.60;
 
     /// <summary>
     /// File name width scale used by icon-view labels.
     /// Smaller values keep labels narrower.
     /// </summary>
-    public double FileNameWidthScale { get; set; } = 0.56;
+    public double FileNameWidthScale { get; set; } = 0.36;
 
     /// <summary>
     /// Whether widgets should use the native Windows acrylic backdrop blur.

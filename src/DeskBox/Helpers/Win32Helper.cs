@@ -264,6 +264,46 @@ public static partial class Win32Helper
         }
     }
 
+    public static void DisableAccentPolicy(IntPtr hWnd)
+    {
+        var accent = new AccentPolicy
+        {
+            AccentState = ACCENT_DISABLED,
+            AccentFlags = 0,
+            GradientColor = 0,
+            AnimationId = 0
+        };
+
+        ApplyAccentPolicy(hWnd, accent, enabled: false, opacity: 0.0);
+    }
+
+    private static void ApplyAccentPolicy(IntPtr hWnd, AccentPolicy accent, bool enabled, double opacity)
+    {
+        int accentSize = Marshal.SizeOf<AccentPolicy>();
+        IntPtr accentPtr = Marshal.AllocHGlobal(accentSize);
+        try
+        {
+            Marshal.StructureToPtr(accent, accentPtr, false);
+            var data = new WindowCompositionAttributeData
+            {
+                Attribute = WCA_ACCENT_POLICY,
+                Data = accentPtr,
+                SizeOfData = accentSize
+            };
+
+            bool applied = SetWindowCompositionAttribute(hWnd, ref data);
+            int lastError = Marshal.GetLastWin32Error();
+            global::DeskBox.App.LogVerbose(
+                $"[Composition] hwnd=0x{hWnd.ToInt64():X} enabled={enabled} opacity={opacity:F3} " +
+                $"accentState={DescribeAccentState(accent.AccentState)} gradient=0x{accent.GradientColor:X8} " +
+                $"applied={applied} lastError={lastError}");
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(accentPtr);
+        }
+    }
+
     private static Windows.UI.Color ApplyAlpha(Windows.UI.Color color, double opacity)
     {
         byte alpha = (byte)Math.Clamp(Math.Round(color.A * opacity), 0, 255);

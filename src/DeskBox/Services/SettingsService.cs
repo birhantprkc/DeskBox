@@ -13,21 +13,21 @@ namespace DeskBox.Services;
 /// </summary>
 public sealed class SettingsService
 {
-    public const double DefaultWidgetOpacity = 0.64;
+    public const double DefaultWidgetOpacity = 0.30;
     public const double MinWidgetOpacity = 0.0;
     public const double MaxWidgetOpacity = 1.0;
     public const string WidgetCornerPreferenceDefault = "Default";
     public const string WidgetCornerPreferenceSquare = "Square";
     public const string WidgetCornerPreferenceSmall = "Small";
     public const string WidgetCornerPreferenceRound = "Round";
-    public const bool FixedNativeBackdropBlur = true;
+    public const bool DefaultNativeBackdropBlur = true;
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
-    public const double DefaultWidgetWidth = 300;
+    public const double DefaultWidgetWidth = 280;
     public const double DefaultWidgetHeight = 400;
     public const double MinWidgetWidth = 200;
     public const double MinWidgetHeight = 200;
-    public const double DefaultIconSize = 36;
+    public const double DefaultIconSize = 30;
     public const double MinIconSize = 24;
     public const double MaxIconSize = 56;
     public const double DefaultTextSize = 11;
@@ -36,9 +36,9 @@ public sealed class SettingsService
     public const double DefaultLayoutDensityScale = 0.56;
     public const double MinLayoutDensityScale = 0.0;
     public const double MaxLayoutDensityScale = 1.0;
-    public const double DefaultHorizontalSpacingScale = 0.56;
-    public const double DefaultVerticalSpacingScale = 0.56;
-    public const double DefaultFileNameWidthScale = 0.56;
+    public const double DefaultHorizontalSpacingScale = 0.40;
+    public const double DefaultVerticalSpacingScale = 0.60;
+    public const double DefaultFileNameWidthScale = 0.36;
     public const double MinSpacingScale = 0.0;
     public const double MaxSpacingScale = 1.0;
     public const int MaxRecentOrganizationHistoryCount = 24;
@@ -54,8 +54,10 @@ public sealed class SettingsService
     private AppSettings _settings = new();
     private readonly object _lock = new();
     private CancellationTokenSource? _debounceCts;
+    private CancellationTokenSource? _appearancePreviewCts;
 
     public event Action? SettingsChanged;
+    public event Action? AppearancePreviewChanged;
 
     public AppSettings Settings
     {
@@ -204,6 +206,32 @@ public sealed class SettingsService
         });
     }
 
+    public void RequestAppearancePreview()
+    {
+        _appearancePreviewCts?.Cancel();
+        _appearancePreviewCts = new CancellationTokenSource();
+        var token = _appearancePreviewCts.Token;
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(66, token);
+                if (!token.IsCancellationRequested)
+                {
+                    AppearancePreviewChanged?.Invoke();
+                }
+            }
+            catch (TaskCanceledException) { }
+        });
+    }
+
+    public void NotifyAppearancePreviewNow()
+    {
+        _appearancePreviewCts?.Cancel();
+        AppearancePreviewChanged?.Invoke();
+    }
+
     /// <summary>
     /// Update a widget's configuration. If the widget doesn't exist, it will be added.
     /// </summary>
@@ -255,12 +283,6 @@ public sealed class SettingsService
             changed = true;
         }
 
-        if (settings.UseNativeBackdropBlur != FixedNativeBackdropBlur)
-        {
-            settings.UseNativeBackdropBlur = FixedNativeBackdropBlur;
-            changed = true;
-        }
-
         if (settings.WidgetCornerPreference is not (
             WidgetCornerPreferenceDefault or
             WidgetCornerPreferenceSquare or
@@ -268,6 +290,12 @@ public sealed class SettingsService
             WidgetCornerPreferenceRound))
         {
             settings.WidgetCornerPreference = WidgetCornerPreferenceSmall;
+            changed = true;
+        }
+
+        if (settings.UseNativeBackdropBlur != DefaultNativeBackdropBlur)
+        {
+            settings.UseNativeBackdropBlur = DefaultNativeBackdropBlur;
             changed = true;
         }
 

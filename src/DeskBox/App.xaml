@@ -24,14 +24,6 @@
                     <Thickness x:Key="ComboBoxDropdownBorderThickness">1</Thickness>
                     <Thickness x:Key="ComboBoxDropdownBorderPadding">0</Thickness>
                     <Thickness x:Key="ComboBoxDropdownContentMargin">4</Thickness>
-                    <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
-                    <CornerRadius x:Key="SliderThumbCornerRadius">10</CornerRadius>
-                    <x:Double x:Key="SliderInnerThumbWidth">12</x:Double>
-                    <x:Double x:Key="SliderInnerThumbHeight">12</x:Double>
-                    <x:Double x:Key="SliderHorizontalThumbWidth">18</x:Double>
-                    <x:Double x:Key="SliderHorizontalThumbHeight">18</x:Double>
-                    <x:Double x:Key="SliderVerticalThumbWidth">18</x:Double>
-                    <x:Double x:Key="SliderVerticalThumbHeight">18</x:Double>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="WidgetBackgroundBrush" Color="#1F1F1F" />
@@ -46,14 +38,6 @@
                     <Thickness x:Key="ComboBoxDropdownBorderThickness">1</Thickness>
                     <Thickness x:Key="ComboBoxDropdownBorderPadding">0</Thickness>
                     <Thickness x:Key="ComboBoxDropdownContentMargin">4</Thickness>
-                    <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
-                    <CornerRadius x:Key="SliderThumbCornerRadius">10</CornerRadius>
-                    <x:Double x:Key="SliderInnerThumbWidth">12</x:Double>
-                    <x:Double x:Key="SliderInnerThumbHeight">12</x:Double>
-                    <x:Double x:Key="SliderHorizontalThumbWidth">18</x:Double>
-                    <x:Double x:Key="SliderHorizontalThumbHeight">18</x:Double>
-                    <x:Double x:Key="SliderVerticalThumbWidth">18</x:Double>
-                    <x:Double x:Key="SliderVerticalThumbHeight">18</x:Double>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

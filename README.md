@@ -13,9 +13,20 @@ DeskBox 是一个基于 WinUI 3 的 Windows 桌面整理工具。它可以创建
 
 当前公开测试版本：
 
-- [DeskBox_Setup_1.0.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.0/DeskBox_Setup_1.0.0_x64.exe)
+- [DeskBox_Setup_1.0.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.1/DeskBox_Setup_1.0.1_x64.exe)
 
-安装器会按需检测并下载 .NET 8 Runtime x64 和 Windows App Runtime 2.1 x64。离线环境可先手动安装这两个运行时后再运行安装器。
+安装器会按需检测并下载 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。离线环境可先手动安装这两个运行时后再运行安装器。
+
+## 1.0.1 更新
+
+- 新增 Windows 原生风格的新手引导，可在设置页再次打开。
+- 优化托盘唤起、桌面组件显示/隐藏动效，以及组件临时置前体验。
+- 优化设置页默认值、恢复默认设置、滑轨实时预览和显示密度调节。
+- 优化组件内拖拽、剪切、重命名、删除确认和键盘快捷键体验。
+- 修复安装器依赖检测，已安装 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64 时不会重复下载。
+- 优化安装器快捷方式图标，覆盖安装时保留用户设置和收纳文件。
+
+完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 项目截图
 
@@ -60,7 +71,7 @@ DeskBox 是一个基于 WinUI 3 的 Windows 桌面整理工具。它可以创建
 
 - Windows 11。
 - .NET 8 Runtime x64。
-- Windows App Runtime 2.1 x64。
+- Windows App Runtime 2.1.3 x64。
 
 目前项目只在 Windows 11 下测试过。Windows 10 或其他系统版本没有做完整验证，如果遇到兼容性问题，欢迎提交 Issue 或反馈复现路径。
 
@@ -68,7 +79,9 @@ DeskBox 是一个基于 WinUI 3 的 Windows 桌面整理工具。它可以创建
 
 ## 安装和卸载
 
-安装器基于 Inno Setup 构建，安装时会检测运行时依赖。若目标电脑缺少 .NET 8 Runtime 或 Windows App Runtime，安装过程会显示运行环境准备页，并联网下载、静默安装缺失依赖。
+安装器基于 Inno Setup 构建，安装时会检测运行时依赖。若目标电脑缺少 .NET 8 Runtime x64 或 Windows App Runtime 2.1.3 x64，安装过程会显示运行环境准备页，并联网下载、静默安装缺失依赖。
+
+覆盖安装会保留现有应用设置、组件配置和收纳目录内容。安装器会刷新程序文件和快捷方式，但不会删除用户移动到收纳目录中的文件。
 
 卸载时安装器会先停止正在运行的 DeskBox 进程。如果检测到默认收纳目录中仍有文件或文件夹，会在卸载前提示用户确认；卸载过程不会删除用户移动到收纳目录中的内容。
 

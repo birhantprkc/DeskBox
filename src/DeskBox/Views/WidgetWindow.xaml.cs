@@ -35,6 +35,11 @@ public sealed partial class WidgetWindow : Window
 
     private const int MinWidth = (int)SettingsService.MinWidgetWidth;
     private const int MinHeight = (int)SettingsService.MinWidgetHeight;
+    private const int WidgetShowAnimationMs = 280;
+    private const int WidgetHideAnimationMs = 220;
+    private const double WidgetShowOffsetY = 14.0;
+    private const double WidgetShowStartOpacity = 0.72;
+    private const double WidgetShowStartScale = 0.985;
 
     private readonly Microsoft.UI.WindowId _windowId;
     private readonly SettingsService _settingsService;
@@ -44,6 +49,7 @@ public sealed partial class WidgetWindow : Window
     private SystemBackdropConfiguration? _backdropConfiguration;
     private ICompositionSupportsSystemBackdrop? _backdropTarget;
     private bool _isDragging;
+    private bool _hasMovedTitleBarDrag;
     private bool _isResizing;
     private string _resizeDirection = string.Empty;
     private Win32Helper.POINT _initialCursorPt;
@@ -79,6 +85,10 @@ public sealed partial class WidgetWindow : Window
     private DateTime _lastTitleBarClickTimeUtc;
     private Win32Helper.POINT _lastTitleBarClickPoint;
     private bool _hasPendingTitleBarClick;
+    private bool _isAtDesktopLayer;
+    private bool _isHideAnimationRunning;
+    private long _trayAnimationGeneration;
+    private Storyboard? _trayTransitionStoryboard;
 
     public WidgetViewModel ViewModel { get; }
 
@@ -206,7 +216,7 @@ public sealed partial class WidgetWindow : Window
     {
         _settingsService.SettingsChanged += OnSettingsChanged;
 
-        Activated += (_, _) => DispatcherQueue.TryEnqueue(ApplyBackdropPreference);
+        Activated += WidgetWindow_Activated;
 
         _appWindow.Changed += (_, args) =>
         {
@@ -238,6 +248,7 @@ public sealed partial class WidgetWindow : Window
 
     public void PushToBottom()
     {
+        _isAtDesktopLayer = true;
         Win32Helper.SetWindowToBottom(_hWnd);
     }
 
@@ -247,9 +258,11 @@ public sealed partial class WidgetWindow : Window
         Win32Helper.ClearWindowTopMost(_hWnd);
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
         Win32Helper.BringWindowTemporarilyToFront(_hWnd);
+        _isAtDesktopLayer = false;
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
+        PlayTrayRaiseAnimation();
 
         DispatcherQueue.TryEnqueue(async () =>
         {
@@ -261,6 +274,163 @@ public sealed partial class WidgetWindow : Window
         });
     }
 
+    public void PlayTrayShowAnimation()
+    {
+        PlayTrayRaiseAnimation();
+    }
+
+    private void PlayTrayRaiseAnimation()
+    {
+        var animationGeneration = ++_trayAnimationGeneration;
+        _trayTransitionStoryboard?.Stop();
+        _trayTransitionStoryboard = null;
+        _isHideAnimationRunning = false;
+        var transform = EnsureTrayTransitionTransform();
+
+        RootGrid.Opacity = WidgetShowStartOpacity;
+        transform.TranslateY = WidgetShowOffsetY;
+        transform.ScaleX = WidgetShowStartScale;
+        transform.ScaleY = WidgetShowStartScale;
+        var storyboard = new Storyboard();
+        var opacityAnimation = new DoubleAnimation
+        {
+            To = 1,
+            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetShowAnimationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(opacityAnimation, RootGrid);
+        Storyboard.SetTargetProperty(opacityAnimation, "Opacity");
+        storyboard.Children.Add(opacityAnimation);
+
+        var translateYAnimation = new DoubleAnimation
+        {
+            To = 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetShowAnimationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(translateYAnimation, transform);
+        Storyboard.SetTargetProperty(translateYAnimation, "TranslateY");
+        storyboard.Children.Add(translateYAnimation);
+
+        var scaleXAnimation = new DoubleAnimation
+        {
+            To = 1,
+            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetShowAnimationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(scaleXAnimation, transform);
+        Storyboard.SetTargetProperty(scaleXAnimation, "ScaleX");
+        storyboard.Children.Add(scaleXAnimation);
+
+        var scaleYAnimation = new DoubleAnimation
+        {
+            To = 1,
+            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetShowAnimationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(scaleYAnimation, transform);
+        Storyboard.SetTargetProperty(scaleYAnimation, "ScaleY");
+        storyboard.Children.Add(scaleYAnimation);
+
+        storyboard.Completed += (_, _) =>
+        {
+            if (animationGeneration == _trayAnimationGeneration)
+            {
+                RootGrid.Opacity = 1;
+                transform.TranslateY = 0;
+                transform.ScaleX = 1;
+                transform.ScaleY = 1;
+                _trayTransitionStoryboard = null;
+            }
+        };
+        _trayTransitionStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
+    private void PlayTrayHideAnimation(Action completed)
+    {
+        var animationGeneration = ++_trayAnimationGeneration;
+        _trayTransitionStoryboard?.Stop();
+        _trayTransitionStoryboard = null;
+        var transform = EnsureTrayTransitionTransform();
+
+        _isHideAnimationRunning = true;
+        RootGrid.Opacity = 1;
+        transform.TranslateY = 0;
+        transform.ScaleX = 1;
+        transform.ScaleY = 1;
+
+        var storyboard = new Storyboard();
+        var opacityAnimation = new DoubleAnimation
+        {
+            To = 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetHideAnimationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(opacityAnimation, RootGrid);
+        Storyboard.SetTargetProperty(opacityAnimation, "Opacity");
+        storyboard.Children.Add(opacityAnimation);
+
+        var translateYAnimation = new DoubleAnimation
+        {
+            To = WidgetShowOffsetY,
+            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetHideAnimationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(translateYAnimation, transform);
+        Storyboard.SetTargetProperty(translateYAnimation, "TranslateY");
+        storyboard.Children.Add(translateYAnimation);
+
+        var scaleXAnimation = new DoubleAnimation
+        {
+            To = WidgetShowStartScale,
+            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetHideAnimationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(scaleXAnimation, transform);
+        Storyboard.SetTargetProperty(scaleXAnimation, "ScaleX");
+        storyboard.Children.Add(scaleXAnimation);
+
+        var scaleYAnimation = new DoubleAnimation
+        {
+            To = WidgetShowStartScale,
+            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetHideAnimationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(scaleYAnimation, transform);
+        Storyboard.SetTargetProperty(scaleYAnimation, "ScaleY");
+        storyboard.Children.Add(scaleYAnimation);
+
+        storyboard.Completed += (_, _) =>
+        {
+            if (animationGeneration == _trayAnimationGeneration && !Visible)
+            {
+                _isHideAnimationRunning = false;
+                RootGrid.Opacity = 1;
+                transform.TranslateY = 0;
+                transform.ScaleX = 1;
+                transform.ScaleY = 1;
+                _trayTransitionStoryboard = null;
+                completed();
+            }
+        };
+        _trayTransitionStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
+    private CompositeTransform EnsureTrayTransitionTransform()
+    {
+        if (RootGrid.RenderTransform is CompositeTransform transform)
+        {
+            return transform;
+        }
+
+        transform = new CompositeTransform();
+        RootGrid.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
+        RootGrid.RenderTransform = transform;
+        return transform;
+    }
+
     public void RevealFromTray(bool autoRestore = true)
     {
         ElevateForInteraction();
@@ -269,6 +439,7 @@ public sealed partial class WidgetWindow : Window
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
+        PlayTrayRaiseAnimation();
 
         if (!autoRestore)
         {
@@ -291,17 +462,55 @@ public sealed partial class WidgetWindow : Window
 
     public void HideWindow()
     {
-        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
-        _appWindow.Hide();
+        if (!Visible || _isHideAnimationRunning)
+        {
+            return;
+        }
+
         Visible = false;
         ViewModel.Config.IsVisible = false;
         _settingsService.SaveDebounced();
+        PlayTrayHideAnimation(() =>
+        {
+            Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
+            _appWindow.Hide();
+        });
+    }
+
+    public void ApplyAppearancePreview()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(ApplyAppearancePreview);
+            return;
+        }
+
+        ViewModel.ApplyAppearancePreview();
+        ApplyBackdropPreference();
     }
 
     private void ElevateForInteraction()
     {
+        _isAtDesktopLayer = false;
         Win32Helper.BringWindowToFront(_hWnd);
         RootGrid.Focus(FocusState.Programmatic);
+    }
+
+    private void WidgetWindow_Activated(object sender, WindowActivatedEventArgs args)
+    {
+        DispatcherQueue.TryEnqueue(ApplyBackdropPreference);
+
+        if (args.WindowActivationState != WindowActivationState.PointerActivated ||
+            !Visible ||
+            !_isAtDesktopLayer ||
+            _isDragging ||
+            _isResizing)
+        {
+            return;
+        }
+
+        _isAtDesktopLayer = false;
+        PlayTrayRaiseAnimation();
     }
 
     private void RestoreDesktopLayer()
@@ -366,7 +575,6 @@ public sealed partial class WidgetWindow : Window
 
     private void ApplyBackdropPreference()
     {
-        bool useNativeBlur = _settingsService.Settings.UseNativeBackdropBlur;
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         double surfaceOpacity = Math.Clamp(ViewModel.WidgetOpacity, 0.0, 1.0);
         var tintColor = BuildNativeBackdropTintColor(isDark);
@@ -377,43 +585,26 @@ public sealed partial class WidgetWindow : Window
             Win32Helper.ApplyFullWindowFrame(_hWnd);
 
             int backdropType;
-            if (useNativeBlur)
-            {
-                if (ApplyAcrylicController(isDark, tintColor, surfaceOpacity))
-                {
-                    backdropType = Win32Helper.DWMSBT_NONE;
-                    Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
-                }
-                else
-                {
-                    backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
-                    Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
-                    SystemBackdrop ??= new DesktopAcrylicBackdrop();
-                }
-            }
-            else
+            if (ApplyAcrylicController(isDark, tintColor, surfaceOpacity))
             {
                 backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
-                SystemBackdrop = null;
-                DisposeAcrylicController();
+            }
+            else
+            {
+                backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
+                Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                SystemBackdrop ??= new DesktopAcrylicBackdrop();
             }
 
             App.LogVerbose(
-                $"[Backdrop] hwnd=0x{_hWnd.ToInt64():X} useNativeBlur={useNativeBlur} isDark={isDark} " +
+                $"[Backdrop] hwnd=0x{_hWnd.ToInt64():X} useNativeBlur=true isDark={isDark} " +
                 $"opacity={surfaceOpacity:F3} tint=#{tintColor.A:X2}{tintColor.R:X2}{tintColor.G:X2}{tintColor.B:X2} " +
                 $"dwmBackdropType={backdropType} systemBackdrop={(SystemBackdrop?.GetType().Name ?? "null")} " +
                 $"acrylicController={_acrylicController is not null}");
 
-            if (useNativeBlur)
-            {
-                // Keep the window composition layer neutral and let the widget surface provide the tint.
-                Win32Helper.ApplyAccentBlur(_hWnd, tintColor, 0.0, enabled: false);
-            }
-            else
-            {
-                Win32Helper.ApplyAccentBlur(_hWnd, tintColor, Math.Min(surfaceOpacity, 0.56), enabled: false);
-            }
+            // Keep the window composition layer neutral and let the widget surface provide the tint.
+            Win32Helper.DisableAccentPolicy(_hWnd);
         }
         catch (Exception ex)
         {
@@ -463,10 +654,10 @@ public sealed partial class WidgetWindow : Window
         _acrylicController.FallbackColor = tintColor;
         _acrylicController.TintOpacity = (float)(isDark
             ? Math.Clamp(0.12 + surfaceOpacity * 0.34, 0.0, 0.52)
-            : Math.Clamp(0.06 + surfaceOpacity * 0.22, 0.0, 0.36));
+            : Math.Clamp(0.00 + surfaceOpacity * 0.40, 0.0, 0.44));
         _acrylicController.LuminosityOpacity = (float)(isDark
             ? Math.Clamp(0.34 + surfaceOpacity * 0.36, 0.0, 0.82)
-            : Math.Clamp(0.45 + surfaceOpacity * 0.16, 0.0, 0.68));
+            : Math.Clamp(0.22 + surfaceOpacity * 0.58, 0.0, 0.86));
         return true;
     }
 
@@ -511,30 +702,20 @@ public sealed partial class WidgetWindow : Window
     {
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         double surfaceOpacity = Math.Clamp(ViewModel.WidgetOpacity, 0.0, 1.0);
-        double materialOpacity = isDark
-            ? Math.Clamp(surfaceOpacity * 0.78, 0.10, 0.82)
-            : Math.Clamp(0.02 + surfaceOpacity * 0.30, 0.02, 0.40);
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
 
-        var backgroundColor = ApplySurfaceOpacity(
-            BuildAccentSurfaceColor(
-                isDark,
-                accentColor,
-                isDark
-                    ? ColorHelper.FromArgb(0xFF, 0x21, 0x24, 0x2A)
-                    : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
-                accentMix: isDark ? 0.18 : 0.18,
-                overlayMix: isDark ? 0.15 : 0.04),
-            materialOpacity);
+        var backgroundColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
+
+        byte chromeAlpha = 0x18;
 
         var borderColor = isDark
-            ? ColorHelper.FromArgb(0x12, 0xFF, 0xFF, 0xFF)
-            : WithAlpha(BlendColors(ColorHelper.FromArgb(0xFF, 0x00, 0x00, 0x00), accentColor, 0.22), 0x18);
+            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.75), 0, 255), 0xFF, 0xFF, 0xFF)
+            : WithAlpha(BlendColors(ColorHelper.FromArgb(0xFF, 0x00, 0x00, 0x00), accentColor, 0.22), chromeAlpha);
 
         var dividerColor = isDark
-            ? ColorHelper.FromArgb(0x10, 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb(0x0A, 0x00, 0x00, 0x00);
+            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.66), 0, 255), 0xFF, 0xFF, 0xFF)
+            : ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.42), 0, 255), 0x00, 0x00, 0x00);
 
         var iconForeground = Windows.UI.Color.FromArgb(
             isDark ? (byte)0xE2 : (byte)0xCC,
@@ -574,6 +755,27 @@ public sealed partial class WidgetWindow : Window
         StatusToastText.Foreground = new SolidColorBrush(isDark ? Colors.White : Colors.Black);
 
         UpdateInteractiveSurfaces();
+    }
+
+    private static Windows.UI.Color BuildFrostedSurfaceColor(
+        bool isDark,
+        Windows.UI.Color accentColor,
+        double surfaceOpacity)
+    {
+        double materialOpacity = isDark
+            ? Math.Clamp(surfaceOpacity * 0.78, 0.10, 0.82)
+            : Math.Clamp(surfaceOpacity * 0.78, 0.0, 0.78);
+
+        return ApplySurfaceOpacity(
+            BuildAccentSurfaceColor(
+                isDark,
+                accentColor,
+                isDark
+                    ? ColorHelper.FromArgb(0xFF, 0x21, 0x24, 0x2A)
+                    : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
+                accentMix: isDark ? 0.18 : 0.18,
+                overlayMix: isDark ? 0.15 : 0.04),
+            materialOpacity);
     }
 
     private void UpdateInteractiveSurfaces()
@@ -644,7 +846,6 @@ public sealed partial class WidgetWindow : Window
             state = ItemSurfaceState.DropTarget;
         }
 
-        bool useNativeBlur = _settingsService.Settings.UseNativeBackdropBlur;
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
@@ -652,9 +853,7 @@ public sealed partial class WidgetWindow : Window
         bool isSelected = item?.IsSelected == true;
         bool isCut = item?.IsCut == true;
 
-        var defaultBackground = useNativeBlur
-            ? ColorHelper.FromArgb(0x00, 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb(0x00, 0x00, 0x00, 0x00);
+        var defaultBackground = ColorHelper.FromArgb(0x00, 0xFF, 0xFF, 0xFF);
 
         var selectedBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -665,9 +864,7 @@ public sealed partial class WidgetWindow : Window
                     : ColorHelper.FromArgb(0xFF, 0xF1, 0xF6, 0xFC),
                 accentMix: isDark ? 0.30 : 0.18,
                 overlayMix: isDark ? 0.08 : 0.04),
-            useNativeBlur
-                ? (isDark ? (byte)0x62 : (byte)0x72)
-                : (isDark ? (byte)0x48 : (byte)0x42));
+            isDark ? (byte)0x62 : (byte)0x72);
 
         var hoverBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -678,9 +875,7 @@ public sealed partial class WidgetWindow : Window
                     : ColorHelper.FromArgb(0xFF, 0xFB, 0xFB, 0xFC),
                 accentMix: isDark ? 0.20 : 0.12,
                 overlayMix: isDark ? 0.12 : 0.18),
-            useNativeBlur
-                ? (isDark ? (byte)0x3A : (byte)0x44)
-                : (isDark ? (byte)0x2A : (byte)0x28));
+            isDark ? (byte)0x3A : (byte)0x44);
 
         var pressedBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -691,9 +886,7 @@ public sealed partial class WidgetWindow : Window
                     : ColorHelper.FromArgb(0xFF, 0xF8, 0xF8, 0xFA),
                 accentMix: isDark ? 0.24 : 0.15,
                 overlayMix: isDark ? 0.10 : 0.16),
-            useNativeBlur
-                ? (isDark ? (byte)0x48 : (byte)0x54)
-                : (isDark ? (byte)0x34 : (byte)0x30));
+            isDark ? (byte)0x48 : (byte)0x54);
 
         var selectedHoverBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -704,9 +897,7 @@ public sealed partial class WidgetWindow : Window
                     : ColorHelper.FromArgb(0xFF, 0xEC, 0xF4, 0xFC),
                 accentMix: isDark ? 0.34 : 0.21,
                 overlayMix: isDark ? 0.08 : 0.05),
-            useNativeBlur
-                ? (isDark ? (byte)0x78 : (byte)0x88)
-                : (isDark ? (byte)0x58 : (byte)0x52));
+            isDark ? (byte)0x78 : (byte)0x88);
 
         var dropTargetBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -717,9 +908,7 @@ public sealed partial class WidgetWindow : Window
                     : ColorHelper.FromArgb(0xFF, 0xE7, 0xF3, 0xFF),
                 accentMix: isDark ? 0.42 : 0.30,
                 overlayMix: isDark ? 0.06 : 0.04),
-            useNativeBlur
-                ? (isDark ? (byte)0x92 : (byte)0x9C)
-                : (isDark ? (byte)0x72 : (byte)0x68));
+            isDark ? (byte)0x92 : (byte)0x9C);
 
         var backgroundColor = state switch
         {
@@ -2418,6 +2607,7 @@ public sealed partial class WidgetWindow : Window
 
         TrackTitleBarClick(e.OriginalSource, cursorPt);
         _isDragging = true;
+        _hasMovedTitleBarDrag = false;
         ElevateForInteraction();
         _initialCursorPt = cursorPt;
         _initialWindowPos = _appWindow.Position;
@@ -2436,10 +2626,22 @@ public sealed partial class WidgetWindow : Window
         Win32Helper.GetCursorPos(out var currentPt);
         int deltaX = currentPt.X - _initialCursorPt.X;
         int deltaY = currentPt.Y - _initialCursorPt.Y;
+        int dragDistanceSquared = (deltaX * deltaX) + (deltaY * deltaY);
 
-        if (_hasPendingTitleBarClick && ((deltaX * deltaX) + (deltaY * deltaY) > 25))
+        if (_hasPendingTitleBarClick && dragDistanceSquared > 25)
         {
             _hasPendingTitleBarClick = false;
+        }
+
+        if (!_hasMovedTitleBarDrag)
+        {
+            if (dragDistanceSquared < 16)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            _hasMovedTitleBarDrag = true;
         }
 
         int newX = _initialWindowPos.X + deltaX;
@@ -2457,10 +2659,15 @@ public sealed partial class WidgetWindow : Window
 
         _isDragging = false;
         TitleBarGrid.ReleasePointerCapture(e.Pointer);
-        var finalPosition = _appWindow.Position;
-        var finalSize = _appWindow.Size;
-        ViewModel.UpdateBounds(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
-        RestoreDesktopLayer();
+        if (_hasMovedTitleBarDrag)
+        {
+            var finalPosition = _appWindow.Position;
+            var finalSize = _appWindow.Size;
+            ViewModel.UpdateBounds(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+            RestoreDesktopLayer();
+        }
+
+        _hasMovedTitleBarDrag = false;
         e.Handled = true;
     }
 
@@ -2507,6 +2714,9 @@ public sealed partial class WidgetWindow : Window
     private MenuFlyout CreateContentAreaFlyout()
     {
         var flyout = new MenuFlyout();
+
+        AddCurrentWidgetContentActions(flyout);
+        flyout.Items.Add(new MenuFlyoutSeparator());
 
         AddCreateWidgetItems(flyout);
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -2562,6 +2772,29 @@ public sealed partial class WidgetWindow : Window
         }
 
         return flyout;
+    }
+
+    private void AddCurrentWidgetContentActions(MenuFlyout flyout)
+    {
+        if (ViewModel.FollowsDefaultStoragePath)
+        {
+            var addFileItem = new MenuFlyoutItem
+            {
+                Text = "添加文件",
+                Icon = new FontIcon { Glyph = "\uE8A5" }
+            };
+            addFileItem.Click += async (_, _) => await PickAndImportFilesAsync();
+            flyout.Items.Add(addFileItem);
+            return;
+        }
+
+        var changeMappedPathItem = new MenuFlyoutItem
+        {
+            Text = "更改映射路径",
+            Icon = new FontIcon { Glyph = "\uE8B7" }
+        };
+        changeMappedPathItem.Click += async (_, _) => await PickAndApplyMappedFolderAsync();
+        flyout.Items.Add(changeMappedPathItem);
     }
 
     private MenuFlyout CreateMoreFlyout()
@@ -2694,6 +2927,80 @@ public sealed partial class WidgetWindow : Window
         var flyout = new MenuFlyout();
         AddCreateWidgetItems(flyout);
         return flyout;
+    }
+
+    private async Task PickAndImportFilesAsync()
+    {
+        ElevateForInteraction();
+
+        try
+        {
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.Desktop
+            };
+            picker.FileTypeFilter.Add("*");
+            InitializeWithWindow.Initialize(picker, _hWnd);
+
+            var files = await picker.PickMultipleFilesAsync();
+            var paths = files
+                .Select(file => file.Path)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToArray();
+            if (paths.Length == 0)
+            {
+                return;
+            }
+
+            bool shouldMove = GetManagedDropOperation() != DataPackageOperation.Copy;
+            await ViewModel.ImportPathsAsync(paths, shouldMove, useShellProgress: shouldMove);
+            ShowStatusToast(paths.Length == 1 ? "已添加文件" : $"已添加 {paths.Length} 个文件");
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync("添加文件失败", ex.Message);
+        }
+        finally
+        {
+            RestoreDesktopLayer();
+        }
+    }
+
+    private async Task PickAndApplyMappedFolderAsync()
+    {
+        if (ViewModel.FollowsDefaultStoragePath)
+        {
+            return;
+        }
+
+        ElevateForInteraction();
+
+        try
+        {
+            var picker = new FolderPicker
+            {
+                SuggestedStartLocation = PickerLocationId.Desktop
+            };
+            picker.FileTypeFilter.Add("*");
+            InitializeWithWindow.Initialize(picker, _hWnd);
+
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
+
+            await ViewModel.UpdateMappedFolderPathAsync(folder.Path);
+            ShowStatusToast("映射路径已更新");
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync("更改映射路径失败", ex.Message);
+        }
+        finally
+        {
+            RestoreDesktopLayer();
+        }
     }
 
     private void SetIconView_Click(object sender, RoutedEventArgs e)

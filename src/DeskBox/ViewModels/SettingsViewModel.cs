@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DeskBox.Helpers;
@@ -33,13 +34,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private bool _useSystemAccentColor;
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
     private string _managedStorageRootPath = SettingsService.GetDefaultManagedStorageRootPath();
+    private bool _isRestoringDefaults;
 
     [ObservableProperty] private bool _autoStart;
     [ObservableProperty] private bool _doubleClickToOpen;
     [ObservableProperty] private double _defaultWidth;
     [ObservableProperty] private double _defaultHeight;
     [ObservableProperty] private bool _hideShortcutArrowOverlay;
-    [ObservableProperty] private bool _showListItemDetails = true;
+    [ObservableProperty] private bool _showListItemDetails;
     [ObservableProperty] private double _widgetOpacity = SettingsService.DefaultWidgetOpacity;
     [ObservableProperty] private double _iconSize = SettingsService.DefaultIconSize;
     [ObservableProperty] private double _textSize = SettingsService.DefaultTextSize;
@@ -65,6 +67,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 _ => "System"
             };
 
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
             _themeService.SetTheme(themeValue);
         }
     }
@@ -75,6 +82,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         set
         {
             if (!SetProperty(ref _useSystemAccentColor, value))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
             {
                 return;
             }
@@ -98,6 +110,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
             _settingsService.Settings.ManagedDropAction = value == ManagedActionCopy
                 ? SettingsService.ManagedDropActionCopy
                 : SettingsService.ManagedDropActionMove;
@@ -111,6 +128,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         set
         {
             if (!SetProperty(ref _selectedWidgetCornerPreference, value))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
             {
                 return;
             }
@@ -240,10 +262,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string[] AvailableManagedDropActions { get; } = [ManagedActionMove, ManagedActionCopy];
     public string[] AvailableWidgetCornerPreferences { get; } = [CornerSmall, CornerRound, CornerSquare, CornerDefault];
 
-    public string AppVersion => System.Reflection.Assembly
-        .GetExecutingAssembly()
-        .GetName()
-        .Version?.ToString() ?? "1.0.0";
+    public string AppVersion =>
+        Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            .Split('+')[0] ??
+        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ??
+        "1.0.1";
     public string AboutVersionText => $"版本 {AppVersion} · WinUI 3 / .NET 8";
     public string OpenSourceRepositoryUrl => RepositoryUrl;
     public string OpenSourceRepositoryDisplayText =>
@@ -295,6 +320,15 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public Color GetCurrentAccentColor() => _currentAccentColor;
 
+    public bool SuppressAppearanceNotifications { get; set; }
+    public bool DeferAppearancePersistence { get; set; }
+
+    public void CommitAppearanceChanges()
+    {
+        _settingsService.NotifyAppearancePreviewNow();
+        _settingsService.SaveDebounced();
+    }
+
     public void SetCustomAccentColor(Color color)
     {
         _themeService.SetCustomAccentColor(color);
@@ -318,8 +352,73 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _settingsService.SaveDebounced();
     }
 
+    public async Task RestoreDefaultPreferencesAsync()
+    {
+        _isRestoringDefaults = true;
+        SuppressAppearanceNotifications = true;
+        DeferAppearancePersistence = false;
+
+        try
+        {
+            SelectedTheme = ThemeSystem;
+            UseSystemAccentColor = true;
+            DefaultWidth = SettingsService.DefaultWidgetWidth;
+            DefaultHeight = SettingsService.DefaultWidgetHeight;
+            SelectedWidgetCornerPreference = CornerSmall;
+            WidgetOpacity = SettingsService.DefaultWidgetOpacity;
+            IconSize = SettingsService.DefaultIconSize;
+            TextSize = SettingsService.DefaultTextSize;
+            LayoutDensityScale = SettingsService.DefaultLayoutDensityScale;
+            HorizontalSpacingScale = SettingsService.DefaultHorizontalSpacingScale;
+            VerticalSpacingScale = SettingsService.DefaultVerticalSpacingScale;
+            FileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
+            SelectedManagedDropAction = ManagedActionMove;
+            DoubleClickToOpen = true;
+            HideShortcutArrowOverlay = true;
+            ShowListItemDetails = false;
+
+            var settings = _settingsService.Settings;
+            settings.Theme = "System";
+            settings.AccentColorMode = ThemeService.AccentModeSystem;
+            settings.DefaultWidgetWidth = SettingsService.DefaultWidgetWidth;
+            settings.DefaultWidgetHeight = SettingsService.DefaultWidgetHeight;
+            settings.WidgetCornerPreference = SettingsService.WidgetCornerPreferenceSmall;
+            settings.UseNativeBackdropBlur = SettingsService.DefaultNativeBackdropBlur;
+            settings.WidgetOpacity = SettingsService.DefaultWidgetOpacity;
+            settings.IconSize = SettingsService.DefaultIconSize;
+            settings.TextSize = SettingsService.DefaultTextSize;
+            settings.LayoutDensityScale = SettingsService.DefaultLayoutDensityScale;
+            settings.LayoutDensity = SettingsService.DefaultLayoutDensityScale <= 0.78 ? "Compact" : "Comfortable";
+            settings.HorizontalSpacingScale = SettingsService.DefaultHorizontalSpacingScale;
+            settings.VerticalSpacingScale = SettingsService.DefaultVerticalSpacingScale;
+            settings.FileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
+            settings.ManagedDropAction = SettingsService.ManagedDropActionMove;
+            settings.DoubleClickToOpen = true;
+            settings.HideShortcutArrowOverlay = true;
+            settings.ShowListItemDetails = false;
+
+            RefreshAccentPreview();
+            RefreshNumberInputs();
+            OnPropertyChanged(nameof(CanEditCustomAccent));
+            OnPropertyChanged(nameof(AccentColorDescription));
+            _themeService.RefreshAppearance();
+            await _settingsService.SaveAsync();
+            _settingsService.NotifyAppearancePreviewNow();
+        }
+        finally
+        {
+            SuppressAppearanceNotifications = false;
+            _isRestoringDefaults = false;
+        }
+    }
+
     partial void OnAutoStartChanged(bool value)
     {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
         StartupService.SetEnabled(value);
         _settingsService.Settings.AutoStart = value;
         _settingsService.SaveDebounced();
@@ -327,12 +426,23 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     partial void OnDoubleClickToOpenChanged(bool value)
     {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
         _settingsService.Settings.DoubleClickToOpen = value;
         _settingsService.SaveDebounced();
     }
 
     partial void OnDefaultWidthChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(DefaultWidthInput));
+            return;
+        }
+
         if (double.IsNaN(value))
         {
             DefaultWidth = _settingsService.Settings.DefaultWidgetWidth;
@@ -357,6 +467,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     partial void OnDefaultHeightChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(DefaultHeightInput));
+            return;
+        }
+
         if (double.IsNaN(value))
         {
             DefaultHeight = _settingsService.Settings.DefaultWidgetHeight;
@@ -381,18 +497,36 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     partial void OnHideShortcutArrowOverlayChanged(bool value)
     {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
         _settingsService.Settings.HideShortcutArrowOverlay = value;
         _settingsService.SaveDebounced();
     }
 
     partial void OnShowListItemDetailsChanged(bool value)
     {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
         _settingsService.Settings.ShowListItemDetails = value;
         _settingsService.SaveDebounced();
     }
 
     partial void OnWidgetOpacityChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(WidgetOpacityValueText));
+            OnPropertyChanged(nameof(WidgetOpacityPercent));
+            OnPropertyChanged(nameof(WidgetOpacityPercentInput));
+            return;
+        }
+
         if (double.IsNaN(value))
         {
             WidgetOpacity = _settingsService.Settings.WidgetOpacity;
@@ -411,7 +545,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.Settings.WidgetOpacity = normalizedValue;
-        _settingsService.SaveDebounced();
+        SaveAppearanceChange();
         OnPropertyChanged(nameof(WidgetOpacityValueText));
         OnPropertyChanged(nameof(WidgetOpacityPercent));
         OnPropertyChanged(nameof(WidgetOpacityPercentInput));
@@ -419,6 +553,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     partial void OnIconSizeChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(IconSizeValueText));
+            OnPropertyChanged(nameof(IconSizeInput));
+            return;
+        }
+
         if (double.IsNaN(value))
         {
             IconSize = _settingsService.Settings.IconSize;
@@ -437,13 +578,20 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.Settings.IconSize = normalizedValue;
-        _settingsService.SaveDebounced();
+        SaveAppearanceChange();
         OnPropertyChanged(nameof(IconSizeValueText));
         OnPropertyChanged(nameof(IconSizeInput));
     }
 
     partial void OnTextSizeChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(TextSizeValueText));
+            OnPropertyChanged(nameof(TextSizeInput));
+            return;
+        }
+
         if (double.IsNaN(value))
         {
             TextSize = _settingsService.Settings.TextSize;
@@ -462,13 +610,21 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.Settings.TextSize = normalizedValue;
-        _settingsService.SaveDebounced();
+        SaveAppearanceChange();
         OnPropertyChanged(nameof(TextSizeValueText));
         OnPropertyChanged(nameof(TextSizeInput));
     }
 
     partial void OnLayoutDensityScaleChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(LayoutDensityValueText));
+            OnPropertyChanged(nameof(LayoutDensityPercent));
+            OnPropertyChanged(nameof(LayoutDensityPercentInput));
+            return;
+        }
+
         if (double.IsNaN(value))
         {
             LayoutDensityScale = _settingsService.Settings.LayoutDensityScale;
@@ -488,7 +644,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         _settingsService.Settings.LayoutDensityScale = normalizedValue;
         _settingsService.Settings.LayoutDensity = normalizedValue <= 0.78 ? "Compact" : "Comfortable";
-        _settingsService.SaveDebounced();
+        SaveAppearanceChange();
         OnPropertyChanged(nameof(LayoutDensityValueText));
         OnPropertyChanged(nameof(LayoutDensityPercent));
         OnPropertyChanged(nameof(LayoutDensityPercentInput));
@@ -496,6 +652,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     partial void OnHorizontalSpacingScaleChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(HorizontalSpacingValueText));
+            OnPropertyChanged(nameof(HorizontalSpacingPercent));
+            OnPropertyChanged(nameof(HorizontalSpacingPercentInput));
+            return;
+        }
+
         ApplySpacingScaleChange(
             value,
             _settingsService.Settings.HorizontalSpacingScale,
@@ -508,6 +672,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     partial void OnVerticalSpacingScaleChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(VerticalSpacingValueText));
+            OnPropertyChanged(nameof(VerticalSpacingPercent));
+            OnPropertyChanged(nameof(VerticalSpacingPercentInput));
+            return;
+        }
+
         ApplySpacingScaleChange(
             value,
             _settingsService.Settings.VerticalSpacingScale,
@@ -520,6 +692,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     partial void OnFileNameWidthScaleChanged(double value)
     {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(FileNameWidthValueText));
+            OnPropertyChanged(nameof(FileNameWidthPercent));
+            OnPropertyChanged(nameof(FileNameWidthPercentInput));
+            return;
+        }
+
         ApplySpacingScaleChange(
             value,
             _settingsService.Settings.FileNameWidthScale,
@@ -634,10 +814,21 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         setStoredValue(normalizedValue);
-        _settingsService.SaveDebounced();
+        SaveAppearanceChange();
         foreach (string propertyName in dependentPropertyNames)
         {
             OnPropertyChanged(propertyName);
         }
+    }
+
+    private void SaveAppearanceChange()
+    {
+        if (DeferAppearancePersistence)
+        {
+            _settingsService.RequestAppearancePreview();
+            return;
+        }
+
+        _settingsService.SaveDebounced(notifySubscribers: !SuppressAppearanceNotifications);
     }
 }

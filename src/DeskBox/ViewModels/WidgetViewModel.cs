@@ -374,9 +374,9 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         double verticalT = NormalizeScale(verticalScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
         double nameWidthT = NormalizeScale(fileNameWidthScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
 
-        double labelMaxWidth = Math.Max(iconSize + 18, Lerp(textSize * 5.7, textSize * 10.5, nameWidthT));
+        double labelMaxWidth = Math.Max(iconSize, Lerp(iconSize, textSize * 10.5, nameWidthT));
         IconLabelMaxWidth = labelMaxWidth;
-        IconTileWidth = Math.Max(iconSize + Lerp(14, 36, horizontalT), labelMaxWidth + Lerp(8, 16, horizontalT));
+        IconTileWidth = Math.Max(iconSize + Lerp(6, 28, horizontalT), labelMaxWidth + Lerp(4, 16, horizontalT));
         IconTileHeight = iconSize + Lerp(24, 70, verticalT);
         IconTileMargin = new Thickness(
             Lerp(0, 2, horizontalT),
@@ -463,6 +463,15 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
 
         _hideShortcutArrowOverlay = hideShortcutArrowOverlay;
         await RefreshShortcutIconsAsync();
+    }
+
+    public void ApplyAppearancePreview()
+    {
+        WidgetOpacity = Math.Clamp(
+            _settingsService.Settings.WidgetOpacity,
+            SettingsService.MinWidgetOpacity,
+            SettingsService.MaxWidgetOpacity);
+        ApplyLayoutSettings();
     }
 
     /// <summary>
@@ -621,6 +630,31 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
 
         await LoadFolderContentsAsync(MappedFolderPath!);
         ConfigureFolderWatchers(MappedFolderPath);
+        UpdateDependentProperties();
+    }
+
+    public async Task UpdateMappedFolderPathAsync(string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            return;
+        }
+
+        string normalizedPath = Path.GetFullPath(folderPath);
+        Directory.CreateDirectory(normalizedPath);
+
+        Config.WidgetKind = WidgetKind.File;
+        Config.IsDisabled = false;
+        Config.FollowsDefaultStoragePath = false;
+        Config.ManagedFolderName = null;
+        Config.MappedFolderPath = normalizedPath;
+        Config.Items.Clear();
+        MappedFolderPath = normalizedPath;
+        OnPropertyChanged(nameof(FollowsDefaultStoragePath));
+
+        _settingsService.UpdateWidget(Config);
+        await LoadFolderContentsAsync(normalizedPath);
+        ConfigureFolderWatchers(normalizedPath);
         UpdateDependentProperties();
     }
 

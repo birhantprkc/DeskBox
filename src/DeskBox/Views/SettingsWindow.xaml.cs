@@ -8,6 +8,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Shapes;
 using System.Runtime.InteropServices;
 using System.Text;
 using Windows.Storage.Pickers;
@@ -35,7 +37,9 @@ public sealed partial class SettingsWindow : Window
     private readonly SubclassProc _windowSubclassProc;
     private readonly List<Grid> _settingRows = [];
     private readonly List<Grid> _metricRows = [];
+    private readonly HashSet<Slider> _pressedAppearanceSliders = [];
     private bool _isSubclassInstalled;
+    private bool _isAppearanceSliderDragging;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -46,6 +50,14 @@ public sealed partial class SettingsWindow : Window
         InitializeComponent();
 
         SettingsRoot.DataContext = ViewModel;
+        SettingsRoot.AddHandler(
+            UIElement.PointerPressedEvent,
+            new PointerEventHandler(SettingsRoot_PointerPressedHandled),
+            handledEventsToo: true);
+        SettingsRoot.AddHandler(
+            UIElement.PointerReleasedEvent,
+            new PointerEventHandler(SettingsRoot_PointerReleasedHandled),
+            handledEventsToo: true);
         CollectResponsiveRows(SettingsRoot);
         SettingsRoot.Loaded += (_, _) =>
         {
@@ -226,6 +238,156 @@ public sealed partial class SettingsWindow : Window
         e.Handled = true;
     }
 
+    private void AppearanceSlider_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not Slider)
+        {
+            return;
+        }
+
+        BeginAppearanceSliderDrag();
+    }
+
+    private void AppearanceSlider_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        CommitAppearanceSliderDrag();
+    }
+
+    private void AppearanceSlider_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitAppearanceSliderDrag();
+    }
+
+    private void AppearanceSlider_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
+    {
+        BeginAppearanceSliderDrag();
+    }
+
+    private void AppearanceSlider_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    {
+        CommitAppearanceSliderDrag();
+    }
+
+    private void AppearanceSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (sender is Slider slider && slider.FocusState == FocusState.Pointer)
+        {
+            BeginAppearanceSliderDrag();
+            KeepSliderThumbExpanded(slider);
+        }
+    }
+
+    private void SettingsRoot_PointerPressedHandled(object sender, PointerRoutedEventArgs e)
+    {
+        if (TryFindAncestor<Slider>(e.OriginalSource as DependencyObject, out var slider))
+        {
+            BeginAppearanceSliderDrag();
+            _pressedAppearanceSliders.Add(slider);
+            KeepSliderThumbExpanded(slider);
+        }
+    }
+
+    private void SettingsRoot_PointerReleasedHandled(object sender, PointerRoutedEventArgs e)
+    {
+        CommitAppearanceSliderDrag();
+    }
+
+    private void BeginAppearanceSliderDrag()
+    {
+        _isAppearanceSliderDragging = true;
+        ViewModel.SuppressAppearanceNotifications = true;
+        ViewModel.DeferAppearancePersistence = true;
+    }
+
+    private void CommitAppearanceSliderDrag()
+    {
+        if (!_isAppearanceSliderDragging)
+        {
+            return;
+        }
+
+        _isAppearanceSliderDragging = false;
+        ViewModel.DeferAppearancePersistence = false;
+        ViewModel.SuppressAppearanceNotifications = false;
+        ResetPressedAppearanceSliders();
+        ViewModel.CommitAppearanceChanges();
+    }
+
+    private void KeepSliderThumbExpanded(Slider slider)
+    {
+        foreach (var ellipse in FindDescendants<Ellipse>(slider))
+        {
+            if (ellipse.Name != "SliderInnerThumb")
+            {
+                continue;
+            }
+
+            if (ellipse.RenderTransform is CompositeTransform transform)
+            {
+                transform.ScaleX = 1.167;
+                transform.ScaleY = 1.167;
+            }
+        }
+    }
+
+    private void ResetPressedAppearanceSliders()
+    {
+        foreach (var slider in _pressedAppearanceSliders.ToList())
+        {
+            foreach (var ellipse in FindDescendants<Ellipse>(slider))
+            {
+                if (ellipse.Name != "SliderInnerThumb")
+                {
+                    continue;
+                }
+
+                if (ellipse.RenderTransform is CompositeTransform transform)
+                {
+                    transform.ScaleX = 1.0;
+                    transform.ScaleY = 1.0;
+                }
+            }
+        }
+
+        _pressedAppearanceSliders.Clear();
+    }
+
+    private static bool TryFindAncestor<T>(DependencyObject? source, out T result) where T : DependencyObject
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is T typed)
+            {
+                result = typed;
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        result = null!;
+        return false;
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(parent);
+        for (int index = 0; index < childCount; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T typedChild)
+            {
+                yield return typedChild;
+            }
+
+            foreach (var nestedChild in FindDescendants<T>(child))
+            {
+                yield return nestedChild;
+            }
+        }
+    }
+
     private async void ChangeManagedStoragePathButton_Click(object sender, RoutedEventArgs e)
     {
         if (SettingsRoot.XamlRoot is null)
@@ -314,6 +476,40 @@ public sealed partial class SettingsWindow : Window
     private void OpenRepositoryButton_Click(object sender, RoutedEventArgs e)
     {
         Win32Helper.OpenFile(ViewModel.OpenSourceRepositoryUrl);
+    }
+
+    private void ShowOnboardingButton_Click(object sender, RoutedEventArgs e)
+    {
+        App.Current.ShowOnboarding();
+    }
+
+    private async void RestoreDefaultSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = "恢复默认设置",
+            PrimaryButtonText = "恢复",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = new TextBlock
+            {
+                Text = "将恢复外观、显示、交互和整理偏好。开机自启、默认收纳路径、已有组件和文件不会被修改。",
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        await ViewModel.RestoreDefaultPreferencesAsync();
     }
 
     private async void ShowProductReasonButton_Click(object sender, RoutedEventArgs e)

@@ -14,7 +14,7 @@ var
   ShouldInstallWindowsAppRuntime: Boolean;
   DependenciesPrepared: Boolean;
 
-function IsMajorVersionAtLeast(Value: string; RequiredMajor: Integer): Boolean;
+function IsMajorVersion(Value: string; ExpectedMajor: Integer): Boolean;
 var
   DotPosition: Integer;
   MajorText: string;
@@ -25,7 +25,7 @@ begin
   else
     MajorText := Value;
 
-  Result := StrToIntDef(MajorText, 0) >= RequiredMajor;
+  Result := StrToIntDef(MajorText, 0) = ExpectedMajor;
 end;
 
 function IsDotNet8RuntimeInstalled: Boolean;
@@ -39,7 +39,7 @@ begin
       repeat
         if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
         begin
-          if IsMajorVersionAtLeast(FindRec.Name, 8) then
+          if IsMajorVersion(FindRec.Name, 8) then
           begin
             Result := True;
             Exit;
@@ -59,7 +59,7 @@ begin
   Result :=
     Exec(
       ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      '-NoProfile -ExecutionPolicy Bypass -Command "if (Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2.1 -ErrorAction SilentlyContinue) { exit 0 } exit 1"',
+      '-NoProfile -ExecutionPolicy Bypass -Command "$pkg = Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2 -ErrorAction SilentlyContinue | Where-Object { $_.Architecture -eq ''X64'' -and [version]$_.Version -ge [version]''2.1.3.0'' } | Select-Object -First 1; if (-not $pkg) { $pkg = Get-AppxPackage -AllUsers -Name Microsoft.WindowsAppRuntime.2 -ErrorAction SilentlyContinue | Where-Object { $_.Architecture -eq ''X64'' -and [version]$_.Version -ge [version]''2.1.3.0'' } | Select-Object -First 1 }; if ($pkg) { exit 0 } exit 1"',
       '',
       SW_HIDE,
       ewWaitUntilTerminated,

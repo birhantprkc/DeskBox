@@ -38,6 +38,7 @@ public sealed class WidgetManager
     private readonly List<WidgetWindow> _retiredWindows = [];
     private bool _widgetsRaisedFromTray;
     private bool _isTogglingWidgetsDesktopLayer;
+    private bool _isApplyingAppearancePreview;
     private DateTime _lastTrayLayerToggleUtc = DateTime.MinValue;
 
     public IReadOnlyDictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> Widgets => _widgets;
@@ -72,6 +73,29 @@ public sealed class WidgetManager
         _themeService = themeService;
         _desktopPathProvider = desktopPathProvider;
         _recycleManagedFolderDeletes = recycleManagedFolderDeletes;
+        _settingsService.AppearancePreviewChanged += ApplyAppearancePreview;
+        _themeService.AppearanceChanged += ApplyAppearancePreview;
+    }
+
+    private void ApplyAppearancePreview()
+    {
+        if (_isApplyingAppearancePreview)
+        {
+            return;
+        }
+
+        _isApplyingAppearancePreview = true;
+        try
+        {
+            foreach (var (_, (window, _)) in _widgets.ToList())
+            {
+                window.ApplyAppearancePreview();
+            }
+        }
+        finally
+        {
+            _isApplyingAppearancePreview = false;
+        }
     }
 
     /// <summary>
@@ -186,12 +210,12 @@ public sealed class WidgetManager
     }
 
     /// <summary>
-    /// Toggle desktop widgets between the front of the normal Z-order and the desktop bottom layer.
+    /// Bring desktop widgets to the front of the normal Z-order from the tray.
     /// </summary>
-    public async Task<bool?> ToggleWidgetsDesktopLayerAsync()
+    public async Task<bool?> RaiseWidgetsFromTrayAsync()
     {
         var now = DateTime.UtcNow;
-        if (_isTogglingWidgetsDesktopLayer || now - _lastTrayLayerToggleUtc < TimeSpan.FromMilliseconds(450))
+        if (_isTogglingWidgetsDesktopLayer || now - _lastTrayLayerToggleUtc < TimeSpan.FromMilliseconds(320))
         {
             return null;
         }
@@ -200,17 +224,6 @@ public sealed class WidgetManager
         _lastTrayLayerToggleUtc = now;
         try
         {
-            if (_widgetsRaisedFromTray)
-            {
-                foreach (var (_, (window, _)) in _widgets.ToList())
-                {
-                    window.PushToBottom();
-                }
-
-                _widgetsRaisedFromTray = false;
-                return false;
-            }
-
             var windowsToRaise = new List<WidgetWindow>();
             foreach (var widget in _settingsService.Settings.Widgets
                          .Where(widget => widget.WidgetKind == WidgetKind.File && !widget.IsDisabled && !IsDeleted(widget.Id))
@@ -248,11 +261,21 @@ public sealed class WidgetManager
     {
         if (visible)
         {
+            var windowsToShow = new List<WidgetWindow>();
             foreach (var widget in _settingsService.Settings.Widgets
                          .Where(widget => widget.WidgetKind == WidgetKind.File && !widget.IsDisabled && !IsDeleted(widget.Id))
                          .ToList())
             {
-                await ShowWidgetAsync(widget.Id, reveal: false);
+                if (await ShowWidgetAsync(widget.Id, reveal: false) &&
+                    _widgets.TryGetValue(widget.Id, out var entry))
+                {
+                    windowsToShow.Add(entry.Window);
+                }
+            }
+
+            foreach (var window in windowsToShow)
+            {
+                window.PlayTrayShowAnimation();
             }
 
             return;
@@ -432,6 +455,9 @@ public sealed class WidgetManager
     /// </summary>
     public void CloseAll()
     {
+        _settingsService.AppearancePreviewChanged -= ApplyAppearancePreview;
+        _themeService.AppearanceChanged -= ApplyAppearancePreview;
+
         foreach (var (_, (window, viewModel)) in _widgets)
         {
             viewModel.Dispose();

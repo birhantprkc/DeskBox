@@ -81,15 +81,6 @@
                 <Setter Property="Opacity" Value="0.72" />
             </Style>
 
-            <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
-            <CornerRadius x:Key="SliderThumbCornerRadius">10</CornerRadius>
-            <x:Double x:Key="SliderInnerThumbWidth">12</x:Double>
-            <x:Double x:Key="SliderInnerThumbHeight">12</x:Double>
-            <x:Double x:Key="SliderHorizontalThumbWidth">18</x:Double>
-            <x:Double x:Key="SliderHorizontalThumbHeight">18</x:Double>
-            <x:Double x:Key="SliderVerticalThumbWidth">18</x:Double>
-            <x:Double x:Key="SliderVerticalThumbHeight">18</x:Double>
-
             <Style x:Key="InlineDropDownButtonStyle" TargetType="DropDownButton">
                 <Setter Property="MinWidth" Value="176" />
                 <Setter Property="MaxWidth" Value="260" />
@@ -114,7 +105,17 @@
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
 
-            <Style x:Key="InlineMetricSliderStyle" TargetType="Slider">
+            <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="SliderThumbBorderBrush" Color="Transparent" />
+            <CornerRadius x:Key="SliderThumbCornerRadius">8</CornerRadius>
+            <x:Double x:Key="SliderHorizontalThumbWidth">16</x:Double>
+            <x:Double x:Key="SliderHorizontalThumbHeight">16</x:Double>
+            <x:Double x:Key="SliderVerticalThumbWidth">16</x:Double>
+            <x:Double x:Key="SliderVerticalThumbHeight">16</x:Double>
+            <x:Double x:Key="SliderInnerThumbWidth">16</x:Double>
+            <x:Double x:Key="SliderInnerThumbHeight">16</x:Double>
+
+            <Style x:Key="InlineMetricSliderStyle" TargetType="Slider" BasedOn="{StaticResource DefaultSliderStyle}">
                 <Setter Property="MinWidth" Value="180" />
                 <Setter Property="VerticalAlignment" Value="Center" />
                 <Setter Property="IsThumbToolTipEnabled" Value="False" />
@@ -422,7 +423,14 @@
                                     Minimum="0"
                                     StepFrequency="0.02"
                                     Style="{StaticResource InlineMetricSliderStyle}"
-                                    Value="{Binding WidgetOpacity, Mode=TwoWay}" />
+                                    Value="{Binding WidgetOpacity, Mode=TwoWay}"
+                                    ManipulationMode="TranslateX"
+                                    ManipulationStarted="AppearanceSlider_ManipulationStarted"
+                                    ManipulationCompleted="AppearanceSlider_ManipulationCompleted"
+                                    ValueChanged="AppearanceSlider_ValueChanged"
+                                    PointerPressed="AppearanceSlider_PointerPressed"
+                                    PointerReleased="AppearanceSlider_PointerReleased"
+                                    LostFocus="AppearanceSlider_LostFocus" />
                                 <TextBox
                                     Grid.Column="2"
                                     GotFocus="EditableSettingsTextBox_GotFocus"
@@ -453,7 +461,14 @@
                                     Minimum="24"
                                     StepFrequency="2"
                                     Style="{StaticResource InlineMetricSliderStyle}"
-                                    Value="{Binding IconSize, Mode=TwoWay}" />
+                                    Value="{Binding IconSize, Mode=TwoWay}"
+                                    ManipulationMode="TranslateX"
+                                    ManipulationStarted="AppearanceSlider_ManipulationStarted"
+                                    ManipulationCompleted="AppearanceSlider_ManipulationCompleted"
+                                    ValueChanged="AppearanceSlider_ValueChanged"
+                                    PointerPressed="AppearanceSlider_PointerPressed"
+                                    PointerReleased="AppearanceSlider_PointerReleased"
+                                    LostFocus="AppearanceSlider_LostFocus" />
                                 <TextBox
                                     Grid.Column="2"
                                     GotFocus="EditableSettingsTextBox_GotFocus"
@@ -484,7 +499,14 @@
                                     Minimum="10"
                                     StepFrequency="0.5"
                                     Style="{StaticResource InlineMetricSliderStyle}"
-                                    Value="{Binding TextSize, Mode=TwoWay}" />
+                                    Value="{Binding TextSize, Mode=TwoWay}"
+                                    ManipulationMode="TranslateX"
+                                    ManipulationStarted="AppearanceSlider_ManipulationStarted"
+                                    ManipulationCompleted="AppearanceSlider_ManipulationCompleted"
+                                    ValueChanged="AppearanceSlider_ValueChanged"
+                                    PointerPressed="AppearanceSlider_PointerPressed"
+                                    PointerReleased="AppearanceSlider_PointerReleased"
+                                    LostFocus="AppearanceSlider_LostFocus" />
                                 <TextBox
                                     Grid.Column="2"
                                     GotFocus="EditableSettingsTextBox_GotFocus"
@@ -515,7 +537,14 @@
                                     Minimum="0"
                                     StepFrequency="0.02"
                                     Style="{StaticResource InlineMetricSliderStyle}"
-                                    Value="{Binding HorizontalSpacingScale, Mode=TwoWay}" />
+                                    Value="{Binding HorizontalSpacingScale, Mode=TwoWay}"
+                                    ManipulationMode="TranslateX"
+                                    ManipulationStarted="AppearanceSlider_ManipulationStarted"
+                                    ManipulationCompleted="AppearanceSlider_ManipulationCompleted"
+                                    ValueChanged="AppearanceSlider_ValueChanged"
+                                    PointerPressed="AppearanceSlider_PointerPressed"
+                                    PointerReleased="AppearanceSlider_PointerReleased"
+                                    LostFocus="AppearanceSlider_LostFocus" />
                                 <TextBox
                                     Grid.Column="2"
                                     GotFocus="EditableSettingsTextBox_GotFocus"
@@ -546,7 +575,14 @@
                                     Minimum="0"
                                     StepFrequency="0.02"
                                     Style="{StaticResource InlineMetricSliderStyle}"
-                                    Value="{Binding VerticalSpacingScale, Mode=TwoWay}" />
+                                    Value="{Binding VerticalSpacingScale, Mode=TwoWay}"
+                                    ManipulationMode="TranslateX"
+                                    ManipulationStarted="AppearanceSlider_ManipulationStarted"
+                                    ManipulationCompleted="AppearanceSlider_ManipulationCompleted"
+                                    ValueChanged="AppearanceSlider_ValueChanged"
+                                    PointerPressed="AppearanceSlider_PointerPressed"
+                                    PointerReleased="AppearanceSlider_PointerReleased"
+                                    LostFocus="AppearanceSlider_LostFocus" />
                                 <TextBox
                                     Grid.Column="2"
                                     GotFocus="EditableSettingsTextBox_GotFocus"
@@ -577,7 +613,14 @@
                                     Minimum="0"
                                     StepFrequency="0.02"
                                     Style="{StaticResource InlineMetricSliderStyle}"
-                                    Value="{Binding FileNameWidthScale, Mode=TwoWay}" />
+                                    Value="{Binding FileNameWidthScale, Mode=TwoWay}"
+                                    ManipulationMode="TranslateX"
+                                    ManipulationStarted="AppearanceSlider_ManipulationStarted"
+                                    ManipulationCompleted="AppearanceSlider_ManipulationCompleted"
+                                    ValueChanged="AppearanceSlider_ValueChanged"
+                                    PointerPressed="AppearanceSlider_PointerPressed"
+                                    PointerReleased="AppearanceSlider_PointerReleased"
+                                    LostFocus="AppearanceSlider_LostFocus" />
                                 <TextBox
                                     Grid.Column="2"
                                     GotFocus="EditableSettingsTextBox_GotFocus"
@@ -725,20 +768,68 @@
                 <StackPanel Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="系统" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
-                        <Grid Style="{StaticResource SettingRowStyle}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="开机自动启动" />
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="登录 Windows 后在后台启动 DeskBox" />
-                            </StackPanel>
-                            <ToggleSwitch
-                                Grid.Column="1"
-                                IsOn="{Binding AutoStart, Mode=TwoWay}"
-                                Style="{StaticResource SettingToggleSwitchStyle}" />
-                        </Grid>
+                        <StackPanel>
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="开机自动启动" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="登录 Windows 后在后台启动 DeskBox" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    Grid.Column="1"
+                                    IsOn="{Binding AutoStart, Mode=TwoWay}"
+                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="新手引导" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="重新查看收纳、映射、文件安全和托盘操作说明" />
+                                </StackPanel>
+                                <Button
+                                    Grid.Column="1"
+                                    Click="ShowOnboardingButton_Click"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    ToolTipService.ToolTip="打开 DeskBox 新手引导">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontSize="14" Glyph="&#xE82D;" />
+                                        <TextBlock Text="查看" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="恢复默认设置" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="恢复外观、显示和交互偏好，不会修改开机自启和收纳路径" />
+                                </StackPanel>
+                                <Button
+                                    Grid.Column="1"
+                                    Click="RestoreDefaultSettingsButton_Click"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    ToolTipService.ToolTip="恢复 DeskBox 默认偏好">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <SymbolIcon Symbol="Refresh" />
+                                        <TextBlock Text="恢复" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
                     </Border>
                 </StackPanel>
 

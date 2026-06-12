@@ -36,6 +36,7 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private Window? _trayWindow;
     private SettingsWindow? _settingsWindow;
+    private OnboardingWindow? _onboardingWindow;
     private bool _widgetsRaisedFromTray;
 
     public static new App Current => (App)Application.Current;
@@ -130,6 +131,11 @@ public partial class App : Application
                 !IsStartupMode)
             {
                 await WidgetManager.CreateManagedWidgetAsync("\u6211\u7684\u684C\u9762");
+            }
+
+            if (!IsStartupMode && !SettingsService.Settings.HasCompletedOnboarding)
+            {
+                ShowOnboarding();
             }
 
             Log("OnLaunched completed successfully");
@@ -323,7 +329,7 @@ public partial class App : Application
             {
                 if (WidgetManager is not null)
                 {
-                    _ = ToggleTrayWidgetLayerAsync();
+                    _ = RaiseTrayWidgetsAsync();
                 }
             })
         };
@@ -373,14 +379,14 @@ public partial class App : Application
         ThemeService.AppearanceChanged += UpdateTrayIconAppearance;
     }
 
-    private async Task ToggleTrayWidgetLayerAsync()
+    private async Task RaiseTrayWidgetsAsync()
     {
         if (WidgetManager is null)
         {
             return;
         }
 
-        bool? raised = await WidgetManager.ToggleWidgetsDesktopLayerAsync();
+        bool? raised = await WidgetManager.RaiseWidgetsFromTrayAsync();
         if (raised.HasValue)
         {
             UpdateTrayLayerStateText(raised.Value);
@@ -394,7 +400,7 @@ public partial class App : Application
         {
             _trayIcon.ToolTipText = raised
                 ? "DeskBox 桌面收纳 - 组件已临时置顶"
-                : "DeskBox 桌面收纳 - 组件在桌面底部";
+                : "DeskBox 桌面收纳 - 左键单击置顶组件";
         }
     }
 
@@ -486,6 +492,23 @@ public partial class App : Application
         }
 
         _settingsWindow.Activate();
+    }
+
+    public void ShowSettings()
+    {
+        OpenSettings();
+    }
+
+    public void ShowOnboarding()
+    {
+        if (_onboardingWindow is null)
+        {
+            _onboardingWindow = new OnboardingWindow(SettingsService);
+            _onboardingWindow.Closed += (_, _) => _onboardingWindow = null;
+            ThemeService.TrackWindow(_onboardingWindow);
+        }
+
+        _onboardingWindow.Activate();
     }
 
     private async void ExitApplication()
