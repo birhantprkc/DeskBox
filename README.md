@@ -20,11 +20,11 @@ DeskBox 是一个基于 WinUI 3 的 Windows 桌面整理工具。它可以创建
 ## 项目截图
 
 ### 浅色模式
-
+![DeskBox 浅色模式](docs/images/格子浅色.png)
 ![DeskBox 浅色模式](docs/images/light-mode.png)
 
 ### 暗色模式
-
+![DeskBox 暗色模式](docs/images/格子深色.png)
 ![DeskBox 暗色模式](docs/images/dark-mode.png)
 
 ### 外观设置
