@@ -1,148 +1,140 @@
 # DeskBox
 
+[中文](README.zh-CN.md) | English
+
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](#构建)
+[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#requirements)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](#build)
 
-DeskBox 是一个基于 WinUI 3 的 Windows 桌面整理工具。它可以创建轻量桌面组件，用于收纳文件、映射文件夹，并通过系统托盘快速管理组件。
+DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It lets you create native-feeling desktop widgets for collecting files, mapping folders, and temporarily bringing your desktop groups forward from the tray without replacing the Windows desktop shell.
 
-## 下载
+![DeskBox light mode](docs/images/light-mode.png)
 
-可以在 [Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
+## Download
 
-当前公开测试版本：
+Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-- [DeskBox_Setup_1.0.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.1/DeskBox_Setup_1.0.1_x64.exe)
+Current release:
 
-安装器会按需检测并下载 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。离线环境可先手动安装这两个运行时后再运行安装器。
+- [DeskBox_Setup_1.0.2_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.2/DeskBox_Setup_1.0.2_x64.exe)
 
-## 1.0.1 更新
+The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-- 新增 Windows 原生风格的新手引导，可在设置页再次打开。
-- 优化托盘唤起、桌面组件显示/隐藏动效，以及组件临时置前体验。
-- 优化设置页默认值、恢复默认设置、滑轨实时预览和显示密度调节。
-- 优化组件内拖拽、剪切、重命名、删除确认和键盘快捷键体验。
-- 修复安装器依赖检测，已安装 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64 时不会重复下载。
-- 优化安装器快捷方式图标，覆盖安装时保留用户设置和收纳文件。
+## What's New In 1.0.2
 
-完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+- Added full Chinese and English localization across widgets, settings, onboarding, tray menus, dialogs, notes, and status messages.
+- Reworked onboarding so users can set core options while learning the product, including move vs. copy behavior, the default storage path, folder mapping, and startup launch.
+- Improved the onboarding visuals and copy so every step has a clearer, matching animated scene.
+- Fixed startup launch behavior so DeskBox starts silently to the tray instead of opening Settings after reboot.
+- Improved broken shortcut handling by using the native Windows shortcut resolution/delete prompt.
+- Reworked widget show/hide animation to use a unified right-to-left motion with no per-widget cascade, reducing flicker and duplicated icon animations.
+- Improved tray behavior so "Show all widgets" from the right-click menu temporarily raises widgets just like left-clicking the tray icon.
+- Improved selection behavior, drag selection smoothness, mapped-folder refresh behavior, and light-mode text/background contrast.
 
-## 项目截图
+See the full [changelog](CHANGELOG.md).
 
-### 浅色模式
-![DeskBox 浅色模式](docs/images/格子浅色.png)
-![DeskBox 浅色模式](docs/images/light-mode.png)
+## Why DeskBox Exists
 
-### 暗色模式
-![DeskBox 暗色模式](docs/images/格子深色.png)
-![DeskBox 暗色模式](docs/images/dark-mode.png)
+Many desktop organization tools take over the desktop: they replace familiar interactions, rebuild file entry points, or become a second desktop shell. DeskBox takes a narrower approach. The Windows desktop stays the Windows desktop, and your files stay normal files. DeskBox only adds a clean layer for moving, copying, grouping, and viewing those files.
 
-### 外观设置
+The product is intentionally built around native Windows behavior. Widgets use WinUI 3, Windows App SDK, DWM corners, acrylic-style surfaces, and a tray-first workflow so the app feels like it belongs on Windows 11 instead of sitting on top of it.
 
-![DeskBox 外观设置](docs/images/appearance-settings.png)
+## Features
 
-### 显示密度
+- **Managed desktop widgets**: create file collection widgets backed by a real folder.
+- **Folder mapping**: display an existing folder as a desktop widget without moving its contents.
+- **Move or copy on drop**: choose whether managed widgets organize by moving files or by keeping originals and adding copies.
+- **Tray controls**: create widgets, map folders, show or hide all widgets, temporarily raise widgets, open Settings, toggle startup launch, and exit.
+- **Native file operations**: drag in, drag out, paste, cut, rename, delete, open, reveal in Explorer, and use keyboard shortcuts.
+- **Appearance controls**: tune theme, opacity, DWM corner style, icon size, text size, spacing, filename width, and list details.
+- **Safe cleanup prompts**: make widget deletion and managed-folder cleanup explicit so user files are not removed unexpectedly.
+- **First-run onboarding**: configure important defaults before using the app, then replay onboarding from Settings when needed.
 
-![DeskBox 显示密度](docs/images/display-density.png)
+## Screenshots
 
-### 收纳交互
+### Desktop Widgets
 
-![DeskBox 收纳交互](docs/images/storage-interaction.png)
+![DeskBox dark mode](docs/images/dark-mode.png)
 
-## 为什么做这个产品
+### Settings
 
-很多传统桌面管理工具会接管桌面：替换原来的桌面交互、重建一套文件入口，甚至让桌面变成另一个完整的管理容器。我不太想走这条路。DeskBox 的目标是尽可能保留 Windows 原生桌面的质感和行为，只在文件整理这件事上补一层更轻的自动化能力。
+![DeskBox settings](docs/images/PixPin_2026-06-12_18-18-39.png)
 
-所以 DeskBox 选择了“移动式整理”的思路：桌面仍然是桌面，文件仍然是普通文件，组件只是帮助你把文件移动、复制或映射到合适的位置。它不会试图成为一个新的桌面 Shell，也不会强迫你改变 Windows 原本的使用方式。
+### Onboarding
 
-界面层面我比较重视 WinUI 3 的设计一致性。项目中的设置页、桌面组件、对话交互和窗口质感都尽量围绕 Windows App SDK、WinUI 3、Mica、DWM 圆角等原生能力构建，目标是让它看起来像一个 Windows 应用，而不是套了一层桌面皮肤的网页工具。
+![DeskBox onboarding](docs/images/PixPin_2026-06-12_18-20-17.png)
 
-## 功能
+## Requirements
 
-- 新建组件：创建用于收纳文件的桌面组件，支持拖入、拖出、复制、剪切、删除、重命名等常用文件操作。
-- 新建文件夹映射：将已有文件夹映射为桌面组件，直接展示文件夹内容，不改变原文件位置。
-- 原生窗口质感：尽量使用 WinUI 3、Windows App SDK、Mica、DWM 圆角和系统托盘能力。
-- 组件外观调节：支持主题、透明度、圆角、图标大小、字号、显示密度和列表详情开关。
-- 系统托盘管理：支持新建组件、显示/隐藏组件、打开设置、开机启动和退出。
-- 文件安全提示：删除组件、清理收纳目录、卸载应用时尽量明确提示用户文件所在位置和影响范围。
+- Windows 11.
+- .NET 8 Runtime x64.
+- Windows App Runtime 2.1.3 x64.
 
-## 环境要求
+DeskBox is currently tested on Windows 11. Windows 10 may work in some environments, but it is not a validated target.
 
-- Windows 11。
-- .NET 8 Runtime x64。
-- Windows App Runtime 2.1.3 x64。
+For development, install the .NET 8 SDK. Visual Studio 2022 with Windows App SDK workload is recommended.
 
-目前项目只在 Windows 11 下测试过。Windows 10 或其他系统版本没有做完整验证，如果遇到兼容性问题，欢迎提交 Issue 或反馈复现路径。
+## Install And Uninstall
 
-开发环境需要 .NET 8 SDK。推荐使用安装了 Windows App SDK 工作负载的 Visual Studio 2022。
+The installer is built with Inno Setup. It preserves existing app settings, widget configuration, and managed storage content during overwrite installs.
 
-## 安装和卸载
+Startup launch is handled silently through the tray. If DeskBox is already running and Windows starts it again at login, the second startup instance exits without opening Settings.
 
-安装器基于 Inno Setup 构建，安装时会检测运行时依赖。若目标电脑缺少 .NET 8 Runtime x64 或 Windows App Runtime 2.1.3 x64，安装过程会显示运行环境准备页，并联网下载、静默安装缺失依赖。
+During uninstall, DeskBox stops the running app first. Managed storage content is not deleted silently; when cleanup may affect user files, the installer asks before removing anything.
 
-覆盖安装会保留现有应用设置、组件配置和收纳目录内容。安装器会刷新程序文件和快捷方式，但不会删除用户移动到收纳目录中的文件。
+## Build
 
-卸载时安装器会先停止正在运行的 DeskBox 进程。如果检测到默认收纳目录中仍有文件或文件夹，会在卸载前提示用户确认；卸载过程不会删除用户移动到收纳目录中的内容。
-
-## 构建
+Restore and build:
 
 ```powershell
 dotnet restore .\DeskBox.sln -p:Platform=x64 -p:RuntimeIdentifier=win-x64
 dotnet build .\src\DeskBox\DeskBox.csproj --configuration Debug --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
 ```
 
-应用输出目录：
+Run tests:
 
-```text
-src\DeskBox\bin\x64\Debug\net8.0-windows10.0.22621.0\win-x64
+```powershell
+dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
 ```
 
-构建 Release x64 输出并生成安装包：
+Create a Release x64 publish output and installer:
 
 ```powershell
 dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\x64 -v:minimal
 & 'C:\Program Files\Inno Setup 7\ISCC.exe' .\installer\DeskBox.iss
 ```
 
-安装脚本读取目录：
+Installer output:
 
 ```text
-artifacts\publish\DeskBox\x64
+Output\DeskBox_Setup_1.0.2_x64.exe
 ```
 
-## 测试
-
-```powershell
-dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
-```
-
-当前测试项目覆盖了核心文件转移、路径处理和收纳历史行为。删除、清理收纳目录这类涉及真实文件移动的逻辑，后续仍建议继续补充更多回归测试。
-
-## 项目结构
+## Project Structure
 
 ```text
-src\DeskBox                 WinUI 3 应用源码
-tests\DeskBox.Tests         核心服务测试
-installer                   Inno Setup 安装脚本
-docs\images                 README 截图资源
+src\DeskBox                 WinUI 3 app source
+tests\DeskBox.Tests         core service tests
+installer                   Inno Setup scripts
+docs\images                 README and release images
 ```
 
-## 数据位置
+## Data Locations
 
-- 应用设置保存在 `%LocalAppData%\DeskBox\data`。
-- 默认收纳路径为 `%UserProfile%\DeskBox`。
-- `bin`、`obj`、`Output`、`artifacts` 和 `TestResults` 等生成目录已被 Git 忽略。
+- Settings are stored under `%LocalAppData%\DeskBox\data`.
+- The default managed storage root is `%UserProfile%\DeskBox`.
+- Generated folders such as `bin`, `obj`, `Output`, `artifacts`, and `TestResults` are ignored by Git.
 
-## 反馈
+## Feedback
 
-这个项目目前仍处于早期公开版本。如果你遇到文件拖拽、系统运行时、窗口层级、卸载残留或不同 Windows 版本兼容性问题，欢迎通过 [Issues](https://github.com/Tianyu199509/DeskBox/issues) 提供复现路径。
+DeskBox is still an early public release. If you hit file drag/drop issues, runtime dependency problems, window layering bugs, uninstall edge cases, or Windows-version compatibility problems, please open an [issue](https://github.com/Tianyu199509/DeskBox/issues) with reproduction details.
 
-## 开发者
+## Author
 
-- 开发者：朱天雨
-- 开源仓库：<https://github.com/Tianyu199509/DeskBox>
+- Developer: Tianyu Zhu
+- Repository: <https://github.com/Tianyu199509/DeskBox>
 
-## 开源协议
+## License
 
-本项目使用 MIT 协议开源，详见 [LICENSE](LICENSE)。
+DeskBox is released under the [MIT License](LICENSE).

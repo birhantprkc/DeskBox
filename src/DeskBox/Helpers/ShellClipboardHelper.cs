@@ -83,14 +83,14 @@ public static class ShellClipboardHelper
         IntPtr handle = GlobalAlloc(GmemMoveable | GmemZeroinit, totalSize);
         if (handle == IntPtr.Zero)
         {
-            throw new InvalidOperationException("无法分配剪贴板数据。");
+            throw new InvalidOperationException(Localize("Widget.Error.ClipboardAllocate"));
         }
 
         IntPtr pointer = GlobalLock(handle);
         if (pointer == IntPtr.Zero)
         {
             GlobalFree(handle);
-            throw new InvalidOperationException("无法写入剪贴板数据。");
+            throw new InvalidOperationException(Localize("Widget.Error.ClipboardWrite"));
         }
 
         try
@@ -116,14 +116,14 @@ public static class ShellClipboardHelper
         IntPtr handle = GlobalAlloc(GmemMoveable | GmemZeroinit, sizeof(uint));
         if (handle == IntPtr.Zero)
         {
-            throw new InvalidOperationException("无法分配剪贴板数据。");
+            throw new InvalidOperationException(Localize("Widget.Error.ClipboardAllocate"));
         }
 
         IntPtr pointer = GlobalLock(handle);
         if (pointer == IntPtr.Zero)
         {
             GlobalFree(handle);
-            throw new InvalidOperationException("无法写入剪贴板数据。");
+            throw new InvalidOperationException(Localize("Widget.Error.ClipboardWrite"));
         }
 
         try
@@ -136,6 +136,18 @@ public static class ShellClipboardHelper
         }
 
         return handle;
+    }
+
+    private static string Localize(string key)
+    {
+        try
+        {
+            return global::DeskBox.App.Current?.LocalizationService?.T(key) ?? key;
+        }
+        catch
+        {
+            return key;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

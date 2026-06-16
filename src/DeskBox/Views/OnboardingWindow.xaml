@@ -3,17 +3,18 @@
     x:Class="DeskBox.Views.OnboardingWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:svc="using:DeskBox.Services"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="DeskBox 新手引导">
+    Title="DeskBox Onboarding">
 
     <Grid
         x:Name="RootGrid"
         MinWidth="720"
         MinHeight="520"
         Padding="48"
-        Background="Transparent">
+        Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -44,13 +45,14 @@
                         x:Name="StepEyebrowText"
                         FontSize="13"
                         Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                        Text="欢迎" />
+                        svc:Localized.Key="Onboarding.Step1.Eyebrow" />
                     <TextBlock
                         x:Name="StepTitleText"
                         FontSize="34"
                         FontWeight="SemiBold"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                         LineHeight="40"
-                        Text="把桌面整理留给格子"
+                        svc:Localized.Key="Onboarding.Step1.Title"
                         TextWrapping="Wrap" />
                     <TextBlock
                         x:Name="StepBodyText"
@@ -58,13 +60,18 @@
                         FontSize="15"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         LineHeight="24"
-                        Text="DeskBox 不接管桌面，只在 Windows 原生桌面上增加一层轻量整理能力。"
+                        svc:Localized.Key="Onboarding.Step1.Body"
                         TextWrapping="WrapWholeWords" />
                 </StackPanel>
 
                 <StackPanel
                     x:Name="StepHintPanel"
                     Spacing="8" />
+
+                <StackPanel
+                    x:Name="StepOptionPanel"
+                    Margin="0,4,0,0"
+                    Spacing="10" />
             </StackPanel>
 
             <Grid
@@ -77,113 +84,17 @@
                     Height="250"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8">
                     <Grid>
-                        <Grid
-                            x:Name="DemoWindow"
-                            Width="220"
-                            Height="136"
-                            Margin="34,32,0,0"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Top"
-                            Opacity="0.92">
-                            <Border
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="7" />
-                            <StackPanel Margin="14" Spacing="8">
-                                <Border Width="120" Height="8" HorizontalAlignment="Left" Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="4" />
-                                <Border Width="170" Height="8" HorizontalAlignment="Left" Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="4" />
-                                <Border Width="96" Height="8" HorizontalAlignment="Left" Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="4" />
-                            </StackPanel>
-                        </Grid>
-
-                        <Border
-                            x:Name="DemoWidget"
-                            Width="178"
-                            Height="152"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Bottom"
-                            Margin="0,0,26,24"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="10"
-                            RenderTransformOrigin="0.5,0.5">
-                            <Border.RenderTransform>
-                                <CompositeTransform x:Name="DemoWidgetTransform" />
-                            </Border.RenderTransform>
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="36" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-                                <Grid Padding="12,0">
-                                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
-                                        <FontIcon
-                                            x:Name="DemoWidgetIcon"
-                                            FontSize="15"
-                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                            Glyph="&#xE8B7;" />
-                                        <TextBlock
-                                            x:Name="DemoWidgetTitle"
-                                            VerticalAlignment="Center"
-                                            FontSize="13"
-                                            Text="我的桌面" />
-                                    </StackPanel>
-                                </Grid>
-                                <Grid Grid.Row="1" Padding="14,8,14,12">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="*" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel x:Name="DemoFileOne" Grid.Row="0" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5">
-                                            <FontIcon FontSize="23" Glyph="&#xE8A5;" />
-                                            <Border Width="34" Height="5" Background="{ThemeResource TextFillColorTertiaryBrush}" CornerRadius="3" />
-                                        </StackPanel>
-                                    <StackPanel x:Name="DemoFileTwo" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5">
-                                            <FontIcon FontSize="23" Glyph="&#xE8B7;" />
-                                            <Border Width="34" Height="5" Background="{ThemeResource TextFillColorTertiaryBrush}" CornerRadius="3" />
-                                        </StackPanel>
-                                    <StackPanel x:Name="DemoFileThree" Grid.Row="0" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5">
-                                            <FontIcon FontSize="23" Glyph="&#xE7C3;" />
-                                            <Border Width="34" Height="5" Background="{ThemeResource TextFillColorTertiaryBrush}" CornerRadius="3" />
-                                        </StackPanel>
-                                </Grid>
-                            </Grid>
-                        </Border>
-
-                        <Border
-                            x:Name="DemoMovingFile"
-                            Width="48"
-                            Height="56"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Bottom"
-                            Margin="42,0,0,34"
-                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Opacity="0">
-                            <Border.RenderTransform>
-                                <CompositeTransform x:Name="DemoMovingFileTransform" />
-                            </Border.RenderTransform>
-                            <FontIcon
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                FontSize="24"
-                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                Glyph="&#xE8A5;" />
-                        </Border>
+                        <Canvas
+                            x:Name="DemoScene"
+                            Width="320"
+                            Height="250"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch" />
                     </Grid>
                 </Border>
             </Grid>
@@ -205,18 +116,18 @@
                     x:Name="SkipButton"
                     MinWidth="88"
                     Click="SkipButton_Click"
-                    Content="跳过" />
+                    svc:Localized.Key="Onboarding.Skip" />
                 <Button
                     x:Name="BackButton"
                     MinWidth="88"
                     Click="BackButton_Click"
-                    Content="上一步" />
+                    svc:Localized.Key="Onboarding.Back" />
                 <Button
                     x:Name="NextButton"
                     MinWidth="96"
                     Click="NextButton_Click"
                     Style="{ThemeResource AccentButtonStyle}"
-                    Content="下一步" />
+                    svc:Localized.Key="Onboarding.Next" />
             </StackPanel>
         </Grid>
     </Grid>

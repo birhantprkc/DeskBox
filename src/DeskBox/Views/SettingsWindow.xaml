@@ -3,10 +3,11 @@
     x:Class="DeskBox.Views.SettingsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:svc="using:DeskBox.Services"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="DeskBox 设置">
+    Title="DeskBox Settings">
 
     <Grid
         x:Name="SettingsRoot"
@@ -180,7 +181,7 @@
                     VerticalAlignment="Center"
                     FontSize="13"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="设置" />
+                    svc:Localized.Key="Settings.Title" />
             </StackPanel>
         </Grid>
 
@@ -205,7 +206,7 @@
                 HorizontalAlignment="Center"
                 Spacing="24">
                 <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="外观" />
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Appearance" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -214,8 +215,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="应用主题" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="跟随系统，或固定浅色/深色" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Theme.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Theme.Description" />
                                 </StackPanel>
                                 <DropDownButton
                                     x:Name="ThemeDropDownButton"
@@ -223,7 +224,7 @@
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
                                     Click="SettingsDropDownButton_Click"
-                                    Content="{Binding SelectedTheme}"
+                                    Content="{Binding SelectedThemeText}"
                                     Style="{StaticResource InlineDropDownButtonStyle}"
                                     Tag="Theme" />
                             </Grid>
@@ -236,8 +237,30 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="使用 Windows 主题色" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="开启后使用 Windows 当前强调色" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Language.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Language.Description" />
+                                </StackPanel>
+                                <DropDownButton
+                                    x:Name="LanguageDropDownButton"
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Click="SettingsDropDownButton_Click"
+                                    Content="{Binding SelectedLanguageText}"
+                                    Style="{StaticResource InlineDropDownButtonStyle}"
+                                    Tag="Language" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.SystemAccent.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.SystemAccent.Description" />
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
@@ -253,7 +276,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="主题色" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Accent.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding AccentColorDescription}" />
                                 </StackPanel>
                                 <StackPanel
@@ -267,7 +290,7 @@
                                         Click="AccentColorButton_Click"
                                         IsEnabled="{Binding CanEditCustomAccent}"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        ToolTipService.ToolTip="选择自定义主题色">
+                                        svc:Localized.ToolTipKey="Settings.Accent.Tooltip">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <Border
                                                 Width="16"
@@ -334,7 +357,7 @@
                 </StackPanel>
 
                 <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="组件默认值" />
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.WidgetDefaults" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -343,8 +366,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="默认宽度" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建组件时使用，单位为像素" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DefaultWidth.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.DefaultWidth.Description" />
                                 </StackPanel>
                                 <TextBox
                                     Grid.Column="1"
@@ -363,8 +386,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="默认高度" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建组件时使用，单位为像素" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DefaultHeight.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.DefaultHeight.Description" />
                                 </StackPanel>
                                 <TextBox
                                     Grid.Column="1"
@@ -379,7 +402,7 @@
                 </StackPanel>
 
                 <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="显示密度" />
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.DisplayDensity" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -388,8 +411,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="组件圆角" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="控制桌面组件窗口的原生 DWM 圆角" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Corner.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Corner.Description" />
                                 </StackPanel>
                                 <DropDownButton
                                     x:Name="WidgetCornerDropDownButton"
@@ -397,7 +420,7 @@
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
                                     Click="SettingsDropDownButton_Click"
-                                    Content="{Binding SelectedWidgetCornerPreference}"
+                                    Content="{Binding SelectedWidgetCornerPreferenceText}"
                                     Style="{StaticResource InlineDropDownButtonStyle}"
                                     Tag="WidgetCorner" />
                             </Grid>
@@ -414,7 +437,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="背景透明度" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Opacity.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding WidgetOpacityValueText}" />
                                 </StackPanel>
                                 <Slider
@@ -452,7 +475,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="图标大小" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.IconSize.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding IconSizeValueText}" />
                                 </StackPanel>
                                 <Slider
@@ -490,7 +513,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="文字大小" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.TextSize.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding TextSizeValueText}" />
                                 </StackPanel>
                                 <Slider
@@ -528,7 +551,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="横向间距" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.HorizontalSpacing.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding HorizontalSpacingValueText}" />
                                 </StackPanel>
                                 <Slider
@@ -566,7 +589,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="纵向间距" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.VerticalSpacing.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding VerticalSpacingValueText}" />
                                 </StackPanel>
                                 <Slider
@@ -604,7 +627,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="文件名宽度" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.FileNameWidth.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding FileNameWidthValueText}" />
                                 </StackPanel>
                                 <Slider
@@ -634,7 +657,7 @@
                 </StackPanel>
 
                 <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="收纳" />
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Storage" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -643,8 +666,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="拖入后的处理方式" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="移动用于整理桌面，复制会保留原文件" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DropAction.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.DropAction.Description" />
                                 </StackPanel>
                                 <DropDownButton
                                     x:Name="ManagedDropActionDropDownButton"
@@ -652,7 +675,7 @@
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
                                     Click="SettingsDropDownButton_Click"
-                                    Content="{Binding SelectedManagedDropAction}"
+                                    Content="{Binding SelectedManagedDropActionText}"
                                     Style="{StaticResource InlineDropDownButtonStyle}"
                                     Tag="ManagedDropAction" />
                             </Grid>
@@ -661,8 +684,8 @@
 
                             <StackPanel Padding="16,14" Spacing="12">
                                 <StackPanel Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="默认收纳路径" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="新建收纳组件会在这里创建独立文件夹" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.ManagedPath.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ManagedPath.Description" />
                                 </StackPanel>
                                 <TextBox
                                     IsReadOnly="True"
@@ -677,30 +700,30 @@
                                         x:Name="OpenPathButton"
                                         Click="OpenManagedStoragePathButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        ToolTipService.ToolTip="在文件资源管理器中打开默认收纳路径">
+                                        svc:Localized.ToolTipKey="Settings.ManagedPath.OpenTooltip">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <SymbolIcon Symbol="OpenFile" />
-                                            <TextBlock Text="打开" />
+                                            <TextBlock svc:Localized.Key="Common.Open" />
                                         </StackPanel>
                                     </Button>
                                     <Button
                                         x:Name="ChangePathButton"
                                         Click="ChangeManagedStoragePathButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        ToolTipService.ToolTip="选择新的默认收纳路径">
+                                        svc:Localized.ToolTipKey="Settings.ManagedPath.ChangeTooltip">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <SymbolIcon Symbol="Folder" />
-                                            <TextBlock Text="更改" />
+                                            <TextBlock svc:Localized.Key="Common.Change" />
                                         </StackPanel>
                                     </Button>
                                     <Button
                                         x:Name="CleanupStorageButton"
                                         Click="CleanupManagedStorageButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        ToolTipService.ToolTip="清理不再属于现有组件的收纳文件夹">
+                                        svc:Localized.ToolTipKey="Settings.ManagedPath.CleanupTooltip">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <SymbolIcon Symbol="Delete" />
-                                            <TextBlock Text="清理" />
+                                            <TextBlock svc:Localized.Key="Common.Cleanup" />
                                         </StackPanel>
                                     </Button>
                                 </StackPanel>
@@ -710,7 +733,7 @@
                 </StackPanel>
 
                 <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="交互" />
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Interaction" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -719,8 +742,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="双击打开项目" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="关闭后单击即可打开" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DoubleClick.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.DoubleClick.Description" />
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
@@ -736,8 +759,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="隐藏快捷方式小箭头" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="只影响 DeskBox 组件内的图标显示" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.HideShortcutArrow.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.HideShortcutArrow.Description" />
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
@@ -753,8 +776,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="列表详细信息" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="列表模式下显示大小、时间或文件夹项目数量" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.ListDetails.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ListDetails.Description" />
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
@@ -766,7 +789,7 @@
                 </StackPanel>
 
                 <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="系统" />
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.System" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -775,8 +798,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="开机自动启动" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="登录 Windows 后在后台启动 DeskBox" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.AutoStart.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.AutoStart.Description" />
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
@@ -792,17 +815,17 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="新手引导" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="重新查看收纳、映射、文件安全和托盘操作说明" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Onboarding.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Onboarding.Description" />
                                 </StackPanel>
                                 <Button
                                     Grid.Column="1"
                                     Click="ShowOnboardingButton_Click"
                                     Style="{StaticResource ActionButtonStyle}"
-                                    ToolTipService.ToolTip="打开 DeskBox 新手引导">
+                                    svc:Localized.ToolTipKey="Settings.Onboarding.Tooltip">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <FontIcon FontSize="14" Glyph="&#xE82D;" />
-                                        <TextBlock Text="查看" />
+                                        <TextBlock svc:Localized.Key="Common.View" />
                                     </StackPanel>
                                 </Button>
                             </Grid>
@@ -815,17 +838,17 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="恢复默认设置" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="恢复外观、显示和交互偏好，不会修改开机自启和收纳路径" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Restore.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Restore.Description" />
                                 </StackPanel>
                                 <Button
                                     Grid.Column="1"
                                     Click="RestoreDefaultSettingsButton_Click"
                                     Style="{StaticResource ActionButtonStyle}"
-                                    ToolTipService.ToolTip="恢复 DeskBox 默认偏好">
+                                    svc:Localized.ToolTipKey="Settings.Restore.Tooltip">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <SymbolIcon Symbol="Refresh" />
-                                        <TextBlock Text="恢复" />
+                                        <TextBlock svc:Localized.Key="Common.Restore" />
                                     </StackPanel>
                                 </Button>
                             </Grid>
@@ -834,7 +857,7 @@
                 </StackPanel>
 
                 <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="关于" />
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.About" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -844,7 +867,7 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="DeskBox" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="桌面收纳与整理工具" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.About.Description" />
                                 </StackPanel>
                                 <TextBlock
                                     Grid.Column="1"
@@ -859,17 +882,17 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="为什么做 DeskBox" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="了解产品的设计取向和边界" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.About.ReasonTitle" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.About.Description" />
                                 </StackPanel>
                                 <Button
                                     Grid.Column="1"
                                     Click="ShowProductReasonButton_Click"
                                     Style="{StaticResource ActionButtonStyle}"
-                                    ToolTipService.ToolTip="查看 DeskBox 的设计理念">
+                                    svc:Localized.ToolTipKey="Settings.About.ReasonTitle">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <FontIcon FontSize="14" Glyph="&#xE946;" />
-                                        <TextBlock Text="查看" />
+                                        <TextBlock svc:Localized.Key="Common.View" />
                                     </StackPanel>
                                 </Button>
                             </Grid>
@@ -882,7 +905,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="开源仓库" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.About.Repository" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding OpenSourceRepositoryDisplayText}" />
                                 </StackPanel>
                                 <Button
@@ -892,7 +915,7 @@
                                     ToolTipService.ToolTip="{Binding OpenSourceRepositoryUrl}">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <SymbolIcon Symbol="OpenFile" />
-                                        <TextBlock Text="打开" />
+                                        <TextBlock svc:Localized.Key="Common.Open" />
                                     </StackPanel>
                                 </Button>
                             </Grid>

@@ -1,7 +1,9 @@
 using DeskBox.Models;
 using DeskBox.ViewModels;
 using DeskBox.Views;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml.Media.Animation;
 
 namespace DeskBox.Services;
 
@@ -31,6 +33,7 @@ public sealed class WidgetManager
     private readonly FileService _fileService;
     private readonly OrganizerService _organizerService;
     private readonly ThemeService _themeService;
+    private readonly LocalizationService _localizationService;
     private readonly Func<string> _desktopPathProvider;
     private readonly bool _recycleManagedFolderDeletes;
     private readonly Dictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> _widgets = new();
@@ -39,6 +42,8 @@ public sealed class WidgetManager
     private bool _widgetsRaisedFromTray;
     private bool _isTogglingWidgetsDesktopLayer;
     private bool _isApplyingAppearancePreview;
+    private DispatcherQueueTimer? _bulkTrayAnimationTimer;
+    private long _bulkTrayAnimationGeneration;
     private DateTime _lastTrayLayerToggleUtc = DateTime.MinValue;
 
     public IReadOnlyDictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> Widgets => _widgets;
@@ -48,12 +53,18 @@ public sealed class WidgetManager
     public event Action<WidgetWindow>? WidgetCreated;
     public event Action<string>? WidgetRemoved;
 
-    public WidgetManager(SettingsService settingsService, FileService fileService, OrganizerService organizerService, ThemeService themeService)
+    public WidgetManager(
+        SettingsService settingsService,
+        FileService fileService,
+        OrganizerService organizerService,
+        ThemeService themeService,
+        LocalizationService? localizationService = null)
         : this(
             settingsService,
             fileService,
             organizerService,
             themeService,
+            localizationService ?? new LocalizationService(settingsService),
             () => Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
             recycleManagedFolderDeletes: true)
     {
@@ -66,11 +77,31 @@ public sealed class WidgetManager
         ThemeService themeService,
         Func<string> desktopPathProvider,
         bool recycleManagedFolderDeletes)
+        : this(
+            settingsService,
+            fileService,
+            organizerService,
+            themeService,
+            null,
+            desktopPathProvider,
+            recycleManagedFolderDeletes)
+    {
+    }
+
+    internal WidgetManager(
+        SettingsService settingsService,
+        FileService fileService,
+        OrganizerService organizerService,
+        ThemeService themeService,
+        LocalizationService? localizationService,
+        Func<string> desktopPathProvider,
+        bool recycleManagedFolderDeletes)
     {
         _settingsService = settingsService;
         _fileService = fileService;
         _organizerService = organizerService;
         _themeService = themeService;
+        _localizationService = localizationService ?? new LocalizationService(settingsService);
         _desktopPathProvider = desktopPathProvider;
         _recycleManagedFolderDeletes = recycleManagedFolderDeletes;
         _settingsService.AppearancePreviewChanged += ApplyAppearancePreview;
@@ -125,8 +156,11 @@ public sealed class WidgetManager
     /// <summary>
     /// Create a new widget backed by the default managed storage root.
     /// </summary>
-    public async Task<WidgetWindow> CreateManagedWidgetAsync(string name = "新建收纳组件")
+    public async Task<WidgetWindow> CreateManagedWidgetAsync(string? name = null)
     {
+        name = string.IsNullOrWhiteSpace(name)
+            ? _localizationService.T("Widget.DefaultName")
+            : name;
         string managedFolderName = CreateManagedFolderName(name);
         string folderPath = BuildManagedFolderPath(managedFolderName);
         Directory.CreateDirectory(folderPath);
@@ -193,17 +227,22 @@ public sealed class WidgetManager
             }
             else
             {
-                entry.Window.Activate();
-                entry.Window.PushToBottom();
+                entry.Window.PrepareTrayShowAnimation();
+                entry.Window.ShowPreparedAtDesktopLayer();
             }
 
             return true;
         }
 
-        var window = await CreateWidgetFromConfigAsync(config);
+        var window = await CreateWidgetFromConfigAsync(config, keepPreparedForAnimation: !reveal);
         if (reveal)
         {
             window.RevealFromTray(autoRestoreOnReveal);
+        }
+        else
+        {
+            window.PrepareTrayShowAnimation();
+            window.ShowPreparedAtDesktopLayer();
         }
 
         return true;
@@ -229,22 +268,21 @@ public sealed class WidgetManager
                          .Where(widget => widget.WidgetKind == WidgetKind.File && !widget.IsDisabled && !IsDeleted(widget.Id))
                          .ToList())
             {
-                if (!await ShowWidgetAsync(widget.Id, reveal: false))
+                var window = await PrepareWidgetForBatchShowAsync(widget);
+                if (window is null)
                 {
                     continue;
                 }
 
-                if (_widgets.TryGetValue(widget.Id, out var entry))
-                {
-                    windowsToRaise.Add(entry.Window);
-                }
+                windowsToRaise.Add(window);
             }
 
             foreach (var window in windowsToRaise)
             {
-                window.RaiseTemporarilyFromTray();
+                window.ShowPreparedRaisedFromTray();
             }
 
+            PlayPreparedTrayShowAnimations(windowsToRaise);
             _widgetsRaisedFromTray = windowsToRaise.Count > 0;
             return _widgetsRaisedFromTray;
         }
@@ -266,25 +304,30 @@ public sealed class WidgetManager
                          .Where(widget => widget.WidgetKind == WidgetKind.File && !widget.IsDisabled && !IsDeleted(widget.Id))
                          .ToList())
             {
-                if (await ShowWidgetAsync(widget.Id, reveal: false) &&
-                    _widgets.TryGetValue(widget.Id, out var entry))
+                var window = await PrepareWidgetForBatchShowAsync(widget);
+                if (window is null)
                 {
-                    windowsToShow.Add(entry.Window);
+                    continue;
                 }
+
+                windowsToShow.Add(window);
             }
 
             foreach (var window in windowsToShow)
             {
-                window.PlayTrayShowAnimation();
+                window.ShowPreparedAtDesktopLayer();
             }
 
+            PlayPreparedTrayShowAnimations(windowsToShow);
             return;
         }
 
-        foreach (var (_, (window, _)) in _widgets.ToList())
-        {
-            window.HideWindow();
-        }
+        var windowsToHide = _widgets.Values
+            .Select(entry => entry.Window)
+            .Where(window => window.PrepareTrayHideAnimation())
+            .ToList();
+
+        PlayPreparedTrayHideAnimations(windowsToHide);
 
         _widgetsRaisedFromTray = false;
     }
@@ -320,6 +363,139 @@ public sealed class WidgetManager
     public void RemoveWidget(string widgetId)
     {
         _ = RemoveWidgetAsync(widgetId);
+    }
+
+    public void ClearSelectionsExcept(string activeWidgetId)
+    {
+        foreach (var (widgetId, (window, _)) in _widgets.ToList())
+        {
+            if (string.Equals(widgetId, activeWidgetId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            window.ClearItemSelection();
+        }
+    }
+
+    private async Task<WidgetWindow?> PrepareWidgetForBatchShowAsync(WidgetConfig config)
+    {
+        if (IsDeleted(config.Id) ||
+            config.WidgetKind != WidgetKind.File ||
+            config.IsDisabled)
+        {
+            return null;
+        }
+
+        if (_widgets.TryGetValue(config.Id, out var existing))
+        {
+            existing.Window.PrepareTrayShowAnimation();
+            return existing.Window;
+        }
+
+        var window = await CreateWidgetFromConfigAsync(config, keepPreparedForAnimation: true);
+        window.PrepareTrayShowAnimation();
+        return window;
+    }
+
+    private void PlayPreparedTrayShowAnimations(IReadOnlyList<WidgetWindow> windows)
+    {
+        PlayPreparedTrayAnimations(
+            windows,
+            WidgetWindow.WidgetSlideOffsetX,
+            0,
+            WidgetWindow.WidgetShowAnimationMs,
+            EasingMode.EaseOut,
+            window => window.CompleteTrayShowWithoutAnimation());
+    }
+
+    private void PlayPreparedTrayHideAnimations(IReadOnlyList<WidgetWindow> windows)
+    {
+        PlayPreparedTrayAnimations(
+            windows,
+            0,
+            WidgetWindow.WidgetSlideOffsetX,
+            WidgetWindow.WidgetHideAnimationMs,
+            EasingMode.EaseIn,
+            window => window.CompleteTrayHideAnimation());
+    }
+
+    private void PlayPreparedTrayAnimations(
+        IReadOnlyList<WidgetWindow> windows,
+        double from,
+        double to,
+        int durationMs,
+        EasingMode easingMode,
+        Action<WidgetWindow> completed)
+    {
+        StopBulkTrayAnimation();
+
+        if (windows.Count == 0)
+        {
+            return;
+        }
+
+        var animationWindows = windows.ToList();
+        long animationGeneration = _bulkTrayAnimationGeneration;
+        foreach (var window in animationWindows)
+        {
+            window.ApplyPreparedTrayAnimationOffset(from);
+        }
+
+        var startTime = DateTime.UtcNow;
+        _bulkTrayAnimationTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _bulkTrayAnimationTimer.Interval = TimeSpan.FromMilliseconds(WidgetWindow.WindowAnimationFrameMs);
+        _bulkTrayAnimationTimer.Tick += (_, _) =>
+        {
+            if (animationGeneration != _bulkTrayAnimationGeneration)
+            {
+                StopBulkTrayAnimation();
+                return;
+            }
+
+            double elapsedMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            double progress = Math.Clamp(elapsedMs / Math.Max(1, durationMs), 0.0, 1.0);
+            double easedProgress = EaseCubic(progress, easingMode);
+            double offsetX = from + ((to - from) * easedProgress);
+
+            foreach (var window in animationWindows)
+            {
+                window.ApplyPreparedTrayAnimationOffset(offsetX);
+            }
+
+            if (progress < 1.0)
+            {
+                return;
+            }
+
+            StopBulkTrayAnimation();
+            foreach (var window in animationWindows)
+            {
+                window.ApplyPreparedTrayAnimationOffset(to);
+                completed(window);
+            }
+        };
+        _bulkTrayAnimationTimer.Start();
+    }
+
+    private void StopBulkTrayAnimation()
+    {
+        _bulkTrayAnimationTimer?.Stop();
+        _bulkTrayAnimationTimer = null;
+        _bulkTrayAnimationGeneration++;
+    }
+
+    private static double EaseCubic(double progress, EasingMode easingMode)
+    {
+        progress = Math.Clamp(progress, 0.0, 1.0);
+        return easingMode switch
+        {
+            EasingMode.EaseIn => progress * progress * progress,
+            EasingMode.EaseOut => 1 - Math.Pow(1 - progress, 3),
+            EasingMode.EaseInOut when progress < 0.5 => 4 * progress * progress * progress,
+            EasingMode.EaseInOut => 1 - Math.Pow(-2 * progress + 2, 3) / 2,
+            _ => progress
+        };
     }
 
     public bool CanCleanupManagedStorageForWidget(string widgetId)
@@ -455,6 +631,7 @@ public sealed class WidgetManager
     /// </summary>
     public void CloseAll()
     {
+        StopBulkTrayAnimation();
         _settingsService.AppearancePreviewChanged -= ApplyAppearancePreview;
         _themeService.AppearanceChanged -= ApplyAppearancePreview;
 
@@ -590,7 +767,7 @@ public sealed class WidgetManager
 
         if (!config.FollowsDefaultStoragePath || !IsDefaultManagedStorageFolder(config.MappedFolderPath))
         {
-            throw new InvalidOperationException("只有默认收纳路径下的收纳组件可以同步处理文件夹。");
+            throw new InvalidOperationException(_localizationService.T("Widget.Error.ManagedFolderActionOnlyDefault"));
         }
 
         string folderPath = Path.GetFullPath(config.MappedFolderPath!);
@@ -642,7 +819,7 @@ public sealed class WidgetManager
         string normalizedPath = Path.GetFullPath(folderPath);
         if (!IsDefaultManagedStorageFolder(normalizedPath))
         {
-            throw new InvalidOperationException("只能清理默认收纳路径下的直属文件夹。");
+            throw new InvalidOperationException(_localizationService.T("Widget.Error.ManagedFolderCleanupOnlyDefault"));
         }
 
         if (!Directory.Exists(normalizedPath))
@@ -661,7 +838,7 @@ public sealed class WidgetManager
 
         if (activePaths.Contains(normalizedPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
         {
-            throw new InvalidOperationException("这个文件夹仍然属于现有收纳组件，不能作为孤立文件夹清理。");
+            throw new InvalidOperationException(_localizationService.T("Widget.Error.ManagedFolderStillActive"));
         }
 
         return normalizedPath;
@@ -737,7 +914,7 @@ public sealed class WidgetManager
         string baseFolderName = FileService.SanitizeFileSystemName(displayName);
         if (string.IsNullOrWhiteSpace(baseFolderName))
         {
-            baseFolderName = "收纳组件";
+            baseFolderName = _localizationService.T("Widget.ManagedFolderBaseName");
         }
 
         string rootPath = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
@@ -764,7 +941,7 @@ public sealed class WidgetManager
         return !string.Equals(_settingsService.Settings.ManagedDropAction, SettingsService.ManagedDropActionCopy, StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<WidgetWindow> CreateWidgetFromConfigAsync(WidgetConfig config)
+    private async Task<WidgetWindow> CreateWidgetFromConfigAsync(WidgetConfig config, bool keepPreparedForAnimation = false)
     {
         if (_widgets.TryGetValue(config.Id, out var existing))
         {
@@ -776,8 +953,8 @@ public sealed class WidgetManager
         NormalizeWidgetBounds(config);
 
         var dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        var viewModel = new WidgetViewModel(config, _fileService, _organizerService, _settingsService, dispatcherQueue);
-        var window = new WidgetWindow(viewModel, _settingsService);
+        var viewModel = new WidgetViewModel(config, _fileService, _organizerService, _settingsService, _localizationService, dispatcherQueue);
+        var window = new WidgetWindow(viewModel, _settingsService, _localizationService);
 
         _themeService.TrackWindow(window);
         _widgets[config.Id] = (window, viewModel);
@@ -795,9 +972,18 @@ public sealed class WidgetManager
 
         try
         {
-            window.Activate();
-            window.PushToBottom();
+            window.PrepareTrayShowAnimation();
+            if (!keepPreparedForAnimation)
+            {
+                window.Activate();
+                window.PushToBottom();
+            }
+
             await viewModel.InitializeAsync();
+            if (!keepPreparedForAnimation)
+            {
+                window.CompleteTrayShowWithoutAnimation();
+            }
         }
         catch
         {

@@ -14,22 +14,22 @@ namespace DeskBox.ViewModels;
 /// </summary>
 public partial class SettingsViewModel : ObservableObject, IDisposable
 {
-    private const string ThemeSystem = "\u8ddf\u968f\u7cfb\u7edf";
-    private const string ThemeLight = "\u6d45\u8272";
-    private const string ThemeDark = "\u6df1\u8272";
-    private const string ManagedActionMove = "\u79fb\u52a8";
-    private const string ManagedActionCopy = "\u590d\u5236";
-    private const string CornerDefault = "\u7cfb\u7edf\u9ed8\u8ba4";
-    private const string CornerSquare = "\u76f4\u89d2";
-    private const string CornerSmall = "\u5c0f\u5706\u89d2";
-    private const string CornerRound = "\u5927\u5706\u89d2";
+    private const string ThemeSystem = "System";
+    private const string ThemeLight = "Light";
+    private const string ThemeDark = "Dark";
+    private const string CornerDefault = SettingsService.WidgetCornerPreferenceDefault;
+    private const string CornerSquare = SettingsService.WidgetCornerPreferenceSquare;
+    private const string CornerSmall = SettingsService.WidgetCornerPreferenceSmall;
+    private const string CornerRound = SettingsService.WidgetCornerPreferenceRound;
     private const string RepositoryUrl = "https://github.com/Tianyu199509/DeskBox";
 
     private readonly SettingsService _settingsService;
     private readonly ThemeService _themeService;
+    private readonly LocalizationService _localizationService;
     private Color _currentAccentColor;
     private string _selectedTheme = ThemeSystem;
-    private string _selectedManagedDropAction = ManagedActionMove;
+    private string _selectedLanguage = SettingsService.LanguageSystem;
+    private string _selectedManagedDropAction = SettingsService.ManagedDropActionMove;
     private string _selectedWidgetCornerPreference = CornerSmall;
     private bool _useSystemAccentColor;
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
@@ -60,12 +60,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            string themeValue = value switch
-            {
-                ThemeLight => "Light",
-                ThemeDark => "Dark",
-                _ => "System"
-            };
+            string themeValue = value is ThemeLight or ThemeDark ? value : ThemeSystem;
 
             if (_isRestoringDefaults)
             {
@@ -73,8 +68,34 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             }
 
             _themeService.SetTheme(themeValue);
+            OnPropertyChanged(nameof(SelectedThemeText));
         }
     }
+
+    public string SelectedThemeText => GetThemeDisplayName(SelectedTheme);
+
+    public string SelectedLanguage
+    {
+        get => _selectedLanguage;
+        set
+        {
+            string normalizedValue = LocalizationService.NormalizeLanguageSetting(value);
+            if (!SetProperty(ref _selectedLanguage, normalizedValue))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            _localizationService.SetLanguage(normalizedValue);
+            RefreshLocalizedProperties();
+        }
+    }
+
+    public string SelectedLanguageText => _localizationService.GetLanguageDisplayName(SelectedLanguage);
 
     public bool UseSystemAccentColor
     {
@@ -115,12 +136,15 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            _settingsService.Settings.ManagedDropAction = value == ManagedActionCopy
+            _settingsService.Settings.ManagedDropAction = value == SettingsService.ManagedDropActionCopy
                 ? SettingsService.ManagedDropActionCopy
                 : SettingsService.ManagedDropActionMove;
             _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedManagedDropActionText));
         }
     }
+
+    public string SelectedManagedDropActionText => GetManagedDropActionDisplayName(SelectedManagedDropAction);
 
     public string SelectedWidgetCornerPreference
     {
@@ -137,17 +161,15 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            _settingsService.Settings.WidgetCornerPreference = value switch
-            {
-                CornerDefault => SettingsService.WidgetCornerPreferenceDefault,
-                CornerSquare => SettingsService.WidgetCornerPreferenceSquare,
-                CornerSmall => SettingsService.WidgetCornerPreferenceSmall,
-                CornerRound => SettingsService.WidgetCornerPreferenceRound,
-                _ => SettingsService.WidgetCornerPreferenceSmall
-            };
+            _settingsService.Settings.WidgetCornerPreference = value is CornerDefault or CornerSquare or CornerSmall or CornerRound
+                ? value
+                : SettingsService.WidgetCornerPreferenceSmall;
             _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceText));
         }
     }
+
+    public string SelectedWidgetCornerPreferenceText => GetCornerDisplayName(SelectedWidgetCornerPreference);
 
     public string AccentColorHex
     {
@@ -253,13 +275,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public string AccentColorDescription => UseSystemAccentColor
-        ? "\u4f7f\u7528 Windows \u5f53\u524d\u7684\u4e3b\u9898\u8272"
-        : "\u70b9\u51fb\u53f3\u4fa7\u989c\u8272\u6309\u94ae\uff0c\u6216\u4f7f\u7528\u9884\u8bbe\u989c\u8272";
+        ? _localizationService.T("Settings.Accent.SystemDescription")
+        : _localizationService.T("Settings.Accent.CustomDescription");
 
     public SolidColorBrush AccentPreviewBrush { get; } = new(AccentColorHelper.DefaultAccentColor);
 
     public string[] AvailableThemes { get; } = [ThemeSystem, ThemeLight, ThemeDark];
-    public string[] AvailableManagedDropActions { get; } = [ManagedActionMove, ManagedActionCopy];
+    public string[] AvailableLanguages { get; } = [SettingsService.LanguageSystem, SettingsService.LanguageChinese, SettingsService.LanguageEnglish];
+    public string[] AvailableManagedDropActions { get; } = [SettingsService.ManagedDropActionMove, SettingsService.ManagedDropActionCopy];
     public string[] AvailableWidgetCornerPreferences { get; } = [CornerSmall, CornerRound, CornerSquare, CornerDefault];
 
     public string AppVersion =>
@@ -268,24 +291,23 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             ?.InformationalVersion
             .Split('+')[0] ??
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ??
-        "1.0.1";
-    public string AboutVersionText => $"版本 {AppVersion} · WinUI 3 / .NET 8";
+        "1.0.2";
+    public string AboutVersionText => _localizationService.Format("Settings.About.Version", AppVersion);
     public string OpenSourceRepositoryUrl => RepositoryUrl;
     public string OpenSourceRepositoryDisplayText =>
-        $"开发者：朱天雨 · GitHub：{RepositoryUrl.Replace("https://", string.Empty).Replace("http://", string.Empty).TrimEnd('/')}";
+        _localizationService.Format(
+            "Settings.About.Developer",
+            RepositoryUrl.Replace("https://", string.Empty).Replace("http://", string.Empty).TrimEnd('/'));
 
-    public SettingsViewModel(SettingsService settingsService, ThemeService themeService)
+    public SettingsViewModel(SettingsService settingsService, ThemeService themeService, LocalizationService? localizationService = null)
     {
         _settingsService = settingsService;
         _themeService = themeService;
+        _localizationService = localizationService ?? new LocalizationService(settingsService);
 
         var settings = settingsService.Settings;
-        _selectedTheme = settings.Theme switch
-        {
-            "Light" => ThemeLight,
-            "Dark" => ThemeDark,
-            _ => ThemeSystem
-        };
+        _selectedTheme = settings.Theme is ThemeLight or ThemeDark ? settings.Theme : ThemeSystem;
+        _selectedLanguage = LocalizationService.NormalizeLanguageSetting(settings.Language);
 
         _useSystemAccentColor = !string.Equals(settings.AccentColorMode, ThemeService.AccentModeCustom, StringComparison.OrdinalIgnoreCase);
         _autoStart = StartupService.IsEnabled();
@@ -295,14 +317,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
         _showListItemDetails = settings.ShowListItemDetails;
         _widgetOpacity = settings.WidgetOpacity;
-        _selectedWidgetCornerPreference = settings.WidgetCornerPreference switch
-        {
-            SettingsService.WidgetCornerPreferenceDefault => CornerDefault,
-            SettingsService.WidgetCornerPreferenceSquare => CornerSquare,
-            SettingsService.WidgetCornerPreferenceSmall => CornerSmall,
-            SettingsService.WidgetCornerPreferenceRound => CornerRound,
-            _ => CornerSmall
-        };
+        _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerDefault or CornerSquare or CornerSmall or CornerRound
+            ? settings.WidgetCornerPreference
+            : CornerSmall;
         _iconSize = settings.IconSize;
         _textSize = settings.TextSize;
         _layoutDensityScale = settings.LayoutDensityScale;
@@ -310,12 +327,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _verticalSpacingScale = settings.VerticalSpacingScale;
         _fileNameWidthScale = settings.FileNameWidthScale;
         _selectedManagedDropAction = string.Equals(settings.ManagedDropAction, SettingsService.ManagedDropActionCopy, StringComparison.OrdinalIgnoreCase)
-            ? ManagedActionCopy
-            : ManagedActionMove;
+            ? SettingsService.ManagedDropActionCopy
+            : SettingsService.ManagedDropActionMove;
         _managedStorageRootPath = settings.DefaultManagedStorageRootPath;
 
         RefreshAccentPreview();
         _themeService.AppearanceChanged += OnAppearanceChanged;
+        _localizationService.LanguageChanged += OnLanguageChanged;
     }
 
     public Color GetCurrentAccentColor() => _currentAccentColor;
@@ -372,7 +390,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             HorizontalSpacingScale = SettingsService.DefaultHorizontalSpacingScale;
             VerticalSpacingScale = SettingsService.DefaultVerticalSpacingScale;
             FileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
-            SelectedManagedDropAction = ManagedActionMove;
+            SelectedManagedDropAction = SettingsService.ManagedDropActionMove;
             DoubleClickToOpen = true;
             HideShortcutArrowOverlay = true;
             ShowListItemDetails = false;
@@ -401,6 +419,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             RefreshNumberInputs();
             OnPropertyChanged(nameof(CanEditCustomAccent));
             OnPropertyChanged(nameof(AccentColorDescription));
+            RefreshLocalizedProperties();
             _themeService.RefreshAppearance();
             await _settingsService.SaveAsync();
             _settingsService.NotifyAppearancePreviewNow();
@@ -410,6 +429,55 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SuppressAppearanceNotifications = false;
             _isRestoringDefaults = false;
         }
+    }
+
+    public string GetThemeDisplayName(string theme)
+    {
+        return theme switch
+        {
+            ThemeLight => _localizationService.T("Settings.Theme.Light"),
+            ThemeDark => _localizationService.T("Settings.Theme.Dark"),
+            _ => _localizationService.T("Settings.Theme.System")
+        };
+    }
+
+    public string GetManagedDropActionDisplayName(string action)
+    {
+        return string.Equals(action, SettingsService.ManagedDropActionCopy, StringComparison.OrdinalIgnoreCase)
+            ? _localizationService.T("Settings.DropAction.Copy")
+            : _localizationService.T("Settings.DropAction.Move");
+    }
+
+    public string GetCornerDisplayName(string corner)
+    {
+        return corner switch
+        {
+            CornerDefault => _localizationService.T("Settings.Corner.Default"),
+            CornerSquare => _localizationService.T("Settings.Corner.Square"),
+            CornerRound => _localizationService.T("Settings.Corner.Round"),
+            _ => _localizationService.T("Settings.Corner.Small")
+        };
+    }
+
+    public string GetLanguageDisplayName(string language)
+    {
+        return _localizationService.GetLanguageDisplayName(language);
+    }
+
+    private void OnLanguageChanged()
+    {
+        RefreshLocalizedProperties();
+    }
+
+    private void RefreshLocalizedProperties()
+    {
+        OnPropertyChanged(nameof(SelectedThemeText));
+        OnPropertyChanged(nameof(SelectedLanguageText));
+        OnPropertyChanged(nameof(SelectedManagedDropActionText));
+        OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceText));
+        OnPropertyChanged(nameof(AccentColorDescription));
+        OnPropertyChanged(nameof(AboutVersionText));
+        OnPropertyChanged(nameof(OpenSourceRepositoryDisplayText));
     }
 
     partial void OnAutoStartChanged(bool value)
@@ -719,6 +787,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _themeService.AppearanceChanged -= OnAppearanceChanged;
+        _localizationService.LanguageChanged -= OnLanguageChanged;
     }
 
     private void OnAppearanceChanged()

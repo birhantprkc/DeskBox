@@ -32,6 +32,7 @@ public sealed partial class SettingsWindow : Window
     private static readonly UIntPtr SettingsWindowSubclassId = new(1);
 
     private readonly ThemeService _themeService;
+    private readonly LocalizationService _localizationService;
     private readonly AppWindow _appWindow;
     private readonly IntPtr _hWnd;
     private readonly SubclassProc _windowSubclassProc;
@@ -43,10 +44,11 @@ public sealed partial class SettingsWindow : Window
 
     public SettingsViewModel ViewModel { get; }
 
-    public SettingsWindow(SettingsService settingsService, ThemeService themeService)
+    public SettingsWindow(SettingsService settingsService, ThemeService themeService, LocalizationService localizationService)
     {
         _themeService = themeService;
-        ViewModel = new SettingsViewModel(settingsService, themeService);
+        _localizationService = localizationService;
+        ViewModel = new SettingsViewModel(settingsService, themeService, localizationService);
         InitializeComponent();
 
         SettingsRoot.DataContext = ViewModel;
@@ -95,8 +97,10 @@ public sealed partial class SettingsWindow : Window
 
         _themeService.TrackWindow(this);
         _themeService.AppearanceChanged += OnAppearanceChanged;
+        _localizationService.LanguageChanged += OnLanguageChanged;
 
         ApplyTitleBarButtonColors();
+        ApplyLocalizedText();
         UpdateResponsiveLayout(GetWindowWidth());
 
         SizeChanged += (_, args) =>
@@ -108,6 +112,7 @@ public sealed partial class SettingsWindow : Window
         {
             RemoveMinimumSizeHook();
             _themeService.AppearanceChanged -= OnAppearanceChanged;
+            _localizationService.LanguageChanged -= OnLanguageChanged;
             ViewModel.Dispose();
         };
     }
@@ -133,9 +138,9 @@ public sealed partial class SettingsWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = SettingsRoot.XamlRoot,
-            Title = "自定义主题色",
-            PrimaryButtonText = "确定",
-            CloseButtonText = "取消",
+            Title = _localizationService.T("Settings.Dialog.AccentTitle"),
+            PrimaryButtonText = _localizationService.T("Common.Ok"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             Content = picker
         };
@@ -167,6 +172,7 @@ public sealed partial class SettingsWindow : Window
         string selectedValue;
         IReadOnlyList<string> values;
         Action<string> applyValue;
+        Func<string, string> displayValue;
 
         switch (menuKind)
         {
@@ -174,18 +180,28 @@ public sealed partial class SettingsWindow : Window
                 selectedValue = ViewModel.SelectedTheme;
                 values = ViewModel.AvailableThemes;
                 applyValue = value => ViewModel.SelectedTheme = value;
+                displayValue = ViewModel.GetThemeDisplayName;
+                break;
+
+            case "Language":
+                selectedValue = ViewModel.SelectedLanguage;
+                values = ViewModel.AvailableLanguages;
+                applyValue = value => ViewModel.SelectedLanguage = value;
+                displayValue = ViewModel.GetLanguageDisplayName;
                 break;
 
             case "WidgetCorner":
                 selectedValue = ViewModel.SelectedWidgetCornerPreference;
                 values = ViewModel.AvailableWidgetCornerPreferences;
                 applyValue = value => ViewModel.SelectedWidgetCornerPreference = value;
+                displayValue = ViewModel.GetCornerDisplayName;
                 break;
 
             case "ManagedDropAction":
                 selectedValue = ViewModel.SelectedManagedDropAction;
                 values = ViewModel.AvailableManagedDropActions;
                 applyValue = value => ViewModel.SelectedManagedDropAction = value;
+                displayValue = ViewModel.GetManagedDropActionDisplayName;
                 break;
 
             default:
@@ -201,7 +217,7 @@ public sealed partial class SettingsWindow : Window
         {
             var item = new MenuFlyoutItem
             {
-                Text = value,
+                Text = displayValue(value),
                 MinWidth = button.ActualWidth > 0 ? button.ActualWidth : button.MinWidth,
                 Icon = string.Equals(value, selectedValue, StringComparison.Ordinal)
                     ? new FontIcon { Glyph = "\uE73E" }
@@ -212,6 +228,17 @@ public sealed partial class SettingsWindow : Window
         }
 
         flyout.ShowAt(button);
+    }
+
+    private void OnLanguageChanged()
+    {
+        ApplyLocalizedText();
+    }
+
+    private void ApplyLocalizedText()
+    {
+        Title = _localizationService.T("Settings.WindowTitle");
+        Localized.RefreshAll(_localizationService);
     }
 
     private void EditableSettingsTextBox_GotFocus(object sender, RoutedEventArgs e)
@@ -420,13 +447,17 @@ public sealed partial class SettingsWindow : Window
             var dialog = new ContentDialog
             {
                 XamlRoot = SettingsRoot.XamlRoot,
-                Title = "迁移默认收纳路径",
-                PrimaryButtonText = "迁移",
-                CloseButtonText = "取消",
+                Title = _localizationService.T("Settings.Dialog.MigrateTitle"),
+                PrimaryButtonText = _localizationService.T("Settings.Dialog.MigrateButton"),
+                CloseButtonText = _localizationService.T("Common.Cancel"),
                 DefaultButton = ContentDialogButton.Primary,
                 Content = new TextBlock
                 {
-                    Text = $"将把 {affectedCount} 个跟随默认路径的收纳组件从\n{ViewModel.ManagedStorageRootPath}\n迁移到\n{normalizedPath}\n\n文件夹映射组件不会受到影响。",
+                    Text = _localizationService.Format(
+                        "Settings.Dialog.MigrateBody",
+                        affectedCount,
+                        ViewModel.ManagedStorageRootPath,
+                        normalizedPath),
                     TextWrapping = TextWrapping.Wrap
                 }
             };
@@ -448,12 +479,12 @@ public sealed partial class SettingsWindow : Window
                 var errorDialog = new ContentDialog
                 {
                     XamlRoot = SettingsRoot.XamlRoot,
-                    Title = "迁移失败",
-                    CloseButtonText = "确定",
+                    Title = _localizationService.T("Settings.Dialog.MigrateFailedTitle"),
+                    CloseButtonText = _localizationService.T("Common.Ok"),
                     DefaultButton = ContentDialogButton.Close,
                     Content = new TextBlock
                     {
-                        Text = $"默认收纳路径没有更新。\n\n{ex.Message}",
+                        Text = _localizationService.Format("Settings.Dialog.MigrateFailedBody", ex.Message),
                         TextWrapping = TextWrapping.Wrap
                     }
                 };
@@ -493,13 +524,13 @@ public sealed partial class SettingsWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = SettingsRoot.XamlRoot,
-            Title = "恢复默认设置",
-            PrimaryButtonText = "恢复",
-            CloseButtonText = "取消",
+            Title = _localizationService.T("Settings.Dialog.RestoreTitle"),
+            PrimaryButtonText = _localizationService.T("Common.Restore"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             Content = new TextBlock
             {
-                Text = "将恢复外观、显示、交互和整理偏好。开机自启、默认收纳路径、已有组件和文件不会被修改。",
+                Text = _localizationService.T("Settings.Dialog.RestoreBody"),
                 TextWrapping = TextWrapping.Wrap
             }
         };
@@ -526,17 +557,17 @@ public sealed partial class SettingsWindow : Window
         };
 
         content.Children.Add(CreateDialogParagraph(
-            "很多桌面管理工具会接管桌面，替换原来的桌面交互，甚至把桌面变成另一套文件入口。DeskBox 不想这么做。"));
+            _localizationService.T("Settings.Dialog.ProductReasonP1")));
         content.Children.Add(CreateDialogParagraph(
-            "它更像是一层轻量整理能力：桌面仍然是桌面，文件仍然是普通文件，组件只负责把文件移动、复制或映射到合适的位置。"));
+            _localizationService.T("Settings.Dialog.ProductReasonP2")));
         content.Children.Add(CreateDialogParagraph(
-            "界面上，DeskBox 尽量围绕 WinUI 3、Windows App SDK、Mica 和 DWM 圆角构建，目标是在保留 Windows 原生质感的同时，把桌面整理这件事变得更顺手。"));
+            _localizationService.T("Settings.Dialog.ProductReasonP3")));
 
         var dialog = new ContentDialog
         {
             XamlRoot = SettingsRoot.XamlRoot,
-            Title = "为什么做 DeskBox",
-            CloseButtonText = "知道了",
+            Title = _localizationService.T("Settings.About.ReasonTitle"),
+            CloseButtonText = _localizationService.T("Settings.Dialog.ProductReasonClose"),
             DefaultButton = ContentDialogButton.Close,
             Content = content
         };
@@ -554,7 +585,9 @@ public sealed partial class SettingsWindow : Window
         var candidates = App.Current.WidgetManager.GetOrphanManagedStorageFolders();
         if (candidates.Count == 0)
         {
-            await ShowInfoDialogAsync("清理收纳文件夹", "没有发现孤立的收纳文件夹。");
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.Dialog.CleanupTitle"),
+                _localizationService.T("Settings.Dialog.CleanupNone"));
             return;
         }
 
@@ -565,17 +598,17 @@ public sealed partial class SettingsWindow : Window
         };
         optionBox.Items.Add(new TextBlock
         {
-            Text = "打开默认收纳路径，稍后自行处理",
+            Text = _localizationService.T("Settings.Dialog.CleanupOptionOpen"),
             TextWrapping = TextWrapping.Wrap
         });
         optionBox.Items.Add(new TextBlock
         {
-            Text = "把这些文件夹的内容移回桌面，然后删除空文件夹",
+            Text = _localizationService.T("Settings.Dialog.CleanupOptionMove"),
             TextWrapping = TextWrapping.Wrap
         });
         optionBox.Items.Add(new TextBlock
         {
-            Text = "把这些孤立文件夹移到回收站",
+            Text = _localizationService.T("Settings.Dialog.CleanupOptionDelete"),
             TextWrapping = TextWrapping.Wrap
         });
 
@@ -585,7 +618,7 @@ public sealed partial class SettingsWindow : Window
         };
         content.Children.Add(new TextBlock
         {
-            Text = $"发现 {candidates.Count} 个不再属于现有组件的收纳文件夹。请选择处理方式：",
+            Text = _localizationService.Format("Settings.Dialog.CleanupBody", candidates.Count),
             TextWrapping = TextWrapping.Wrap
         });
         content.Children.Add(optionBox);
@@ -600,9 +633,9 @@ public sealed partial class SettingsWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = SettingsRoot.XamlRoot,
-            Title = "清理孤立收纳文件夹",
-            PrimaryButtonText = "继续",
-            CloseButtonText = "取消",
+            Title = _localizationService.T("Settings.Dialog.CleanupTitle"),
+            PrimaryButtonText = _localizationService.T("Common.Continue"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             Content = content
         };
@@ -621,7 +654,9 @@ public sealed partial class SettingsWindow : Window
                     {
                         await App.Current.WidgetManager.MoveOrphanManagedStorageFolderContentsToDesktopAsync(candidate.Path);
                     }
-                    await ShowInfoDialogAsync("清理完成", "孤立收纳文件夹的内容已移回桌面。");
+                    await ShowInfoDialogAsync(
+                        _localizationService.T("Settings.Dialog.CleanupComplete"),
+                        _localizationService.T("Settings.Dialog.CleanupMoved"));
                     break;
 
                 case 2:
@@ -629,7 +664,9 @@ public sealed partial class SettingsWindow : Window
                     {
                         await App.Current.WidgetManager.DeleteOrphanManagedStorageFolderAsync(candidate.Path);
                     }
-                    await ShowInfoDialogAsync("清理完成", "孤立收纳文件夹已移到回收站。");
+                    await ShowInfoDialogAsync(
+                        _localizationService.T("Settings.Dialog.CleanupComplete"),
+                        _localizationService.T("Settings.Dialog.CleanupDeleted"));
                     break;
 
                 default:
@@ -640,7 +677,9 @@ public sealed partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            await ShowInfoDialogAsync("清理失败", $"收纳文件夹没有完全清理。\n\n{ex.Message}");
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.Dialog.CleanupFailed"),
+                _localizationService.Format("Settings.Dialog.CleanupFailedBody", ex.Message));
         }
     }
 
@@ -650,7 +689,7 @@ public sealed partial class SettingsWindow : Window
         {
             XamlRoot = SettingsRoot.XamlRoot,
             Title = title,
-            CloseButtonText = "确定",
+            CloseButtonText = _localizationService.T("Common.Ok"),
             DefaultButton = ContentDialogButton.Close,
             Content = new TextBlock
             {
@@ -672,23 +711,23 @@ public sealed partial class SettingsWindow : Window
         };
     }
 
-    private static string BuildCleanupCandidateSummary(IReadOnlyList<ManagedStorageFolderCleanupCandidate> candidates)
+    private string BuildCleanupCandidateSummary(IReadOnlyList<ManagedStorageFolderCleanupCandidate> candidates)
     {
         var builder = new StringBuilder();
         foreach (var candidate in candidates.Take(8))
         {
-            builder.Append("• ");
+            builder.Append("- ");
             builder.Append(candidate.Name);
-            builder.Append("（");
+            builder.Append(" (");
             builder.Append(candidate.ItemCount);
-            builder.AppendLine(" 项）");
+            builder.Append(' ');
+            builder.Append(_localizationService.T("Settings.Cleanup.ItemCount"));
+            builder.AppendLine(")");
         }
 
         if (candidates.Count > 8)
         {
-            builder.Append("还有 ");
-            builder.Append(candidates.Count - 8);
-            builder.AppendLine(" 个文件夹未显示。");
+            builder.AppendLine(_localizationService.Format("Settings.Cleanup.MoreFolders", candidates.Count - 8));
         }
 
         return builder.ToString().TrimEnd();

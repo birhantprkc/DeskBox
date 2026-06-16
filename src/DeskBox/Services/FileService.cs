@@ -862,13 +862,38 @@ public sealed class FileService
     /// <summary>
     /// Open a file or shortcut using the default application.
     /// </summary>
-    public static void OpenItem(WidgetItem item)
+    public static OpenItemResult OpenItem(WidgetItem item, IntPtr ownerHwnd = default)
     {
+        if (item.IsShortcut && IsBrokenShortcut(item))
+        {
+            var resolution = ShortcutHelper.ResolveBrokenShortcutWithShellUi(item.Path, ownerHwnd);
+            return resolution == BrokenShortcutResolution.ShortcutDeleted
+                ? OpenItemResult.ShortcutDeleted
+                : OpenItemResult.OpenedOrHandled;
+        }
+
         var pathToOpen = item.IsShortcut ? item.Path : item.TargetPath;
         if (!string.IsNullOrEmpty(pathToOpen))
         {
             Win32Helper.OpenFile(pathToOpen);
         }
+
+        return OpenItemResult.OpenedOrHandled;
+    }
+
+    private static bool IsBrokenShortcut(WidgetItem item)
+    {
+        if (!File.Exists(item.Path))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.TargetPath))
+        {
+            return true;
+        }
+
+        return !File.Exists(item.TargetPath) && !Directory.Exists(item.TargetPath);
     }
 
     /// <summary>
@@ -881,6 +906,12 @@ public sealed class FileService
         {
             Win32Helper.ShowInExplorer(path);
         }
+    }
+
+    public enum OpenItemResult
+    {
+        OpenedOrHandled,
+        ShortcutDeleted
     }
 
     /// <summary>

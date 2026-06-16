@@ -11,6 +11,11 @@ public class AppSettings
     public string Theme { get; set; } = "System";
 
     /// <summary>
+    /// Display language. Valid values: <c>"System"</c>, <c>"zh-CN"</c>, <c>"en-US"</c>.
+    /// </summary>
+    public string Language { get; set; } = "System";
+
+    /// <summary>
     /// Accent color source. Valid values: <c>"System"</c>, <c>"Custom"</c>.
     /// </summary>
     public string AccentColorMode { get; set; } = "System";
