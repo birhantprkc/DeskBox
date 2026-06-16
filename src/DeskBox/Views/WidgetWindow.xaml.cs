@@ -33,16 +33,22 @@ public sealed partial class WidgetWindow : Window
         DropTarget
     }
 
+    private sealed record SelectionHitTestItem(
+        WidgetItem Item,
+        Border? Surface,
+        Windows.Foundation.Rect Bounds);
+
     private const int MinWidth = (int)SettingsService.MinWidgetWidth;
     private const int MinHeight = (int)SettingsService.MinWidgetHeight;
-    private const int WidgetShowAnimationMs = 280;
-    private const int WidgetHideAnimationMs = 220;
-    private const double WidgetShowOffsetY = 14.0;
-    private const double WidgetShowStartOpacity = 0.72;
-    private const double WidgetShowStartScale = 0.985;
+    internal const int WidgetShowAnimationMs = 260;
+    internal const int WidgetHideAnimationMs = 210;
+    private const int ItemTransitionRestoreDelayMs = 240;
+    internal const int WindowAnimationFrameMs = 16;
+    internal const double WidgetSlideOffsetX = 36.0;
 
     private readonly Microsoft.UI.WindowId _windowId;
     private readonly SettingsService _settingsService;
+    private readonly LocalizationService _localizationService;
     private readonly IntPtr _hWnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylicController;
@@ -55,6 +61,7 @@ public sealed partial class WidgetWindow : Window
     private Win32Helper.POINT _initialCursorPt;
     private Windows.Graphics.PointInt32 _initialWindowPos;
     private Windows.Graphics.SizeInt32 _initialWindowSize;
+    private Windows.Graphics.PointInt32? _trayAnimationTargetPosition;
     private Storyboard? _showButtonsStoryboard;
     private Storyboard? _hideButtonsStoryboard;
     private DispatcherQueueTimer? _statusToastTimer;
@@ -71,6 +78,10 @@ public sealed partial class WidgetWindow : Window
     private Windows.Foundation.Point _selectionStartPoint;
     private Windows.Foundation.Point _selectionCurrentPoint;
     private List<WidgetItem> _selectionSnapshot = [];
+    private HashSet<WidgetItem> _selectionPreviewItems = [];
+    private List<SelectionHitTestItem> _selectionHitTestItems = [];
+    private Dictionary<WidgetItem, Border> _selectionSurfaceByItem = [];
+    private bool _isSynchronizingSelection;
     private Flyout? _itemRenameFlyout;
     private MenuFlyout? _itemDeleteConfirmFlyout;
     private Flyout? _messageFlyout;
@@ -88,7 +99,11 @@ public sealed partial class WidgetWindow : Window
     private bool _isAtDesktopLayer;
     private bool _isHideAnimationRunning;
     private long _trayAnimationGeneration;
-    private Storyboard? _trayTransitionStoryboard;
+    private DispatcherQueueTimer? _trayWindowMoveAnimationTimer;
+    private bool _isApplyingTrayAnimationBounds;
+    private bool _areItemTransitionsSuppressed;
+    private TransitionCollection? _savedGridItemTransitions;
+    private TransitionCollection? _savedListItemTransitions;
 
     public WidgetViewModel ViewModel { get; }
 
@@ -108,17 +123,15 @@ public sealed partial class WidgetWindow : Window
         _settingsService.SaveDebounced();
     }
 
-    public WidgetWindow(WidgetViewModel viewModel, SettingsService settingsService)
+    public WidgetWindow(WidgetViewModel viewModel, SettingsService settingsService, LocalizationService? localizationService = null)
     {
         ViewModel = viewModel;
         _settingsService = settingsService;
+        _localizationService = localizationService ?? new LocalizationService(settingsService);
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
 
-        TitleEditBox.PlaceholderText = "\u8f93\u5165\u7ec4\u4ef6\u540d\u79f0";
-        ToolTipService.SetToolTip(AddButton, "\u65b0\u5efa");
-        ToolTipService.SetToolTip(MoreButton, "\u66f4\u591a\u9009\u9879");
-        ToolTipService.SetToolTip(CloseButton, "\u5220\u9664\u7ec4\u4ef6");
+        ApplyLocalizedText();
 
         _hWnd = WindowNative.GetWindowHandle(this);
         _windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
@@ -215,11 +228,17 @@ public sealed partial class WidgetWindow : Window
     private void SetupEventHandlers()
     {
         _settingsService.SettingsChanged += OnSettingsChanged;
+        _localizationService.LanguageChanged += OnLanguageChanged;
 
         Activated += WidgetWindow_Activated;
 
         _appWindow.Changed += (_, args) =>
         {
+            if (_isApplyingTrayAnimationBounds)
+            {
+                return;
+            }
+
             if (args.DidPositionChange || args.DidSizeChange)
             {
                 var pos = _appWindow.Position;
@@ -241,9 +260,25 @@ public sealed partial class WidgetWindow : Window
         {
             Visible = false;
             _settingsService.SettingsChanged -= OnSettingsChanged;
+            _localizationService.LanguageChanged -= OnLanguageChanged;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            RestoreTrayWindowPosition();
+            RestoreItemContainerTransitions();
             DisposeAcrylicController();
         };
+    }
+
+    private void OnLanguageChanged()
+    {
+        ApplyLocalizedText();
+    }
+
+    private void ApplyLocalizedText()
+    {
+        TitleEditBox.PlaceholderText = _localizationService.T("Widget.TitlePlaceholder");
+        ToolTipService.SetToolTip(AddButton, _localizationService.T("Widget.Tooltip.Add"));
+        ToolTipService.SetToolTip(MoreButton, _localizationService.T("Widget.Tooltip.More"));
+        ToolTipService.SetToolTip(CloseButton, _localizationService.T("Widget.Tooltip.DeleteWidget"));
     }
 
     public void PushToBottom()
@@ -252,7 +287,24 @@ public sealed partial class WidgetWindow : Window
         Win32Helper.SetWindowToBottom(_hWnd);
     }
 
+    public void ShowPreparedAtDesktopLayer()
+    {
+        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
+        _appWindow.Show();
+        Visible = true;
+        ViewModel.Config.IsVisible = true;
+        _settingsService.SaveDebounced();
+        PushToBottom();
+    }
+
     public void RaiseTemporarilyFromTray()
+    {
+        PrepareTrayShowAnimation();
+        ShowPreparedRaisedFromTray();
+        PlayTrayRaiseAnimation();
+    }
+
+    public void ShowPreparedRaisedFromTray()
     {
         _appWindow.Show();
         Win32Helper.ClearWindowTopMost(_hWnd);
@@ -262,7 +314,6 @@ public sealed partial class WidgetWindow : Window
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
-        PlayTrayRaiseAnimation();
 
         DispatcherQueue.TryEnqueue(async () =>
         {
@@ -279,160 +330,258 @@ public sealed partial class WidgetWindow : Window
         PlayTrayRaiseAnimation();
     }
 
+    public void PrepareTrayShowAnimation()
+    {
+        _trayAnimationGeneration++;
+        StopTrayWindowMoveAnimation();
+        RestoreItemContainerTransitions();
+        SuppressItemContainerTransitions();
+        _isHideAnimationRunning = false;
+
+        PrepareTrayWindowPosition(offsetX: WidgetSlideOffsetX);
+        RootGrid.Opacity = 1;
+    }
+
+    public void CompleteTrayShowWithoutAnimation()
+    {
+        var animationGeneration = ++_trayAnimationGeneration;
+        RestoreTrayWindowPosition();
+
+        RootGrid.Opacity = 1;
+        QueueItemContainerTransitionRestore(animationGeneration);
+    }
+
     private void PlayTrayRaiseAnimation()
     {
         var animationGeneration = ++_trayAnimationGeneration;
-        _trayTransitionStoryboard?.Stop();
-        _trayTransitionStoryboard = null;
+        StopTrayWindowMoveAnimation();
+        RestoreItemContainerTransitions();
+        SuppressItemContainerTransitions();
         _isHideAnimationRunning = false;
-        var transform = EnsureTrayTransitionTransform();
 
-        RootGrid.Opacity = WidgetShowStartOpacity;
-        transform.TranslateY = WidgetShowOffsetY;
-        transform.ScaleX = WidgetShowStartScale;
-        transform.ScaleY = WidgetShowStartScale;
-        var storyboard = new Storyboard();
-        var opacityAnimation = new DoubleAnimation
+        PrepareTrayWindowPosition(offsetX: WidgetSlideOffsetX);
+        RootGrid.Opacity = 1;
+        AnimateTrayWindowOffset(WidgetSlideOffsetX, 0, WidgetShowAnimationMs, EasingMode.EaseOut, animationGeneration);
+        QueueTrayAnimationCompletion(WidgetShowAnimationMs, animationGeneration, () =>
         {
-            To = 1,
-            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetShowAnimationMs)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        Storyboard.SetTarget(opacityAnimation, RootGrid);
-        Storyboard.SetTargetProperty(opacityAnimation, "Opacity");
-        storyboard.Children.Add(opacityAnimation);
+            RootGrid.Opacity = 1;
+            RestoreTrayWindowPosition();
+            QueueItemContainerTransitionRestore(animationGeneration);
+        });
+    }
 
-        var translateYAnimation = new DoubleAnimation
+    public bool PrepareTrayHideAnimation()
+    {
+        if (!Visible || _isHideAnimationRunning)
         {
-            To = 0,
-            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetShowAnimationMs)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        Storyboard.SetTarget(translateYAnimation, transform);
-        Storyboard.SetTargetProperty(translateYAnimation, "TranslateY");
-        storyboard.Children.Add(translateYAnimation);
+            return false;
+        }
 
-        var scaleXAnimation = new DoubleAnimation
-        {
-            To = 1,
-            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetShowAnimationMs)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        Storyboard.SetTarget(scaleXAnimation, transform);
-        Storyboard.SetTargetProperty(scaleXAnimation, "ScaleX");
-        storyboard.Children.Add(scaleXAnimation);
+        _trayAnimationGeneration++;
+        StopTrayWindowMoveAnimation();
+        RestoreItemContainerTransitions();
+        SuppressItemContainerTransitions();
 
-        var scaleYAnimation = new DoubleAnimation
-        {
-            To = 1,
-            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetShowAnimationMs)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        Storyboard.SetTarget(scaleYAnimation, transform);
-        Storyboard.SetTargetProperty(scaleYAnimation, "ScaleY");
-        storyboard.Children.Add(scaleYAnimation);
-
-        storyboard.Completed += (_, _) =>
-        {
-            if (animationGeneration == _trayAnimationGeneration)
-            {
-                RootGrid.Opacity = 1;
-                transform.TranslateY = 0;
-                transform.ScaleX = 1;
-                transform.ScaleY = 1;
-                _trayTransitionStoryboard = null;
-            }
-        };
-        _trayTransitionStoryboard = storyboard;
-        storyboard.Begin();
+        _isHideAnimationRunning = true;
+        Visible = false;
+        ViewModel.Config.IsVisible = false;
+        _settingsService.SaveDebounced();
+        PrepareTrayWindowPosition(offsetX: 0);
+        RootGrid.Opacity = 1;
+        return true;
     }
 
     private void PlayTrayHideAnimation(Action completed)
     {
-        var animationGeneration = ++_trayAnimationGeneration;
-        _trayTransitionStoryboard?.Stop();
-        _trayTransitionStoryboard = null;
-        var transform = EnsureTrayTransitionTransform();
+        var animationGeneration = _trayAnimationGeneration;
+        AnimateTrayWindowOffset(0, WidgetSlideOffsetX, WidgetHideAnimationMs, EasingMode.EaseIn, animationGeneration);
 
-        _isHideAnimationRunning = true;
-        RootGrid.Opacity = 1;
-        transform.TranslateY = 0;
-        transform.ScaleX = 1;
-        transform.ScaleY = 1;
-
-        var storyboard = new Storyboard();
-        var opacityAnimation = new DoubleAnimation
+        QueueTrayAnimationCompletion(WidgetHideAnimationMs, animationGeneration, () =>
         {
-            To = 0,
-            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetHideAnimationMs)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
-        };
-        Storyboard.SetTarget(opacityAnimation, RootGrid);
-        Storyboard.SetTargetProperty(opacityAnimation, "Opacity");
-        storyboard.Children.Add(opacityAnimation);
-
-        var translateYAnimation = new DoubleAnimation
-        {
-            To = WidgetShowOffsetY,
-            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetHideAnimationMs)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
-        };
-        Storyboard.SetTarget(translateYAnimation, transform);
-        Storyboard.SetTargetProperty(translateYAnimation, "TranslateY");
-        storyboard.Children.Add(translateYAnimation);
-
-        var scaleXAnimation = new DoubleAnimation
-        {
-            To = WidgetShowStartScale,
-            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetHideAnimationMs)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
-        };
-        Storyboard.SetTarget(scaleXAnimation, transform);
-        Storyboard.SetTargetProperty(scaleXAnimation, "ScaleX");
-        storyboard.Children.Add(scaleXAnimation);
-
-        var scaleYAnimation = new DoubleAnimation
-        {
-            To = WidgetShowStartScale,
-            Duration = new Duration(TimeSpan.FromMilliseconds(WidgetHideAnimationMs)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
-        };
-        Storyboard.SetTarget(scaleYAnimation, transform);
-        Storyboard.SetTargetProperty(scaleYAnimation, "ScaleY");
-        storyboard.Children.Add(scaleYAnimation);
-
-        storyboard.Completed += (_, _) =>
-        {
-            if (animationGeneration == _trayAnimationGeneration && !Visible)
+            if (Visible)
             {
-                _isHideAnimationRunning = false;
-                RootGrid.Opacity = 1;
-                transform.TranslateY = 0;
-                transform.ScaleX = 1;
-                transform.ScaleY = 1;
-                _trayTransitionStoryboard = null;
-                completed();
+                return;
             }
-        };
-        _trayTransitionStoryboard = storyboard;
-        storyboard.Begin();
+            completed();
+        });
     }
 
-    private CompositeTransform EnsureTrayTransitionTransform()
+    private void SuppressItemContainerTransitions()
     {
-        if (RootGrid.RenderTransform is CompositeTransform transform)
+        if (_areItemTransitionsSuppressed)
         {
-            return transform;
+            return;
         }
 
-        transform = new CompositeTransform();
-        RootGrid.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
-        RootGrid.RenderTransform = transform;
-        return transform;
+        _savedGridItemTransitions = ItemsGridView.ItemContainerTransitions;
+        _savedListItemTransitions = ItemsListView.ItemContainerTransitions;
+        ItemsGridView.ItemContainerTransitions = new TransitionCollection();
+        ItemsListView.ItemContainerTransitions = new TransitionCollection();
+        _areItemTransitionsSuppressed = true;
+    }
+
+    private void RestoreItemContainerTransitions()
+    {
+        if (!_areItemTransitionsSuppressed)
+        {
+            return;
+        }
+
+        ItemsGridView.ItemContainerTransitions = _savedGridItemTransitions;
+        ItemsListView.ItemContainerTransitions = _savedListItemTransitions;
+        _savedGridItemTransitions = null;
+        _savedListItemTransitions = null;
+        _areItemTransitionsSuppressed = false;
+    }
+
+    private void QueueItemContainerTransitionRestore(long animationGeneration)
+    {
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(ItemTransitionRestoreDelayMs);
+            if (animationGeneration == _trayAnimationGeneration)
+            {
+                RestoreItemContainerTransitions();
+            }
+        });
+    }
+
+    private void QueueTrayAnimationCompletion(int durationMs, long animationGeneration, Action action)
+    {
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(durationMs + 24);
+            if (animationGeneration == _trayAnimationGeneration)
+            {
+                action();
+            }
+        });
+    }
+
+    private void AnimateTrayWindowOffset(
+        double from,
+        double to,
+        int durationMs,
+        EasingMode easingMode,
+        long animationGeneration)
+    {
+        StopTrayWindowMoveAnimation();
+        ApplyTrayWindowOffset(from);
+
+        var startTime = DateTime.UtcNow;
+        _trayWindowMoveAnimationTimer = DispatcherQueue.CreateTimer();
+        _trayWindowMoveAnimationTimer.Interval = TimeSpan.FromMilliseconds(WindowAnimationFrameMs);
+        _trayWindowMoveAnimationTimer.Tick += (_, _) =>
+        {
+            if (animationGeneration != _trayAnimationGeneration)
+            {
+                StopTrayWindowMoveAnimation();
+                RestoreTrayWindowPosition();
+                return;
+            }
+
+            double elapsedMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            double progress = Math.Clamp(elapsedMs / Math.Max(1, durationMs), 0.0, 1.0);
+            double easedProgress = EaseCubic(progress, easingMode);
+            ApplyTrayWindowOffset(from + ((to - from) * easedProgress));
+
+            if (progress >= 1.0)
+            {
+                StopTrayWindowMoveAnimation();
+                ApplyTrayWindowOffset(to);
+            }
+        };
+        _trayWindowMoveAnimationTimer.Start();
+    }
+
+    private void PrepareTrayWindowPosition(double offsetX)
+    {
+        _trayAnimationTargetPosition = new Windows.Graphics.PointInt32(
+            (int)Math.Round(ViewModel.Config.X),
+            (int)Math.Round(ViewModel.Config.Y));
+        ApplyTrayWindowOffset(offsetX);
+    }
+
+    private void ApplyTrayWindowOffset(double offsetX)
+    {
+        var target = _trayAnimationTargetPosition ?? new Windows.Graphics.PointInt32(
+            (int)Math.Round(ViewModel.Config.X),
+            (int)Math.Round(ViewModel.Config.Y));
+
+        _isApplyingTrayAnimationBounds = true;
+        try
+        {
+            _appWindow.Move(new Windows.Graphics.PointInt32(
+                target.X + (int)Math.Round(offsetX),
+                target.Y));
+        }
+        finally
+        {
+            _isApplyingTrayAnimationBounds = false;
+        }
+    }
+
+    internal void ApplyPreparedTrayAnimationOffset(double offsetX)
+    {
+        ApplyTrayWindowOffset(offsetX);
+    }
+
+    public void CompleteTrayHideAnimation()
+    {
+        if (Visible)
+        {
+            return;
+        }
+
+        _isHideAnimationRunning = false;
+        RootGrid.Opacity = 1;
+        QueueItemContainerTransitionRestore(_trayAnimationGeneration);
+        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
+        _appWindow.Hide();
+        RestoreTrayWindowPosition();
+    }
+
+    private void RestoreTrayWindowPosition()
+    {
+        StopTrayWindowMoveAnimation();
+        if (_trayAnimationTargetPosition is { } target)
+        {
+            _isApplyingTrayAnimationBounds = true;
+            try
+            {
+                _appWindow.Move(target);
+            }
+            finally
+            {
+                _isApplyingTrayAnimationBounds = false;
+            }
+        }
+
+        _trayAnimationTargetPosition = null;
+    }
+
+    private void StopTrayWindowMoveAnimation()
+    {
+        _trayWindowMoveAnimationTimer?.Stop();
+        _trayWindowMoveAnimationTimer = null;
+    }
+
+    private static double EaseCubic(double progress, EasingMode easingMode)
+    {
+        progress = Math.Clamp(progress, 0.0, 1.0);
+        return easingMode switch
+        {
+            EasingMode.EaseIn => progress * progress * progress,
+            EasingMode.EaseOut => 1 - Math.Pow(1 - progress, 3),
+            EasingMode.EaseInOut when progress < 0.5 => 4 * progress * progress * progress,
+            EasingMode.EaseInOut => 1 - Math.Pow(-2 * progress + 2, 3) / 2,
+            _ => progress
+        };
     }
 
     public void RevealFromTray(bool autoRestore = true)
     {
+        PrepareTrayShowAnimation();
         ElevateForInteraction();
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
         base.Activate();
@@ -462,19 +611,12 @@ public sealed partial class WidgetWindow : Window
 
     public void HideWindow()
     {
-        if (!Visible || _isHideAnimationRunning)
+        if (!PrepareTrayHideAnimation())
         {
             return;
         }
 
-        Visible = false;
-        ViewModel.Config.IsVisible = false;
-        _settingsService.SaveDebounced();
-        PlayTrayHideAnimation(() =>
-        {
-            Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
-            _appWindow.Hide();
-        });
+        PlayTrayHideAnimation(CompleteTrayHideAnimation);
     }
 
     public void ApplyAppearancePreview()
@@ -617,7 +759,10 @@ public sealed partial class WidgetWindow : Window
         ApplySurfaceStyle();
     }
 
-    private bool ApplyAcrylicController(bool isDark, Windows.UI.Color tintColor, double surfaceOpacity)
+    private bool ApplyAcrylicController(
+        bool isDark,
+        Windows.UI.Color tintColor,
+        double surfaceOpacity)
     {
         if (!DesktopAcrylicController.IsSupported())
         {
@@ -652,12 +797,14 @@ public sealed partial class WidgetWindow : Window
         _acrylicController.Kind = DesktopAcrylicKind.Thin;
         _acrylicController.TintColor = tintColor;
         _acrylicController.FallbackColor = tintColor;
-        _acrylicController.TintOpacity = (float)(isDark
+        double tintOpacity = isDark
             ? Math.Clamp(0.12 + surfaceOpacity * 0.34, 0.0, 0.52)
-            : Math.Clamp(0.00 + surfaceOpacity * 0.40, 0.0, 0.44));
-        _acrylicController.LuminosityOpacity = (float)(isDark
+            : Math.Clamp(0.00 + surfaceOpacity * 0.40, 0.0, 0.44);
+        double luminosityOpacity = isDark
             ? Math.Clamp(0.34 + surfaceOpacity * 0.36, 0.0, 0.82)
-            : Math.Clamp(0.22 + surfaceOpacity * 0.58, 0.0, 0.86));
+            : Math.Clamp(0.22 + surfaceOpacity * 0.58, 0.0, 0.86);
+        _acrylicController.TintOpacity = (float)tintOpacity;
+        _acrylicController.LuminosityOpacity = (float)luminosityOpacity;
         return true;
     }
 
@@ -1130,6 +1277,38 @@ public sealed partial class WidgetWindow : Window
         return GetSelectedItems().FirstOrDefault();
     }
 
+    public void ClearItemSelection()
+    {
+        ClearItemSelectionCore(clearCutState: false);
+    }
+
+    private void ClearItemSelectionCore(bool clearCutState)
+    {
+        if (clearCutState)
+        {
+            ClearCutState();
+        }
+
+        var listView = GetActiveItemsView();
+        if (listView is not null)
+        {
+            SynchronizeListViewSelection(listView, []);
+        }
+
+        foreach (var item in ViewModel.Items)
+        {
+            item.IsSelected = false;
+        }
+
+        _lastSelectionAnchorIndex = -1;
+        UpdateInteractiveSurfaces();
+    }
+
+    private void ClearOtherWidgetSelections()
+    {
+        App.Current.WidgetManager?.ClearSelectionsExcept(ViewModel.Config.Id);
+    }
+
     private void ApplySelectionState(ListViewBase? listView)
     {
         var selectedItems = listView?.SelectedItems.OfType<WidgetItem>().ToHashSet() ?? [];
@@ -1140,6 +1319,64 @@ public sealed partial class WidgetWindow : Window
 
         ApplyCutState();
         UpdateInteractiveSurfaces();
+    }
+
+    private void ApplySelectionPreview(HashSet<WidgetItem> selectedItems)
+    {
+        foreach (var item in _selectionPreviewItems)
+        {
+            if (!selectedItems.Contains(item))
+            {
+                SetItemSelectionPreview(item, false);
+            }
+        }
+
+        foreach (var item in selectedItems)
+        {
+            if (!_selectionPreviewItems.Contains(item))
+            {
+                SetItemSelectionPreview(item, true);
+            }
+        }
+
+        _selectionPreviewItems = selectedItems;
+    }
+
+    private void SetItemSelectionPreview(WidgetItem item, bool isSelected)
+    {
+        if (item.IsSelected == isSelected)
+        {
+            return;
+        }
+
+        item.IsSelected = isSelected;
+        if (_selectionSurfaceByItem.TryGetValue(item, out var surface))
+        {
+            ApplyWidgetItemSurfaceState(surface, ItemSurfaceState.Normal);
+            return;
+        }
+
+        if (FindItemSurface(item) is Border border)
+        {
+            ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Normal);
+        }
+    }
+
+    private void SynchronizeListViewSelection(ListViewBase listView, IEnumerable<WidgetItem> selectedItems)
+    {
+        _isSynchronizingSelection = true;
+        try
+        {
+            listView.SelectedItems.Clear();
+            foreach (var item in selectedItems)
+            {
+                listView.SelectedItems.Add(item);
+            }
+        }
+        finally
+        {
+            _isSynchronizingSelection = false;
+        }
     }
 
     private void RootGrid_DragOver(object sender, DragEventArgs e)
@@ -1160,7 +1397,7 @@ public sealed partial class WidgetWindow : Window
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
-            e.DragUIOverride.Caption = "\u5df2\u5728\u5f53\u524d\u7ec4\u4ef6\u4e2d";
+            e.DragUIOverride.Caption = _localizationService.T("Widget.DragCaption.CurrentWidget");
             return;
         }
 
@@ -1174,8 +1411,12 @@ public sealed partial class WidgetWindow : Window
 
         e.DragUIOverride.IsGlyphVisible = true;
         e.DragUIOverride.Caption = movesIntoFolder
-            ? $"{(e.AcceptedOperation == DataPackageOperation.Copy ? "\u590d\u5236" : "\u79fb\u52a8")}\u5230\u6536\u7eb3\u7ec4\u4ef6"
-            : "\u6dfb\u52a0\u5230\u5f15\u7528\u7ec4\u4ef6";
+            ? _localizationService.Format(
+                "Widget.DragCaption.Managed",
+                e.AcceptedOperation == DataPackageOperation.Copy
+                    ? _localizationService.T("Common.Copy")
+                    : _localizationService.T("Common.Move"))
+            : _localizationService.T("Widget.DragCaption.Reference");
     }
 
     private void RootGrid_DragLeave(object sender, DragEventArgs e)
@@ -1246,7 +1487,7 @@ public sealed partial class WidgetWindow : Window
 
         if (!_settingsService.Settings.DoubleClickToOpen)
         {
-            ViewModel.OpenItemCommand.Execute(item);
+            OpenItem(item);
         }
     }
 
@@ -1256,9 +1497,16 @@ public sealed partial class WidgetWindow : Window
             e.OriginalSource is FrameworkElement element &&
             element.DataContext is WidgetItem item)
         {
-            ViewModel.OpenItemCommand.Execute(item);
+            OpenItem(item);
             e.Handled = true;
         }
+    }
+
+    private void OpenItem(WidgetItem item)
+    {
+        ViewModel.OpenItem(item, _hWnd);
+        ClearRemovedCutPaths();
+        UpdateEmptyState();
     }
 
     private void ItemsView_RightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -1269,11 +1517,15 @@ public sealed partial class WidgetWindow : Window
         }
 
         var listView = GetActiveItemsView();
-        if (listView is not null && !item.IsSelected)
+        if (listView is not null)
         {
-            listView.SelectedItems.Clear();
-            listView.SelectedItems.Add(item);
-            ApplySelectionState(listView);
+            ClearOtherWidgetSelections();
+            if (!item.IsSelected)
+            {
+                listView.SelectedItems.Clear();
+                listView.SelectedItems.Add(item);
+                ApplySelectionState(listView);
+            }
         }
 
         var selectedItems = GetSelectedItems();
@@ -1290,17 +1542,17 @@ public sealed partial class WidgetWindow : Window
 
         var openItem = new MenuFlyoutItem
         {
-            Text = "\u6253\u5f00",
+            Text = _localizationService.T("Widget.Open"),
             Icon = new SymbolIcon(Symbol.OpenFile)
         };
-        openItem.Click += (_, _) => ViewModel.OpenItemCommand.Execute(item);
+        openItem.Click += (_, _) => OpenItem(item);
         flyout.Items.Add(openItem);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
         var copyItem = new MenuFlyoutItem
         {
-            Text = "\u590d\u5236",
+            Text = _localizationService.T("Common.Copy"),
             Icon = new FontIcon { Glyph = "\uE8C8" }
         };
         copyItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: false);
@@ -1308,7 +1560,7 @@ public sealed partial class WidgetWindow : Window
 
         var cutItem = new MenuFlyoutItem
         {
-            Text = "\u526a\u5207",
+            Text = _localizationService.T("Common.Cut"),
             Icon = new FontIcon { Glyph = "\uE8C6" }
         };
         cutItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: true);
@@ -1316,7 +1568,7 @@ public sealed partial class WidgetWindow : Window
 
         var showItem = new MenuFlyoutItem
         {
-            Text = "\u5728\u8d44\u6e90\u7ba1\u7406\u5668\u4e2d\u663e\u793a",
+            Text = _localizationService.T("Widget.ShowInExplorer"),
             Icon = new FontIcon { Glyph = "\uE838" }
         };
         showItem.Click += (_, _) => ViewModel.ShowInExplorerCommand.Execute(item);
@@ -1324,7 +1576,7 @@ public sealed partial class WidgetWindow : Window
 
         var renameItem = new MenuFlyoutItem
         {
-            Text = "\u91cd\u547d\u540d",
+            Text = _localizationService.T("Common.Rename"),
             Icon = new FontIcon { Glyph = "\uE8AC" }
         };
         renameItem.Click += async (_, _) => await StartItemRenameAsync(item);
@@ -1332,7 +1584,7 @@ public sealed partial class WidgetWindow : Window
 
         var deleteItem = new MenuFlyoutItem
         {
-            Text = "\u5220\u9664",
+            Text = _localizationService.T("Common.Delete"),
             Icon = new FontIcon { Glyph = "\uE74D" }
         };
         deleteItem.Click += async (_, _) => await DeleteSelectedItemsAsync();
@@ -1340,7 +1592,7 @@ public sealed partial class WidgetWindow : Window
 
         var propItem = new MenuFlyoutItem
         {
-            Text = "\u5c5e\u6027",
+            Text = _localizationService.T("Common.Properties"),
             Icon = new FontIcon { Glyph = "\uE946" }
         };
         propItem.Click += (_, _) => ShellContextMenuHelper.ShowProperties(_hWnd, item.Path);
@@ -1352,7 +1604,7 @@ public sealed partial class WidgetWindow : Window
 
             var moveBackToDesktopItem = new MenuFlyoutItem
             {
-                Text = "\u79fb\u56de\u684c\u9762",
+                Text = _localizationService.T("Widget.MoveBackToDesktop"),
                 Icon = new FontIcon { Glyph = "\uE74A" }
             };
             moveBackToDesktopItem.Click += async (_, _) =>
@@ -1360,11 +1612,13 @@ public sealed partial class WidgetWindow : Window
                 try
                 {
                     int movedCount = await ViewModel.MoveItemsBackToDesktopAsync([item], useShellProgress: true);
-                    ShowStatusToast(movedCount > 0 ? "已移回桌面" : "没有项目被移动");
+                    ShowStatusToast(movedCount > 0
+                        ? _localizationService.Format("Widget.MovedBackToDesktop", movedCount)
+                        : _localizationService.T("Widget.NoItemsMoved"));
                 }
                 catch (Exception ex)
                 {
-                    await ShowErrorDialogAsync("\u79fb\u56de\u684c\u9762\u5931\u8d25", ex.Message);
+                    await ShowErrorDialogAsync(_localizationService.T("Widget.MoveBackToDesktopFailed"), ex.Message);
                 }
             };
             flyout.Items.Add(moveBackToDesktopItem);
@@ -1378,7 +1632,7 @@ public sealed partial class WidgetWindow : Window
     {
         var titleItem = new MenuFlyoutItem
         {
-            Text = $"已选择 {selectedCount} 项",
+            Text = _localizationService.Format("Widget.SelectedCount", selectedCount),
             Icon = new FontIcon { Glyph = "\uE762" },
             IsEnabled = false
         };
@@ -1387,7 +1641,7 @@ public sealed partial class WidgetWindow : Window
 
         var copyItem = new MenuFlyoutItem
         {
-            Text = "复制",
+            Text = _localizationService.T("Common.Copy"),
             Icon = new FontIcon { Glyph = "\uE8C8" }
         };
         copyItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: false);
@@ -1395,7 +1649,7 @@ public sealed partial class WidgetWindow : Window
 
         var cutItem = new MenuFlyoutItem
         {
-            Text = "剪切",
+            Text = _localizationService.T("Common.Cut"),
             Icon = new FontIcon { Glyph = "\uE8C6" }
         };
         cutItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: true);
@@ -1403,7 +1657,7 @@ public sealed partial class WidgetWindow : Window
 
         var deleteItem = new MenuFlyoutItem
         {
-            Text = "删除",
+            Text = _localizationService.T("Common.Delete"),
             Icon = new FontIcon
             {
                 Glyph = "\uE74D",
@@ -1419,7 +1673,7 @@ public sealed partial class WidgetWindow : Window
 
             var moveBackToDesktopItem = new MenuFlyoutItem
             {
-                Text = "移回桌面",
+                Text = _localizationService.T("Widget.MoveBackToDesktop"),
                 Icon = new FontIcon { Glyph = "\uE74A" }
             };
             moveBackToDesktopItem.Click += async (_, _) => await MoveSelectedItemsBackToDesktopAsync();
@@ -1431,6 +1685,16 @@ public sealed partial class WidgetWindow : Window
     {
         if (sender is ListViewBase listView)
         {
+            if (_isSynchronizingSelection)
+            {
+                return;
+            }
+
+            if (e.AddedItems.Count > 0)
+            {
+                ClearOtherWidgetSelections();
+            }
+
             ApplySelectionState(listView);
             _lastSelectionAnchorIndex = GetPrimarySelectedItem() is { } item
                 ? ViewModel.Items.IndexOf(item)
@@ -1454,6 +1718,7 @@ public sealed partial class WidgetWindow : Window
         }
 
         RootGrid.Focus(FocusState.Programmatic);
+        ClearOtherWidgetSelections();
         _selectionPointerPressed = true;
         _isBoxSelecting = false;
         _selectionStartPoint = e.GetCurrentPoint(SelectionOverlay).Position;
@@ -1461,6 +1726,9 @@ public sealed partial class WidgetWindow : Window
         _selectionSnapshot = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control)
             ? GetSelectedItems()
             : [];
+        _selectionPreviewItems = new HashSet<WidgetItem>(_selectionSnapshot);
+        _selectionHitTestItems = [];
+        _selectionSurfaceByItem = [];
 
         if (!Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
         {
@@ -1486,8 +1754,13 @@ public sealed partial class WidgetWindow : Window
         }
 
         _isBoxSelecting = true;
+        if (_selectionHitTestItems.Count == 0)
+        {
+            CacheSelectionHitTestItems(listView);
+        }
+
         UpdateSelectionRectangleVisual();
-        ApplySelectionRectangle(listView);
+        ApplySelectionRectanglePreview();
         e.Handled = true;
     }
 
@@ -1610,7 +1883,7 @@ public sealed partial class WidgetWindow : Window
         dataPackage.Properties["DeskBoxSourcePaths"] = sourcePaths;
         dataPackage.Properties.Title = sourcePaths.Length == 1
             ? Path.GetFileName(sourcePaths[0])
-            : $"{sourcePaths.Length} 个项目";
+            : _localizationService.Format("Widget.ItemCount", sourcePaths.Length);
         _activeDragSourcePaths = sourcePaths;
         _activeDragHasStorageItems = storageItems.Count > 0;
         return true;
@@ -1643,6 +1916,7 @@ public sealed partial class WidgetWindow : Window
 
         if (ctrlPressed && e.Key == Windows.System.VirtualKey.A)
         {
+            ClearOtherWidgetSelections();
             listView.SelectAll();
             ApplySelectionState(listView);
             e.Handled = true;
@@ -1692,7 +1966,7 @@ public sealed partial class WidgetWindow : Window
         {
             if (GetPrimarySelectedItem() is { } openItem)
             {
-                ViewModel.OpenItemCommand.Execute(openItem);
+                OpenItem(openItem);
                 e.Handled = true;
             }
 
@@ -1704,7 +1978,7 @@ public sealed partial class WidgetWindow : Window
             await ViewModel.RefreshFromConfigAsync();
             ClearRemovedCutPaths();
             UpdateEmptyState();
-            ShowStatusToast("已刷新");
+            ShowStatusToast(_localizationService.T("Widget.Refreshed"));
             e.Handled = true;
             return;
         }
@@ -1733,16 +2007,14 @@ public sealed partial class WidgetWindow : Window
 
         if (e.Key == Windows.System.VirtualKey.Escape)
         {
-            ClearCutState();
-            listView.SelectedItems.Clear();
-            ApplySelectionState(listView);
+            ClearItemSelectionCore(clearCutState: true);
             e.Handled = true;
             return;
         }
 
         if (e.Key == Windows.System.VirtualKey.Enter && GetPrimarySelectedItem() is { } item)
         {
-            ViewModel.OpenItemCommand.Execute(item);
+            OpenItem(item);
             e.Handled = true;
         }
     }
@@ -1765,7 +2037,7 @@ public sealed partial class WidgetWindow : Window
         package.SetText(string.Join(Environment.NewLine, selectedPaths));
         Clipboard.SetContent(package);
         Clipboard.Flush();
-        ShowStatusToast($"已复制路径 {selectedPaths.Length} 项");
+        ShowStatusToast(_localizationService.Format("Widget.CopyPathCount", selectedPaths.Length));
     }
 
     private async Task CopySelectionToClipboardAsync(bool cut)
@@ -1784,7 +2056,7 @@ public sealed partial class WidgetWindow : Window
             .ToArray();
         if (sourcePaths.Length == 0)
         {
-            ShowStatusToast("没有可复制的项目");
+            ShowStatusToast(_localizationService.T("Widget.NoCopyableItems"));
             return;
         }
 
@@ -1813,8 +2085,8 @@ public sealed partial class WidgetWindow : Window
         ApplyCutState();
         UpdateInteractiveSurfaces();
         ShowStatusToast(cut
-            ? $"已剪切 {sourcePaths.Length} 项"
-            : $"已复制 {sourcePaths.Length} 项");
+            ? _localizationService.Format("Widget.CutCount", sourcePaths.Length)
+            : _localizationService.Format("Widget.CopyCount", sourcePaths.Length));
     }
 
     private async Task PasteFromClipboardAsync()
@@ -1855,8 +2127,8 @@ public sealed partial class WidgetWindow : Window
 
         ClearCutState();
         ShowStatusToast(moveWhenMapped == true
-            ? $"已移动 {itemCount} 项"
-            : $"已粘贴 {itemCount} 项");
+            ? _localizationService.Format("Widget.MovedCount", itemCount)
+            : _localizationService.Format("Widget.PastedCount", itemCount));
     }
 
     private void ClearCutState()
@@ -1942,10 +2214,10 @@ public sealed partial class WidgetWindow : Window
             : Visibility.Collapsed;
     }
 
-    private void ApplySelectionRectangle(ListViewBase listView)
+    private void CacheSelectionHitTestItems(ListViewBase listView)
     {
-        var selectionRect = GetSelectionRect(_selectionStartPoint, _selectionCurrentPoint);
-        var selectedItems = new HashSet<WidgetItem>(_selectionSnapshot);
+        _selectionHitTestItems = [];
+        _selectionSurfaceByItem = [];
 
         foreach (var item in ViewModel.Items)
         {
@@ -1960,39 +2232,55 @@ public sealed partial class WidgetWindow : Window
             var target = FindItemSurface(item) ?? container;
             var topLeft = target.TransformToVisual(SelectionOverlay)
                 .TransformPoint(new Windows.Foundation.Point(0, 0));
-            var itemRect = new Windows.Foundation.Rect(
+            var bounds = new Windows.Foundation.Rect(
                 topLeft.X,
                 topLeft.Y,
                 target.ActualWidth,
                 target.ActualHeight);
+            var surface = target as Border;
 
-            if (RectsIntersect(selectionRect, itemRect))
+            _selectionHitTestItems.Add(new SelectionHitTestItem(item, surface, bounds));
+            if (surface is not null)
             {
-                selectedItems.Add(item);
+                _selectionSurfaceByItem[item] = surface;
+            }
+        }
+    }
+
+    private void ApplySelectionRectanglePreview()
+    {
+        var selectionRect = GetSelectionRect(_selectionStartPoint, _selectionCurrentPoint);
+        var selectedItems = new HashSet<WidgetItem>(_selectionSnapshot);
+
+        foreach (var hitTestItem in _selectionHitTestItems)
+        {
+            if (RectsIntersect(selectionRect, hitTestItem.Bounds))
+            {
+                selectedItems.Add(hitTestItem.Item);
             }
         }
 
-        listView.SelectedItems.Clear();
-        foreach (var item in selectedItems)
-        {
-            listView.SelectedItems.Add(item);
-        }
-
-        ApplySelectionState(listView);
+        ApplySelectionPreview(selectedItems);
     }
 
     private void FinishSelectionRectangle(ListViewBase listView)
     {
         bool shouldHandle = _selectionPointerPressed || _isBoxSelecting;
         _selectionPointerPressed = false;
-        _selectionSnapshot = [];
 
         if (_isBoxSelecting)
         {
-            ApplySelectionRectangle(listView);
+            ApplySelectionRectanglePreview();
+            SynchronizeListViewSelection(
+                listView,
+                ViewModel.Items.Where(item => _selectionPreviewItems.Contains(item)));
         }
 
         _isBoxSelecting = false;
+        _selectionSnapshot = [];
+        _selectionPreviewItems = [];
+        _selectionHitTestItems = [];
+        _selectionSurfaceByItem = [];
         SelectionRectangle.Visibility = Visibility.Collapsed;
         SelectionRectangle.Width = 0;
         SelectionRectangle.Height = 0;
@@ -2190,6 +2478,7 @@ public sealed partial class WidgetWindow : Window
         var listView = GetActiveItemsView();
         if (listView is not null)
         {
+            ClearOtherWidgetSelections();
             if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
             {
                 if (!item.IsSelected)
@@ -2289,7 +2578,7 @@ public sealed partial class WidgetWindow : Window
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
-            e.DragUIOverride.Caption = "不能移动到此文件夹";
+            e.DragUIOverride.Caption = _localizationService.T("Widget.CannotMoveToFolder");
             ClearFolderDropTarget();
             return;
         }
@@ -2304,7 +2593,11 @@ public sealed partial class WidgetWindow : Window
 
         SetFolderDropTarget(border);
         e.DragUIOverride.IsGlyphVisible = true;
-        e.DragUIOverride.Caption = $"{(e.AcceptedOperation == DataPackageOperation.Copy ? "复制" : "移动")}到 “{targetFolder.Name}”";
+        e.DragUIOverride.Caption = _localizationService.Format(
+            e.AcceptedOperation == DataPackageOperation.Copy
+                ? "Widget.CopyToFolder"
+                : "Widget.MoveToFolder",
+            targetFolder.Name);
     }
 
     private void WidgetItemSurface_DragLeave(object sender, DragEventArgs e)
@@ -2341,7 +2634,7 @@ public sealed partial class WidgetWindow : Window
 
             if (IsInvalidFolderDrop(sourcePaths, targetFolder.Path))
             {
-                ShowStatusToast("不能移动到此文件夹");
+                ShowStatusToast(_localizationService.T("Widget.CannotMoveToFolder"));
                 return;
             }
 
@@ -2373,11 +2666,14 @@ public sealed partial class WidgetWindow : Window
                 ClearRemovedCutPaths();
             }
 
-            ShowStatusToast($"{(move ? "已移动" : "已复制")}到 {targetFolder.Name} {results.Count} 项");
+            ShowStatusToast(_localizationService.Format(
+                move ? "Widget.MovedToFolder" : "Widget.CopiedToFolder",
+                targetFolder.Name,
+                results.Count));
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("移动到文件夹失败", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.MoveToFolderFailed"), ex.Message);
         }
         finally
         {
@@ -2723,7 +3019,7 @@ public sealed partial class WidgetWindow : Window
 
         var pasteItem = new MenuFlyoutItem
         {
-            Text = "\u7c98\u8d34",
+            Text = _localizationService.T("Common.Paste"),
             Icon = new FontIcon { Glyph = "\uE77F" },
             IsEnabled = CanPasteFromClipboard()
         };
@@ -2735,14 +3031,14 @@ public sealed partial class WidgetWindow : Window
             }
             catch (Exception ex)
             {
-                await ShowErrorDialogAsync("\u7c98\u8d34\u5931\u8d25", ex.Message);
+                await ShowErrorDialogAsync(_localizationService.T("Widget.PasteFailed"), ex.Message);
             }
         };
         flyout.Items.Add(pasteItem);
 
         var refreshItem = new MenuFlyoutItem
         {
-            Text = "\u5237\u65b0",
+            Text = _localizationService.T("Common.Refresh"),
             Icon = new FontIcon { Glyph = "\uE72C" }
         };
         refreshItem.Click += async (_, _) =>
@@ -2753,7 +3049,7 @@ public sealed partial class WidgetWindow : Window
             }
             catch (Exception ex)
             {
-                await ShowErrorDialogAsync("\u5237\u65b0\u5931\u8d25", ex.Message);
+                await ShowErrorDialogAsync(_localizationService.T("Widget.RefreshFailed"), ex.Message);
             }
         };
         flyout.Items.Add(refreshItem);
@@ -2764,7 +3060,7 @@ public sealed partial class WidgetWindow : Window
 
             var newFolderItem = new MenuFlyoutItem
             {
-                Text = "\u65b0\u5efa\u6587\u4ef6\u5939",
+                Text = _localizationService.T("Common.NewFolder"),
                 Icon = new FontIcon { Glyph = "\uE8B7" }
             };
             newFolderItem.Click += async (_, _) => await CreateFolderInMappedLocationAsync();
@@ -2780,7 +3076,7 @@ public sealed partial class WidgetWindow : Window
         {
             var addFileItem = new MenuFlyoutItem
             {
-                Text = "添加文件",
+                Text = _localizationService.T("Widget.AddFile"),
                 Icon = new FontIcon { Glyph = "\uE8A5" }
             };
             addFileItem.Click += async (_, _) => await PickAndImportFilesAsync();
@@ -2790,7 +3086,7 @@ public sealed partial class WidgetWindow : Window
 
         var changeMappedPathItem = new MenuFlyoutItem
         {
-            Text = "更改映射路径",
+            Text = _localizationService.T("Widget.ChangeMappedPath"),
             Icon = new FontIcon { Glyph = "\uE8B7" }
         };
         changeMappedPathItem.Click += async (_, _) => await PickAndApplyMappedFolderAsync();
@@ -2803,7 +3099,7 @@ public sealed partial class WidgetWindow : Window
 
         var modeInfo = new MenuFlyoutItem
         {
-            Text = $"\u7ec4\u4ef6\u7c7b\u578b\uff1a{ViewModel.ModeLabel}\u7ec4\u4ef6",
+            Text = _localizationService.Format("Widget.ModeInfo", ViewModel.ModeLabel),
             Icon = new FontIcon
             {
                 Glyph = ViewModel.IconGlyph
@@ -2819,7 +3115,7 @@ public sealed partial class WidgetWindow : Window
 
         var iconView = new ToggleMenuFlyoutItem
         {
-            Text = "\u56fe\u6807\u89c6\u56fe",
+            Text = _localizationService.T("Widget.IconView"),
             IsChecked = ViewModel.IsIconMode
         };
         iconView.Click += SetIconView_Click;
@@ -2827,7 +3123,7 @@ public sealed partial class WidgetWindow : Window
 
         var listView = new ToggleMenuFlyoutItem
         {
-            Text = "\u5217\u8868\u89c6\u56fe",
+            Text = _localizationService.T("Widget.ListView"),
             IsChecked = ViewModel.IsListMode
         };
         listView.Click += SetListView_Click;
@@ -2837,7 +3133,7 @@ public sealed partial class WidgetWindow : Window
 
         var positionLock = new ToggleMenuFlyoutItem
         {
-            Text = "\u9501\u5b9a\u4f4d\u7f6e",
+            Text = _localizationService.T("Widget.LockPosition"),
             IsChecked = ViewModel.IsPositionLocked
         };
         positionLock.Click += TogglePositionLock_Click;
@@ -2845,7 +3141,7 @@ public sealed partial class WidgetWindow : Window
 
         var sizeLock = new ToggleMenuFlyoutItem
         {
-            Text = "\u9501\u5b9a\u5c3a\u5bf8",
+            Text = _localizationService.T("Widget.LockSize"),
             IsChecked = ViewModel.IsSizeLocked
         };
         sizeLock.Click += ToggleSizeLock_Click;
@@ -2857,7 +3153,7 @@ public sealed partial class WidgetWindow : Window
         {
             var openFolder = new MenuFlyoutItem
             {
-                Text = "\u6253\u5f00\u5f53\u524d\u6587\u4ef6\u5939",
+                Text = _localizationService.T("Widget.OpenCurrentFolder"),
                 Icon = new FontIcon { Glyph = "\uE838" }
             };
             openFolder.Click += (_, _) =>
@@ -2872,7 +3168,7 @@ public sealed partial class WidgetWindow : Window
 
         var rename = new MenuFlyoutItem
         {
-            Text = "\u91cd\u547d\u540d",
+            Text = _localizationService.T("Common.Rename"),
             Icon = new FontIcon { Glyph = "\uE8AC" }
         };
         rename.Click += Rename_Click;
@@ -2882,7 +3178,7 @@ public sealed partial class WidgetWindow : Window
 
         var deleteWidget = new MenuFlyoutItem
         {
-            Text = "\u5220\u9664\u7ec4\u4ef6",
+            Text = _localizationService.T("Widget.Tooltip.DeleteWidget"),
             Icon = new FontIcon
             {
                 Glyph = "\uE74D",
@@ -2899,7 +3195,7 @@ public sealed partial class WidgetWindow : Window
     {
         if (App.Current is App app)
         {
-            _ = app.WidgetManager?.CreateManagedWidgetAsync("\u65b0\u5efa\u7ec4\u4ef6");
+            _ = app.WidgetManager?.CreateManagedWidgetAsync(_localizationService.T("Widget.DefaultNameShort"));
         }
     }
 
@@ -2907,7 +3203,7 @@ public sealed partial class WidgetWindow : Window
     {
         var newWidget = new MenuFlyoutItem
         {
-            Text = "\u65b0\u5efa\u7ec4\u4ef6",
+            Text = _localizationService.T("Common.NewWidget"),
             Icon = new FontIcon { Glyph = "\uE710" }
         };
         newWidget.Click += NewWidget_Click;
@@ -2915,7 +3211,7 @@ public sealed partial class WidgetWindow : Window
 
         var mapFolder = new MenuFlyoutItem
         {
-            Text = "\u65b0\u5efa\u6587\u4ef6\u5939\u6620\u5c04",
+            Text = _localizationService.T("Common.NewFolderMapping"),
             Icon = new FontIcon { Glyph = "\uE8B7" }
         };
         mapFolder.Click += MapFolderButton_Click;
@@ -2954,11 +3250,13 @@ public sealed partial class WidgetWindow : Window
 
             bool shouldMove = GetManagedDropOperation() != DataPackageOperation.Copy;
             await ViewModel.ImportPathsAsync(paths, shouldMove, useShellProgress: shouldMove);
-            ShowStatusToast(paths.Length == 1 ? "已添加文件" : $"已添加 {paths.Length} 个文件");
+            ShowStatusToast(paths.Length == 1
+                ? _localizationService.T("Widget.AddedFile")
+                : _localizationService.Format("Widget.AddedFiles", paths.Length));
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("添加文件失败", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.AddFileFailed"), ex.Message);
         }
         finally
         {
@@ -2991,11 +3289,11 @@ public sealed partial class WidgetWindow : Window
             }
 
             await ViewModel.UpdateMappedFolderPathAsync(folder.Path);
-            ShowStatusToast("映射路径已更新");
+            ShowStatusToast(_localizationService.T("Widget.MappedPathUpdated"));
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("更改映射路径失败", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.ChangeMappedPathFailed"), ex.Message);
         }
         finally
         {
@@ -3034,7 +3332,7 @@ public sealed partial class WidgetWindow : Window
         try
         {
             string folderPath = FileService.GetAvailablePath(
-                Path.Combine(ViewModel.MappedFolderPath, "\u65b0\u5efa\u6587\u4ef6\u5939"));
+                Path.Combine(ViewModel.MappedFolderPath, _localizationService.T("Widget.NewFolderName")));
             Directory.CreateDirectory(folderPath);
             await ViewModel.RefreshFromConfigAsync();
             if (ViewModel.Items.FirstOrDefault(existingItem =>
@@ -3046,7 +3344,7 @@ public sealed partial class WidgetWindow : Window
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("\u65b0\u5efa\u6587\u4ef6\u5939\u5931\u8d25", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.CreateFolderFailed"), ex.Message);
         }
     }
 
@@ -3096,15 +3394,17 @@ public sealed partial class WidgetWindow : Window
 
         var titleItem = new MenuFlyoutItem
         {
-            Text = items.Length == 1 ? $"将“{items[0].Name}”移到回收站？" : $"将 {items.Length} 项移到回收站？",
+            Text = items.Length == 1
+                ? _localizationService.Format("Widget.DeleteItemsTitleOne", items[0].Name)
+                : _localizationService.Format("Widget.DeleteItemsTitleMany", items.Length),
             Icon = new FontIcon { Glyph = "\uE946" },
             IsEnabled = false
         };
         flyout.Items.Add(titleItem);
 
         string message = items.Length == 1
-            ? "这是文件夹，里面的内容也会一起进入回收站"
-            : $"其中包含 {folderCount} 个文件夹，文件夹内容也会一起进入回收站";
+            ? _localizationService.T("Widget.DeleteFolderNoteOne")
+            : _localizationService.Format("Widget.DeleteFolderNoteMany", folderCount);
         flyout.Items.Add(new MenuFlyoutItem
         {
             Text = message,
@@ -3116,7 +3416,7 @@ public sealed partial class WidgetWindow : Window
 
         var confirmItem = new MenuFlyoutItem
         {
-            Text = "移到回收站",
+            Text = _localizationService.T("Widget.MoveToRecycleBin"),
             Icon = new FontIcon
             {
                 Glyph = "\uE74D",
@@ -3128,7 +3428,7 @@ public sealed partial class WidgetWindow : Window
 
         var cancelItem = new MenuFlyoutItem
         {
-            Text = "取消",
+            Text = _localizationService.T("Common.Cancel"),
             Icon = new FontIcon { Glyph = "\uE711" }
         };
         cancelItem.Click += (_, _) => flyout.Hide();
@@ -3163,11 +3463,11 @@ public sealed partial class WidgetWindow : Window
             int deletedCount = selectedItems.Count;
             await ViewModel.DeleteItemsAsync(selectedItems);
             ClearRemovedCutPaths();
-            ShowStatusToast($"已移到回收站 {deletedCount} 项");
+            ShowStatusToast(_localizationService.Format("Widget.MovedToRecycleBin", deletedCount));
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("\u5220\u9664\u5931\u8d25", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.DeleteFailed"), ex.Message);
         }
     }
 
@@ -3184,11 +3484,13 @@ public sealed partial class WidgetWindow : Window
             int movedCount = await ViewModel.MoveItemsBackToDesktopAsync(selectedItems, useShellProgress: true);
 
             ClearRemovedCutPaths();
-            ShowStatusToast(movedCount > 0 ? $"已移回桌面 {movedCount} 项" : "没有项目被移动");
+            ShowStatusToast(movedCount > 0
+                ? _localizationService.Format("Widget.MovedBackToDesktop", movedCount)
+                : _localizationService.T("Widget.NoItemsMoved"));
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("移回桌面失败", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.MoveBackToDesktopFailed"), ex.Message);
         }
     }
 
@@ -3221,11 +3523,13 @@ public sealed partial class WidgetWindow : Window
             int movedCount = await ViewModel.MoveItemsBackToDesktopAsync(draggedItems, useShellProgress);
 
             ClearRemovedCutPaths();
-            ShowStatusToast(movedCount > 0 ? $"已移到桌面 {movedCount} 项" : "没有项目被移动");
+            ShowStatusToast(movedCount > 0
+                ? _localizationService.Format("Widget.MovedToDesktop", movedCount)
+                : _localizationService.T("Widget.NoItemsMoved"));
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("移到桌面失败", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.MoveToDesktopFailed"), ex.Message);
             await ViewModel.RefreshFromConfigAsync();
             UpdateEmptyState();
         }
@@ -3324,7 +3628,7 @@ public sealed partial class WidgetWindow : Window
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("\u91cd\u547d\u540d\u5931\u8d25", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.RenameFailed"), ex.Message);
             _itemRenameTextBox.Focus(FocusState.Programmatic);
             _itemRenameTextBox.SelectAll();
         }
@@ -3357,6 +3661,7 @@ public sealed partial class WidgetWindow : Window
             return;
         }
 
+        ClearOtherWidgetSelections();
         listView.SelectedItems.Clear();
         listView.SelectedItems.Add(item);
         listView.ScrollIntoView(item);
@@ -3428,7 +3733,7 @@ public sealed partial class WidgetWindow : Window
 
         var titleItem = new MenuFlyoutItem
         {
-            Text = $"删除“{ViewModel.Name}”",
+            Text = _localizationService.Format("Widget.DeleteWidgetTitle", ViewModel.Name),
             Icon = new FontIcon { Glyph = "\uE74D" },
             IsEnabled = false
         };
@@ -3440,13 +3745,15 @@ public sealed partial class WidgetWindow : Window
         {
             var noteItem = new MenuFlyoutItem
             {
-                Text = "只移除组件，不删除原文件",
+                Text = _localizationService.T("Widget.DeleteWidgetNote"),
                 Icon = new FontIcon { Glyph = "\uE946" },
                 IsEnabled = false
             };
             flyout.Items.Add(noteItem);
 
-            var confirmItem = CreateDeleteActionItem("确认删除组件", WidgetRemovalAction.RemoveWidgetOnly);
+            var confirmItem = CreateDeleteActionItem(
+                _localizationService.T("Widget.DeleteWidgetConfirm"),
+                WidgetRemovalAction.RemoveWidgetOnly);
             flyout.Items.Add(confirmItem);
             flyout.Items.Add(CreateCancelDeleteItem());
             return flyout;
@@ -3454,15 +3761,27 @@ public sealed partial class WidgetWindow : Window
 
         var managedInfoItem = new MenuFlyoutItem
         {
-            Text = "选择收纳文件夹处理方式",
+            Text = _localizationService.T("Widget.DeleteManagedInfo"),
             Icon = new FontIcon { Glyph = "\uE8B7" },
             IsEnabled = false
         };
         flyout.Items.Add(managedInfoItem);
 
-        flyout.Items.Add(CreateDeleteActionItem("保留收纳文件夹", WidgetRemovalAction.RemoveWidgetOnly, "\uE8B7", false));
-        flyout.Items.Add(CreateDeleteActionItem("移回桌面后删除空文件夹", WidgetRemovalAction.MoveManagedFolderContentsToDesktop, "\uE8CA", false));
-        flyout.Items.Add(CreateDeleteActionItem("删除文件夹，文件进回收站", WidgetRemovalAction.DeleteManagedFolder, "\uE74D", true));
+        flyout.Items.Add(CreateDeleteActionItem(
+            _localizationService.T("Widget.KeepManagedFolder"),
+            WidgetRemovalAction.RemoveWidgetOnly,
+            "\uE8B7",
+            false));
+        flyout.Items.Add(CreateDeleteActionItem(
+            _localizationService.T("Widget.MoveBackThenDeleteFolder"),
+            WidgetRemovalAction.MoveManagedFolderContentsToDesktop,
+            "\uE8CA",
+            false));
+        flyout.Items.Add(CreateDeleteActionItem(
+            _localizationService.T("Widget.DeleteFolderToRecycleBin"),
+            WidgetRemovalAction.DeleteManagedFolder,
+            "\uE74D",
+            true));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(CreateCancelDeleteItem());
         return flyout;
@@ -3493,7 +3812,7 @@ public sealed partial class WidgetWindow : Window
     {
         var item = new MenuFlyoutItem
         {
-            Text = "取消",
+            Text = _localizationService.T("Common.Cancel"),
             Icon = new FontIcon { Glyph = "\uE711" }
         };
         item.Click += (_, _) => _deleteWidgetFlyout?.Hide();
@@ -3518,7 +3837,7 @@ public sealed partial class WidgetWindow : Window
             App.Log($"[WidgetDelete] Delete failed for '{ViewModel.Name}' ({ViewModel.Config.Id}): {ex}");
             _deletePending = false;
             RootGrid.IsHitTestVisible = true;
-            await ShowErrorDialogAsync("删除组件失败", ex.Message);
+            await ShowErrorDialogAsync(_localizationService.T("Widget.DeleteWidgetFailed"), ex.Message);
             RestoreDesktopLayer();
         }
     }
@@ -3701,7 +4020,7 @@ public sealed partial class WidgetWindow : Window
 
         var closeButton = new Button
         {
-            Content = "\u786e\u5b9a",
+            Content = _localizationService.T("Common.Ok"),
             MinWidth = 88,
             HorizontalAlignment = HorizontalAlignment.Right
         };
@@ -3743,18 +4062,18 @@ public sealed partial class WidgetWindow : Window
         await completion.Task;
     }
 
-    private static string FormatUserFacingError(string message)
+    private string FormatUserFacingError(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
-            return "操作没有完成。";
+            return _localizationService.T("Widget.Error.OperationIncomplete");
         }
 
         if (message.Contains("canceled", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("已取消", StringComparison.OrdinalIgnoreCase))
         {
-            return "操作已取消。";
+            return _localizationService.T("Widget.Error.OperationCanceled");
         }
 
         if (message.Contains("denied", StringComparison.OrdinalIgnoreCase) ||
@@ -3762,7 +4081,7 @@ public sealed partial class WidgetWindow : Window
             message.Contains("没有权限", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("拒绝访问", StringComparison.OrdinalIgnoreCase))
         {
-            return $"没有权限完成这个操作。\n\n{message}";
+            return _localizationService.Format("Widget.Error.AccessDenied", message);
         }
 
         if (message.Contains("being used", StringComparison.OrdinalIgnoreCase) ||
@@ -3771,14 +4090,14 @@ public sealed partial class WidgetWindow : Window
         {
             string? path = TryExtractQuotedPath(message);
             return string.IsNullOrWhiteSpace(path)
-                ? "文件正在被其他程序使用，请关闭相关程序后再试。"
-                : $"文件正在被其他程序使用，请关闭相关程序后再试。\n\n{path}";
+                ? _localizationService.T("Widget.Error.FileInUse")
+                : _localizationService.Format("Widget.Error.FileInUseWithPath", path);
         }
 
         if (message.Contains("already exists", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("已存在", StringComparison.OrdinalIgnoreCase))
         {
-            return $"目标位置已经有同名项目。\n\n{message}";
+            return _localizationService.Format("Widget.Error.DuplicateName", message);
         }
 
         return message;

@@ -35,6 +35,13 @@ public partial class App : Application
 
     private TaskbarIcon? _trayIcon;
     private Window? _trayWindow;
+    private MenuFlyoutItem? _trayMapFolderItem;
+    private MenuFlyoutItem? _trayNewWidgetItem;
+    private MenuFlyoutItem? _trayShowAllItem;
+    private MenuFlyoutItem? _trayHideAllItem;
+    private MenuFlyoutItem? _traySettingsItem;
+    private ToggleMenuFlyoutItem? _trayAutoStartItem;
+    private MenuFlyoutItem? _trayExitItem;
     private SettingsWindow? _settingsWindow;
     private OnboardingWindow? _onboardingWindow;
     private bool _widgetsRaisedFromTray;
@@ -48,6 +55,7 @@ public partial class App : Application
     public SettingsService SettingsService { get; } = new();
     public FileService FileService { get; } = new();
     public OrganizerService OrganizerService { get; }
+    public LocalizationService LocalizationService { get; private set; } = null!;
     public ThemeService ThemeService { get; private set; } = null!;
     public WidgetManager? WidgetManager { get; private set; }
     public SettingsWindow? SettingsWindowInstance => _settingsWindow;
@@ -55,10 +63,17 @@ public partial class App : Application
     public App()
     {
         Log("App() constructor start");
+        bool launchedForStartup = IsStartupLaunch(Environment.GetCommandLineArgs());
         _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskBox_Activate_Event_7F3A9B2E");
         _singleInstanceMutex = new Mutex(true, "DeskBox_SingleInstance_Mutex_7F3A9B2E", out bool createdNew);
         if (!createdNew)
         {
+            if (launchedForStartup)
+            {
+                Log("Another instance running; startup launch exiting silently");
+                Environment.Exit(0);
+            }
+
             Log("Another instance running, signaling existing instance");
             try
             {
@@ -104,20 +119,38 @@ public partial class App : Application
         Log(msg);
     }
 
+    private static bool IsStartupLaunch(IEnumerable<string> arguments)
+    {
+        return arguments.Any(IsStartupArgument);
+    }
+
+    private static bool IsStartupLaunch(string? arguments)
+    {
+        return !string.IsNullOrWhiteSpace(arguments) &&
+            arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(IsStartupArgument);
+    }
+
+    private static bool IsStartupArgument(string argument)
+    {
+        return string.Equals(argument.Trim().Trim('"'), "--startup", StringComparison.OrdinalIgnoreCase);
+    }
+
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         Log("OnLaunched start");
 
         try
         {
-            IsStartupMode = args.Arguments?.Contains("--startup", StringComparison.OrdinalIgnoreCase) == true;
+            IsStartupMode = IsStartupLaunch(args.Arguments);
             UiDispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
             ThemeService = new ThemeService(SettingsService);
             await SettingsService.LoadAsync();
+            LocalizationService = new LocalizationService(SettingsService);
+            LocalizationService.LanguageChanged += OnLanguageChanged;
             ThemeService.RefreshAppearance();
 
-            WidgetManager = new WidgetManager(SettingsService, FileService, OrganizerService, ThemeService);
+            WidgetManager = new WidgetManager(SettingsService, FileService, OrganizerService, ThemeService, LocalizationService);
 
             CreateTrayIcon();
             RegisterActivationListener();
@@ -130,7 +163,7 @@ public partial class App : Application
                     !SettingsService.Settings.DeletedWidgetIds.Contains(widget.Id)) == 0 &&
                 !IsStartupMode)
             {
-                await WidgetManager.CreateManagedWidgetAsync("\u6211\u7684\u684C\u9762");
+                await WidgetManager.CreateManagedWidgetAsync(LocalizationService.T("Widget.DefaultDesktopName"));
             }
 
             if (!IsStartupMode && !SettingsService.Settings.HasCompletedOnboarding)
@@ -195,6 +228,7 @@ public partial class App : Application
 
     private void CreateTrayIcon()
     {
+        var localization = LocalizationService;
         var contextMenu = new MenuFlyout();
         contextMenu.ShouldConstrainToRootBounds = false;
         contextMenu.MenuFlyoutPresenterStyle = CreateTrayMenuPresenterStyle();
@@ -202,7 +236,7 @@ public partial class App : Application
         var trayToggleMenuItemStyle = CreateTrayToggleMenuItemStyle();
         var mapFolderItem = new MenuFlyoutItem
         {
-            Text = "\u65B0\u5EFA\u6587\u4EF6\u5939\u6620\u5C04",
+            Text = localization.T("Common.NewFolderMapping"),
             Width = TrayMenuItemWidth,
             Icon = new SymbolIcon(Symbol.OpenFile),
             Style = trayMenuItemStyle
@@ -211,7 +245,7 @@ public partial class App : Application
 
         var newWidgetItem = new MenuFlyoutItem
         {
-            Text = "新建组件",
+            Text = localization.T("Common.NewWidget"),
             Width = TrayMenuItemWidth,
             Icon = new SymbolIcon(Symbol.Add),
             Style = trayMenuItemStyle
@@ -220,28 +254,25 @@ public partial class App : Application
         {
             if (WidgetManager is not null)
             {
-                await WidgetManager.CreateManagedWidgetAsync("\u65B0\u5EFA\u7EC4\u4EF6");
+                await WidgetManager.CreateManagedWidgetAsync(LocalizationService.T("Widget.DefaultNameShort"));
             }
         });
 
         var showAllItem = new MenuFlyoutItem
         {
-            Text = "\u663E\u793A\u5168\u90E8\u7EC4\u4EF6",
+            Text = localization.T("Tray.ShowAll"),
             Width = TrayMenuItemWidth,
             Icon = new SymbolIcon(Symbol.Preview),
             Style = trayMenuItemStyle
         };
         showAllItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, async () =>
         {
-            if (WidgetManager is not null)
-            {
-                await WidgetManager.SetAllWidgetsVisibleAsync(true);
-            }
+            await RaiseTrayWidgetsAsync();
         });
 
         var hideAllItem = new MenuFlyoutItem
         {
-            Text = "\u9690\u85CF\u5168\u90E8\u7EC4\u4EF6",
+            Text = localization.T("Tray.HideAll"),
             Width = TrayMenuItemWidth,
             Icon = new SymbolIcon(Symbol.UnPin),
             Style = trayMenuItemStyle
@@ -257,7 +288,7 @@ public partial class App : Application
 
         var settingsItem = new MenuFlyoutItem
         {
-            Text = "\u8BBE\u7F6E",
+            Text = localization.T("Tray.Settings"),
             Width = TrayMenuItemWidth,
             Icon = new SymbolIcon(Symbol.Setting),
             Style = trayMenuItemStyle
@@ -266,7 +297,7 @@ public partial class App : Application
 
         var autoStartItem = new ToggleMenuFlyoutItem
         {
-            Text = "\u5F00\u673A\u542F\u52A8",
+            Text = localization.T("Tray.AutoStart"),
             Width = TrayMenuItemWidth,
             Icon = new SymbolIcon(Symbol.Play),
             IsChecked = StartupService.IsEnabled(),
@@ -281,7 +312,7 @@ public partial class App : Application
 
         var exitItem = new MenuFlyoutItem
         {
-            Text = "\u9000\u51FA",
+            Text = localization.T("Tray.Exit"),
             Width = TrayMenuItemWidth,
             Icon = new SymbolIcon(Symbol.Cancel),
             Style = trayMenuItemStyle
@@ -314,6 +345,15 @@ public partial class App : Application
         contextMenu.Items.Add(autoStartItem);
         contextMenu.Items.Add(new MenuFlyoutSeparator());
         contextMenu.Items.Add(exitItem);
+
+        _trayMapFolderItem = mapFolderItem;
+        _trayNewWidgetItem = newWidgetItem;
+        _trayShowAllItem = showAllItem;
+        _trayHideAllItem = hideAllItem;
+        _traySettingsItem = settingsItem;
+        _trayAutoStartItem = autoStartItem;
+        _trayExitItem = exitItem;
+
         _trayWindow = new Window();
         _trayWindow.AppWindow.IsShownInSwitchers = false;
         AppBranding.ApplyWindowIcon(_trayWindow.AppWindow);
@@ -322,7 +362,7 @@ public partial class App : Application
         _trayIcon = new TaskbarIcon
         {
             Icon = AppBranding.CreateTrayIcon(IsDarkThemeActive()),
-            ToolTipText = "DeskBox \u684C\u9762\u6536\u7EB3",
+            ToolTipText = localization.T("Tray.Tooltip"),
             ContextMenuMode = ContextMenuMode.SecondWindow,
             NoLeftClickDelay = true,
             LeftClickCommand = new RelayCommand(() =>
@@ -399,8 +439,58 @@ public partial class App : Application
         if (_trayIcon is not null)
         {
             _trayIcon.ToolTipText = raised
-                ? "DeskBox 桌面收纳 - 组件已临时置顶"
-                : "DeskBox 桌面收纳 - 左键单击置顶组件";
+                ? LocalizationService.T("Tray.TooltipRaised")
+                : LocalizationService.T("Tray.TooltipNormal");
+        }
+    }
+
+    private void OnLanguageChanged()
+    {
+        Localized.RefreshAll(LocalizationService);
+        RefreshTrayMenuText();
+        if (_trayIcon is not null)
+        {
+            _trayIcon.ToolTipText = _widgetsRaisedFromTray
+                ? LocalizationService.T("Tray.TooltipRaised")
+                : LocalizationService.T("Tray.Tooltip");
+        }
+    }
+
+    private void RefreshTrayMenuText()
+    {
+        if (_trayMapFolderItem is not null)
+        {
+            _trayMapFolderItem.Text = LocalizationService.T("Common.NewFolderMapping");
+        }
+
+        if (_trayNewWidgetItem is not null)
+        {
+            _trayNewWidgetItem.Text = LocalizationService.T("Common.NewWidget");
+        }
+
+        if (_trayShowAllItem is not null)
+        {
+            _trayShowAllItem.Text = LocalizationService.T("Tray.ShowAll");
+        }
+
+        if (_trayHideAllItem is not null)
+        {
+            _trayHideAllItem.Text = LocalizationService.T("Tray.HideAll");
+        }
+
+        if (_traySettingsItem is not null)
+        {
+            _traySettingsItem.Text = LocalizationService.T("Tray.Settings");
+        }
+
+        if (_trayAutoStartItem is not null)
+        {
+            _trayAutoStartItem.Text = LocalizationService.T("Tray.AutoStart");
+        }
+
+        if (_trayExitItem is not null)
+        {
+            _trayExitItem.Text = LocalizationService.T("Tray.Exit");
         }
     }
 
@@ -487,7 +577,7 @@ public partial class App : Application
     {
         if (_settingsWindow is null)
         {
-            _settingsWindow = new SettingsWindow(SettingsService, ThemeService);
+            _settingsWindow = new SettingsWindow(SettingsService, ThemeService, LocalizationService);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
 
@@ -503,7 +593,7 @@ public partial class App : Application
     {
         if (_onboardingWindow is null)
         {
-            _onboardingWindow = new OnboardingWindow(SettingsService);
+            _onboardingWindow = new OnboardingWindow(SettingsService, LocalizationService);
             _onboardingWindow.Closed += (_, _) => _onboardingWindow = null;
             ThemeService.TrackWindow(_onboardingWindow);
         }
@@ -514,6 +604,10 @@ public partial class App : Application
     private async void ExitApplication()
     {
         ThemeService.AppearanceChanged -= UpdateTrayIconAppearance;
+        if (LocalizationService is not null)
+        {
+            LocalizationService.LanguageChanged -= OnLanguageChanged;
+        }
         await SettingsService.SaveAsync();
         WidgetManager?.CloseAll();
         _trayIcon?.Dispose();

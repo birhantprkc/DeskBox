@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using DeskBox.Services;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace DeskBox.Models;
@@ -70,13 +71,13 @@ public partial class WidgetItem : ObservableObject
         {
             if (IsFolder)
             {
-                return $"{FolderItemCount} 项";
+                return LocalizeFormat("FileInfo.FolderItems", FolderItemCount);
             }
 
             string typeText = FormatFileSize(FileSize);
             return LastModified == default
                 ? typeText
-                : $"{typeText} · {LastModified:yyyy/M/d HH:mm}";
+                : LocalizeFormat("FileInfo.FileModified", typeText, LastModified);
         }
     }
 
@@ -84,7 +85,7 @@ public partial class WidgetItem : ObservableObject
     {
         if (bytes <= 0)
         {
-            return "文件";
+            return Localize("FileInfo.File");
         }
 
         string[] units = ["B", "KB", "MB", "GB"];
@@ -99,5 +100,27 @@ public partial class WidgetItem : ObservableObject
         return unitIndex == 0
             ? $"{bytes} B"
             : $"{value:0.#} {units[unitIndex]}";
+    }
+
+    private static string Localize(string key)
+    {
+        return TryGetLocalizationService()?.T(key) ?? LocalizationService.DefaultText(key);
+    }
+
+    private static string LocalizeFormat(string key, params object[] args)
+    {
+        return TryGetLocalizationService()?.Format(key, args) ?? LocalizationService.DefaultFormat(key, args);
+    }
+
+    private static LocalizationService? TryGetLocalizationService()
+    {
+        try
+        {
+            return global::DeskBox.App.Current?.LocalizationService;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

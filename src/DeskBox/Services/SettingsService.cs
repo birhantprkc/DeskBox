@@ -23,6 +23,9 @@ public sealed class SettingsService
     public const bool DefaultNativeBackdropBlur = true;
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
+    public const string LanguageSystem = "System";
+    public const string LanguageChinese = "zh-CN";
+    public const string LanguageEnglish = "en-US";
     public const double DefaultWidgetWidth = 280;
     public const double DefaultWidgetHeight = 400;
     public const double MinWidgetWidth = 200;
@@ -416,6 +419,12 @@ public sealed class SettingsService
         if (settings.Theme is not ("System" or "Light" or "Dark"))
         {
             settings.Theme = "System";
+            changed = true;
+        }
+
+        if (settings.Language is not (LanguageSystem or LanguageChinese or LanguageEnglish))
+        {
+            settings.Language = LanguageSystem;
             changed = true;
         }
 

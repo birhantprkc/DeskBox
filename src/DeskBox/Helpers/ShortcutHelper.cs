@@ -56,6 +56,39 @@ public static class ShortcutHelper
         }
     }
 
+    /// <summary>
+    /// Let Windows resolve a broken shortcut with its native UI, including the delete offer.
+    /// </summary>
+    public static BrokenShortcutResolution ResolveBrokenShortcutWithShellUi(string lnkPath, IntPtr ownerHwnd)
+    {
+        if (!File.Exists(lnkPath))
+        {
+            return BrokenShortcutResolution.ShortcutDeleted;
+        }
+
+        try
+        {
+            var link = (IShellLinkW)new ShellLink();
+            var file = (IPersistFile)link;
+            file.Load(lnkPath, 0); // STGM_READ
+
+            link.Resolve(
+                ownerHwnd,
+                SLR_FLAGS.SLR_UPDATE |
+                SLR_FLAGS.SLR_OFFER_DELETE_WITHOUT_FILE);
+
+            return File.Exists(lnkPath)
+                ? BrokenShortcutResolution.ResolvedOrKept
+                : BrokenShortcutResolution.ShortcutDeleted;
+        }
+        catch (COMException)
+        {
+            return File.Exists(lnkPath)
+                ? BrokenShortcutResolution.ResolvedOrKept
+                : BrokenShortcutResolution.ShortcutDeleted;
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────
     //  COM definitions
     // ────────────────────────────────────────────────────────────────
@@ -133,7 +166,9 @@ public static class ShortcutHelper
     private enum SLR_FLAGS : uint
     {
         SLR_NO_UI = 0x0001,
+        SLR_UPDATE = 0x0004,
         SLR_NOSEARCH = 0x0010,
+        SLR_OFFER_DELETE_WITHOUT_FILE = 0x0200,
     }
 
     [Flags]
@@ -162,6 +197,12 @@ public static class ShortcutHelper
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 14)]
         public string cAlternateFileName;
     }
+}
+
+public enum BrokenShortcutResolution
+{
+    ResolvedOrKept,
+    ShortcutDeleted
 }
 
 /// <summary>

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using DeskBox.Services;
 
 namespace DeskBox.Models;
 
@@ -33,9 +34,11 @@ public class OrganizationHistoryEntry
     [JsonIgnore]
     public string DisplayTitle => ActionType switch
     {
-        OrganizationActionType.ManagedDrop => TransferMode == "Copy" ? "复制到收纳组件" : "移动到收纳组件",
-        OrganizationActionType.MoveBackToDesktop => "移回桌面",
-        _ => "桌面整理"
+        OrganizationActionType.ManagedDrop => TransferMode == "Copy"
+            ? Localize("History.Title.CopyToManaged")
+            : Localize("History.Title.MoveToManaged"),
+        OrganizationActionType.MoveBackToDesktop => Localize("History.Title.MoveBackToDesktop"),
+        _ => Localize("History.Title.DesktopOrganization")
     };
 
     [JsonIgnore]
@@ -43,17 +46,17 @@ public class OrganizationHistoryEntry
     {
         get
         {
-            string target = string.IsNullOrWhiteSpace(WidgetName) ? "当前组件" : WidgetName;
-            string itemLabel = ItemCount == 1 ? "1 项" : $"{ItemCount} 项";
+            string target = string.IsNullOrWhiteSpace(WidgetName) ? Localize("History.CurrentWidget") : WidgetName;
+            string itemLabel = LocalizeFormat("FileInfo.FolderItems", ItemCount);
 
             if (IsFailed)
             {
-                return $"{target} · {itemLabel} · 失败";
+                return $"{target} · {itemLabel} · {Localize("Common.Failed")}";
             }
 
             if (IsUndone)
             {
-                return $"{target} · {itemLabel} · 已撤销";
+                return $"{target} · {itemLabel} · {Localize("Common.Undone")}";
             }
 
             return $"{target} · {itemLabel}";
@@ -70,12 +73,12 @@ public class OrganizationHistoryEntry
         {
             if (IsFailed)
             {
-                return ErrorMessage ?? "操作失败";
+                return ErrorMessage ?? Localize("History.OperationFailed");
             }
 
             if (Items.Count == 0)
             {
-                return "没有记录到项目。";
+                return Localize("History.NoItems");
             }
 
             var firstItem = Items[0];
@@ -84,16 +87,38 @@ public class OrganizationHistoryEntry
                 return firstItem.Name;
             }
 
-            return $"{firstItem.Name} 等 {Items.Count} 项";
+            return LocalizeFormat("History.ItemSummary", firstItem.Name, Items.Count);
         }
     }
 
     [JsonIgnore]
     public string UndoButtonText => ActionType switch
     {
-        OrganizationActionType.MoveBackToDesktop => "撤销移回桌面",
-        _ => "撤销上次移动"
+        OrganizationActionType.MoveBackToDesktop => Localize("History.UndoMoveBackToDesktop"),
+        _ => Localize("History.UndoLastMove")
     };
+
+    private static string Localize(string key)
+    {
+        return TryGetLocalizationService()?.T(key) ?? LocalizationService.DefaultText(key);
+    }
+
+    private static string LocalizeFormat(string key, params object[] args)
+    {
+        return TryGetLocalizationService()?.Format(key, args) ?? LocalizationService.DefaultFormat(key, args);
+    }
+
+    private static LocalizationService? TryGetLocalizationService()
+    {
+        try
+        {
+            return global::DeskBox.App.Current?.LocalizationService;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
 
 public class OrganizationHistoryItem

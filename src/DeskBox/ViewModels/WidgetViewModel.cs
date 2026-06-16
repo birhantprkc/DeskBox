@@ -21,6 +21,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private readonly FolderWatcherService _folderWatcher;
     private readonly FolderWatcherService _publicFolderWatcher;
     private readonly SettingsService _settingsService;
+    private readonly LocalizationService _localizationService;
     private readonly SemaphoreSlim _folderRefreshGate = new(1, 1);
 
     private string _name = string.Empty;
@@ -278,12 +279,14 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         FileService fileService,
         OrganizerService organizerService,
         SettingsService settingsService,
+        LocalizationService? localizationService,
         DispatcherQueue dispatcherQueue)
     {
         _dispatcherQueue = dispatcherQueue;
         _fileService = fileService;
         _organizerService = organizerService;
         _settingsService = settingsService;
+        _localizationService = localizationService ?? new LocalizationService(settingsService);
 
         Config = config;
         Config.WidgetKind = WidgetKind.File;
@@ -312,6 +315,17 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         _publicFolderWatcher.FolderChanged += OnFolderChanged;
 
         _settingsService.SettingsChanged += OnSettingsChanged;
+        _localizationService.LanguageChanged += OnLanguageChanged;
+    }
+
+    public WidgetViewModel(
+        WidgetConfig config,
+        FileService fileService,
+        OrganizerService organizerService,
+        SettingsService settingsService,
+        DispatcherQueue dispatcherQueue)
+        : this(config, fileService, organizerService, settingsService, null, dispatcherQueue)
+    {
     }
 
     private void UpdateDependentProperties()
@@ -327,24 +341,26 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         IsIconMode = ViewMode == ViewMode.Icon;
         IsListMode = ViewMode == ViewMode.List;
         LoadingVisibility = IsLoading ? Visibility.Visible : Visibility.Collapsed;
-        ModeLabel = isManagedStorage ? "\u6536\u7eb3" : "\u6620\u5c04";
+        ModeLabel = isManagedStorage
+            ? _localizationService.T("Widget.Mode.Managed")
+            : _localizationService.T("Widget.Mode.Mapped");
         ModeDescription = isManagedStorage
-            ? "\u6536\u7eb3\u7ec4\u4ef6\uff0c\u62d6\u5165\u6587\u4ef6\u4f1a\u81ea\u52a8\u6574\u7406\u5230\u9ed8\u8ba4\u6536\u7eb3\u8def\u5f84\u3002"
-            : "\u6587\u4ef6\u5939\u6620\u5c04\u7ec4\u4ef6\uff0c\u76f4\u63a5\u5c55\u793a\u6307\u5b9a\u6587\u4ef6\u5939\u5185\u5bb9\u3002";
+            ? _localizationService.T("Widget.Mode.ManagedDescription")
+            : _localizationService.T("Widget.Mode.MappedDescription");
         EmptyStateGlyph = IconGlyph;
         EmptyStateTitle = isManagedStorage
-            ? "\u8fd8\u6ca1\u6709\u6536\u7eb3\u5185\u5bb9"
-            : "\u6587\u4ef6\u5939\u91cc\u6682\u65e0\u6587\u4ef6";
+            ? _localizationService.T("Widget.Empty.ManagedTitle")
+            : _localizationService.T("Widget.Empty.MappedTitle");
         EmptyStateText = isManagedStorage
-            ? $"\u628a\u6587\u4ef6\u62d6\u5230\u8fd9\u91cc\uff0cDeskBox \u4f1a\u81ea\u52a8{managedAction}\u5230 {mappedFolderName}\u3002"
-            : $"\u8fd9\u91cc\u4f1a\u540c\u6b65\u663e\u793a {mappedFolderName} \u4e2d\u7684\u5185\u5bb9\u3002";
+            ? _localizationService.Format("Widget.Empty.ManagedText", managedAction, mappedFolderName)
+            : _localizationService.Format("Widget.Empty.MappedText", mappedFolderName);
     }
 
     private string GetManagedActionText()
     {
         return string.Equals(_settingsService.Settings.ManagedDropAction, SettingsService.ManagedDropActionCopy, StringComparison.OrdinalIgnoreCase)
-            ? "\u590d\u5236"
-            : "\u79fb\u52a8";
+            ? _localizationService.T("Common.Copy")
+            : _localizationService.T("Common.Move");
     }
 
     private bool ShouldMoveManagedItems()
@@ -420,14 +436,14 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(MappedFolderPath))
         {
-            return "\u5f53\u524d\u4f4d\u7f6e";
+            return _localizationService.T("Common.CurrentLocation");
         }
 
         var (userDesktop, publicDesktop) = FileService.GetDesktopPaths();
         if (MappedFolderPath.Equals(userDesktop, StringComparison.OrdinalIgnoreCase) ||
             MappedFolderPath.Equals(publicDesktop, StringComparison.OrdinalIgnoreCase))
         {
-            return "\u684c\u9762";
+            return _localizationService.T("Common.Desktop");
         }
 
         string folderName = Path.GetFileName(MappedFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
@@ -443,6 +459,17 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         }
 
         _dispatcherQueue.TryEnqueue(async () => await ApplySettingsChangesAsync());
+    }
+
+    private void OnLanguageChanged()
+    {
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            UpdateDependentProperties();
+            return;
+        }
+
+        _dispatcherQueue.TryEnqueue(UpdateDependentProperties);
     }
 
     private async Task ApplySettingsChangesAsync()
@@ -557,6 +584,14 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     public void OpenItem(WidgetItem item)
     {
         FileService.OpenItem(item);
+    }
+
+    public void OpenItem(WidgetItem item, IntPtr ownerHwnd)
+    {
+        if (FileService.OpenItem(item, ownerHwnd) == FileService.OpenItemResult.ShortcutDeleted)
+        {
+            RemoveItemByPath(item.Path);
+        }
     }
 
     /// <summary>
@@ -690,14 +725,14 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         string sanitizedName = FileService.SanitizeFileSystemName(newName);
         if (string.IsNullOrWhiteSpace(sanitizedName))
         {
-            throw new InvalidOperationException("名称不能为空。");
+            throw new InvalidOperationException(_localizationService.T("Widget.Validation.NameRequired"));
         }
 
         string sourcePath = Path.GetFullPath(item.Path);
         string? parentDirectory = Path.GetDirectoryName(sourcePath);
         if (string.IsNullOrWhiteSpace(parentDirectory))
         {
-            throw new InvalidOperationException("无法确定当前项目所在的文件夹。");
+            throw new InvalidOperationException(_localizationService.T("Widget.Validation.FolderUnknown"));
         }
 
         string extension = item.IsFolder ? string.Empty : Path.GetExtension(sourcePath);
@@ -709,7 +744,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
 
         if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
         {
-            throw new IOException("目标名称已存在。");
+            throw new IOException(_localizationService.T("Widget.Validation.TargetExists"));
         }
 
         await _fileService.RelocateEntryAsync(sourcePath, destinationPath);
@@ -847,7 +882,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         string baseFolderName = FileService.SanitizeFileSystemName(displayName);
         if (string.IsNullOrWhiteSpace(baseFolderName))
         {
-            baseFolderName = "收纳组件";
+            baseFolderName = _localizationService.T("Widget.ManagedFolderBaseName");
         }
 
         string rootPath = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
@@ -1106,5 +1141,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         _publicFolderWatcher.Dispose();
         _folderRefreshGate.Dispose();
         _settingsService.SettingsChanged -= OnSettingsChanged;
+        _localizationService.LanguageChanged -= OnLanguageChanged;
     }
 }
