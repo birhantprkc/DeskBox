@@ -1,4 +1,5 @@
 using DeskBox.Models;
+using DeskBox.Helpers;
 using DeskBox.ViewModels;
 using DeskBox.Views;
 using Microsoft.UI.Dispatching;
@@ -38,11 +39,13 @@ public sealed class WidgetManager
     private readonly Dictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> _widgets = new();
     private readonly HashSet<string> _deletedWidgetIds = [];
     private readonly List<WidgetWindow> _retiredWindows = [];
+    private DispatcherQueueTimer? _trayLayerRestoreTimer;
     private bool _widgetsRaisedFromTray;
     private bool _isTogglingWidgetsDesktopLayer;
     private bool _isApplyingAppearancePreview;
     private DateTime _lastTrayLayerToggleUtc = DateTime.MinValue;
     private DateTime _suppressTrayLayerRestoreUntilUtc = DateTime.MinValue;
+    private long _trayRaiseBatchGeneration;
 
     public IReadOnlyDictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> Widgets => _widgets;
 
@@ -293,6 +296,8 @@ public sealed class WidgetManager
             PlayPreparedTrayShowAnimations(windowsToRaise);
             windowsToRaise.LastOrDefault()?.ActivateRaisedFromTrayBatch();
             SetWidgetsRaisedFromTray(windowsToRaise.Count > 0);
+            QueueTrayRaiseTopMostConfirmation(windowsToRaise);
+            StartTrayLayerRestoreMonitor(windowsToRaise.Count > 0);
             return _widgetsRaisedFromTray;
         }
         finally
@@ -340,6 +345,8 @@ public sealed class WidgetManager
         PlayPreparedTrayHideAnimations(windowsToHide);
 
         SetWidgetsRaisedFromTray(false);
+        _trayRaiseBatchGeneration++;
+        StopTrayLayerRestoreMonitor();
     }
 
     /// <summary>
@@ -424,6 +431,44 @@ public sealed class WidgetManager
         }
     }
 
+    private void QueueTrayRaiseTopMostConfirmation(IReadOnlyList<WidgetWindow> windows)
+    {
+        if (windows.Count == 0)
+        {
+            return;
+        }
+
+        long generation = ++_trayRaiseBatchGeneration;
+        ConfirmTrayRaiseTopMost(windows, generation);
+        QueueTrayRaiseTopMostConfirmation(windows, generation, TimeSpan.FromMilliseconds(80));
+        QueueTrayRaiseTopMostConfirmation(windows, generation, TimeSpan.FromMilliseconds(180));
+    }
+
+    private void QueueTrayRaiseTopMostConfirmation(
+        IReadOnlyList<WidgetWindow> windows,
+        long generation,
+        TimeSpan delay)
+    {
+        App.UiDispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(delay);
+            ConfirmTrayRaiseTopMost(windows, generation);
+        });
+    }
+
+    private void ConfirmTrayRaiseTopMost(IReadOnlyList<WidgetWindow> windows, long generation)
+    {
+        if (generation != _trayRaiseBatchGeneration || !_widgetsRaisedFromTray)
+        {
+            return;
+        }
+
+        foreach (var window in windows)
+        {
+            window.EnsureRaisedFromTrayTopMost();
+        }
+    }
+
     public bool CanCleanupManagedStorageForWidget(string widgetId)
     {
         var config = FindConfig(widgetId);
@@ -498,6 +543,130 @@ public sealed class WidgetManager
         }
 
         SetWidgetsRaisedFromTray(false);
+        _trayRaiseBatchGeneration++;
+        StopTrayLayerRestoreMonitor();
+    }
+
+    private void StartTrayLayerRestoreMonitor(bool hasRaisedWidgets)
+    {
+        if (!hasRaisedWidgets)
+        {
+            StopTrayLayerRestoreMonitor();
+            return;
+        }
+
+        _ = Win32Helper.HasMouseButtonActivity();
+
+        _trayLayerRestoreTimer ??= App.UiDispatcherQueue.CreateTimer();
+        _trayLayerRestoreTimer.Stop();
+        _trayLayerRestoreTimer.Interval = TimeSpan.FromMilliseconds(80);
+        _trayLayerRestoreTimer.Tick -= TrayLayerRestoreTimer_Tick;
+        _trayLayerRestoreTimer.Tick += TrayLayerRestoreTimer_Tick;
+        _trayLayerRestoreTimer.Start();
+    }
+
+    private void StopTrayLayerRestoreMonitor()
+    {
+        if (_trayLayerRestoreTimer is null)
+        {
+            return;
+        }
+
+        _trayLayerRestoreTimer.Stop();
+        _trayLayerRestoreTimer.Tick -= TrayLayerRestoreTimer_Tick;
+    }
+
+    private void TrayLayerRestoreTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        if (!_widgetsRaisedFromTray)
+        {
+            StopTrayLayerRestoreMonitor();
+            return;
+        }
+
+        if (_isTogglingWidgetsDesktopLayer ||
+            DateTime.UtcNow < _suppressTrayLayerRestoreUntilUtc)
+        {
+            return;
+        }
+
+        Win32Helper.POINT? cursor = TryGetCursorPosition();
+        if (!Win32Helper.HasMouseButtonActivity())
+        {
+            return;
+        }
+
+        if (IsPointerOverDeskBoxWindow(cursor) ||
+            IsPointerOverTaskbar(cursor))
+        {
+            return;
+        }
+
+        RestoreRaisedWidgetsToDesktopLayer();
+    }
+
+    private static bool IsPointerOverDeskBoxWindow(Win32Helper.POINT? cursor)
+    {
+        if (!cursor.HasValue)
+        {
+            return false;
+        }
+
+        IntPtr pointerWindow = Win32Helper.WindowFromPoint(cursor.Value);
+        return App.Current.IsDeskBoxWindow(pointerWindow);
+    }
+
+    private static bool IsPointerOverTaskbar(Win32Helper.POINT? cursor)
+    {
+        if (!cursor.HasValue)
+        {
+            return false;
+        }
+
+        IntPtr pointerWindow = Win32Helper.WindowFromPoint(cursor.Value);
+        if (pointerWindow == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr currentWindow = pointerWindow;
+        while (currentWindow != IntPtr.Zero)
+        {
+            if (IsTaskbarWindow(currentWindow))
+            {
+                return true;
+            }
+
+            currentWindow = Win32Helper.GetParent(currentWindow);
+        }
+
+        IntPtr rootWindow = Win32Helper.GetAncestor(pointerWindow, Win32Helper.GA_ROOT);
+        return IsTaskbarWindow(rootWindow);
+    }
+
+    private static bool IsTaskbarWindow(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var className = new System.Text.StringBuilder(256);
+        int length = Win32Helper.GetClassName(hWnd, className, className.Capacity);
+        if (length <= 0)
+        {
+            return false;
+        }
+
+        string value = className.ToString();
+        return string.Equals(value, "Shell_TrayWnd", StringComparison.Ordinal) ||
+               string.Equals(value, "Shell_SecondaryTrayWnd", StringComparison.Ordinal) ||
+               string.Equals(value, "NotifyIconOverflowWindow", StringComparison.Ordinal);
+    }
+
+    private static Win32Helper.POINT? TryGetCursorPosition()
+    {
+        return Win32Helper.GetCursorPos(out var cursor) ? cursor : null;
     }
 
     private void SetWidgetsRaisedFromTray(bool raised)

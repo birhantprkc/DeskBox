@@ -6,9 +6,11 @@ using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.Views;
 using H.NotifyIcon;
+using H.NotifyIcon.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using DrawingPoint = System.Drawing.Point;
 using WinRT.Interop;
 
 namespace DeskBox;
@@ -21,6 +23,8 @@ public partial class App : Application
     private const double TrayMenuItemWidth = 176;
     private const double TrayMenuVerticalPadding = 4;
     private const double TrayMenuItemMinHeight = 36;
+    private const int TrayContextMenuFallbackOffsetPixels = 24;
+    private const int TrayContextMenuEstimatedWidth = (int)TrayMenuItemWidth + 16;
     private static readonly bool EnableVerboseLogging = false;
 
     private static readonly string LogPath = Path.Combine(
@@ -339,7 +343,9 @@ public partial class App : Application
             Icon = AppBranding.CreateTrayIcon(IsDarkThemeActive()),
             ToolTipText = localization.T("Tray.Tooltip"),
             ContextMenuMode = ContextMenuMode.SecondWindow,
+            MenuActivation = PopupActivationMode.None,
             NoLeftClickDelay = true,
+            RightClickCommand = new RelayCommand(ShowTrayContextMenuFromTray),
             LeftClickCommand = new RelayCommand(() =>
             {
                 if (WidgetManager is not null)
@@ -392,6 +398,250 @@ public partial class App : Application
         });
 
         ThemeService.AppearanceChanged += UpdateTrayIconAppearance;
+    }
+
+    private void ShowTrayContextMenuFromTray()
+    {
+        if (_trayIcon is null ||
+            !Win32Helper.GetCursorPos(out var cursor))
+        {
+            return;
+        }
+
+        var point = new DrawingPoint(cursor.X, cursor.Y);
+        try
+        {
+            point = GetTrayContextMenuAnchorPoint(point);
+        }
+        catch (Exception ex)
+        {
+            Log($"[Tray] Failed to calculate tray context menu anchor: {ex}");
+        }
+
+        try
+        {
+            _trayIcon.ShowContextMenu(point);
+        }
+        catch (Exception ex)
+        {
+            Log($"[Tray] Failed to show tray context menu: {ex}");
+        }
+    }
+
+    private DrawingPoint GetTrayContextMenuAnchorPoint(DrawingPoint fallbackPoint)
+    {
+        if (TryGetTrayIconIdentity(out var trayIconWindowHandle, out var trayIconId) &&
+            Win32Helper.TryGetNotifyIconRect(trayIconWindowHandle, trayIconId, out var iconRect) &&
+            IsUsableTrayIconRect(iconRect))
+        {
+            return GetTrayContextMenuAnchorPointFromIconRect(iconRect, fallbackPoint);
+        }
+
+        return GetFallbackTrayContextMenuAnchorPoint(fallbackPoint);
+    }
+
+    private bool TryGetTrayIconIdentity(out IntPtr windowHandle, out Guid id)
+    {
+        windowHandle = IntPtr.Zero;
+        id = Guid.Empty;
+
+        if (_trayIcon is null)
+        {
+            return false;
+        }
+
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic;
+
+        var trayIconProperty = _trayIcon.GetType().GetProperty("TrayIcon", flags);
+        object? trayIcon = trayIconProperty?.GetValue(_trayIcon);
+        if (trayIcon is null)
+        {
+            return false;
+        }
+
+        var trayIconType = trayIcon.GetType();
+        object? windowHandleValue = trayIconType.GetProperty("WindowHandle", flags)?.GetValue(trayIcon);
+        object? idValue = trayIconType.GetProperty("Id", flags)?.GetValue(trayIcon);
+
+        windowHandle = windowHandleValue switch
+        {
+            IntPtr ptr => ptr,
+            _ => IntPtr.Zero
+        };
+
+        if (idValue is Guid guid)
+        {
+            id = guid;
+        }
+
+        return windowHandle != IntPtr.Zero && id != Guid.Empty;
+    }
+
+    private static DrawingPoint GetTrayContextMenuAnchorPointFromIconRect(
+        Win32Helper.RECT iconRect,
+        DrawingPoint fallbackPoint)
+    {
+        int centerX = iconRect.Left + ((iconRect.Right - iconRect.Left) / 2);
+        int centerY = iconRect.Top + ((iconRect.Bottom - iconRect.Top) / 2);
+        var anchor = new DrawingPoint(centerX - (TrayContextMenuEstimatedWidth / 2), centerY);
+
+        if (!Win32Helper.TryGetMonitorWorkArea(centerX, centerY, out var monitor, out var workArea))
+        {
+            return anchor;
+        }
+
+        var edge = GetNearestTaskbarEdge(iconRect, monitor, workArea);
+        anchor = edge switch
+        {
+            TaskbarEdge.Bottom => new DrawingPoint(anchor.X, workArea.Bottom - 1),
+            TaskbarEdge.Top => new DrawingPoint(anchor.X, workArea.Top),
+            TaskbarEdge.Right => new DrawingPoint(workArea.Right - 1, centerY),
+            TaskbarEdge.Left => new DrawingPoint(workArea.Left, centerY),
+            _ => GetFallbackTrayContextMenuAnchorPoint(fallbackPoint)
+        };
+
+        return ClampPointToRect(anchor, monitor);
+    }
+
+    private static DrawingPoint GetFallbackTrayContextMenuAnchorPoint(DrawingPoint point)
+    {
+        if (!Win32Helper.TryGetMonitorWorkArea(point.X, point.Y, out var monitor, out var workArea))
+        {
+            return new DrawingPoint(
+                point.X - (TrayContextMenuEstimatedWidth / 2),
+                point.Y - TrayContextMenuFallbackOffsetPixels);
+        }
+
+        int x = point.X - (TrayContextMenuEstimatedWidth / 2);
+        int y = point.Y;
+        bool moved = false;
+
+        if (workArea.Bottom < monitor.Bottom && y >= workArea.Bottom)
+        {
+            y = workArea.Bottom - 1;
+            moved = true;
+        }
+        else if (workArea.Top > monitor.Top && y <= workArea.Top)
+        {
+            y = workArea.Top;
+            moved = true;
+        }
+
+        if (workArea.Right < monitor.Right && x >= workArea.Right)
+        {
+            x = workArea.Right - 1;
+            moved = true;
+        }
+        else if (workArea.Left > monitor.Left && x <= workArea.Left)
+        {
+            x = workArea.Left;
+            moved = true;
+        }
+
+        if (!moved)
+        {
+            int distanceToBottom = Math.Abs(monitor.Bottom - y);
+            int distanceToTop = Math.Abs(y - monitor.Top);
+            int distanceToRight = Math.Abs(monitor.Right - x);
+            int distanceToLeft = Math.Abs(x - monitor.Left);
+            int nearestDistance = Math.Min(
+                Math.Min(distanceToBottom, distanceToTop),
+                Math.Min(distanceToRight, distanceToLeft));
+
+            if (nearestDistance == distanceToBottom)
+            {
+                y -= TrayContextMenuFallbackOffsetPixels;
+            }
+            else if (nearestDistance == distanceToTop)
+            {
+                y += TrayContextMenuFallbackOffsetPixels;
+            }
+            else if (nearestDistance == distanceToRight)
+            {
+                x -= TrayContextMenuFallbackOffsetPixels;
+            }
+            else
+            {
+                x += TrayContextMenuFallbackOffsetPixels;
+            }
+        }
+
+        return ClampPointToRect(new DrawingPoint(x, y), monitor);
+    }
+
+    private static bool IsUsableTrayIconRect(Win32Helper.RECT rect)
+    {
+        return rect.Right > rect.Left && rect.Bottom > rect.Top;
+    }
+
+    private static TaskbarEdge GetNearestTaskbarEdge(
+        Win32Helper.RECT iconRect,
+        Win32Helper.RECT monitor,
+        Win32Helper.RECT workArea)
+    {
+        if (workArea.Bottom < monitor.Bottom &&
+            iconRect.Top >= workArea.Bottom)
+        {
+            return TaskbarEdge.Bottom;
+        }
+
+        if (workArea.Top > monitor.Top &&
+            iconRect.Bottom <= workArea.Top)
+        {
+            return TaskbarEdge.Top;
+        }
+
+        if (workArea.Right < monitor.Right &&
+            iconRect.Left >= workArea.Right)
+        {
+            return TaskbarEdge.Right;
+        }
+
+        if (workArea.Left > monitor.Left &&
+            iconRect.Right <= workArea.Left)
+        {
+            return TaskbarEdge.Left;
+        }
+
+        int distanceToBottom = Math.Abs(monitor.Bottom - iconRect.Bottom);
+        int distanceToTop = Math.Abs(iconRect.Top - monitor.Top);
+        int distanceToRight = Math.Abs(monitor.Right - iconRect.Right);
+        int distanceToLeft = Math.Abs(iconRect.Left - monitor.Left);
+        int nearestDistance = Math.Min(
+            Math.Min(distanceToBottom, distanceToTop),
+            Math.Min(distanceToRight, distanceToLeft));
+
+        if (nearestDistance == distanceToBottom)
+        {
+            return TaskbarEdge.Bottom;
+        }
+
+        if (nearestDistance == distanceToTop)
+        {
+            return TaskbarEdge.Top;
+        }
+
+        return nearestDistance == distanceToRight
+            ? TaskbarEdge.Right
+            : TaskbarEdge.Left;
+    }
+
+    private static DrawingPoint ClampPointToRect(DrawingPoint point, Win32Helper.RECT rect)
+    {
+        return new DrawingPoint(
+            Math.Clamp(point.X, rect.Left, rect.Right - 1),
+            Math.Clamp(point.Y, rect.Top, rect.Bottom - 1));
+    }
+
+    private enum TaskbarEdge
+    {
+        Bottom,
+        Top,
+        Right,
+        Left
     }
 
     private async Task RaiseTrayWidgetsAsync()
