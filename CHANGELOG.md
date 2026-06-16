@@ -15,7 +15,7 @@
 - Improved drag-selection responsiveness and reduced repeated visual work during rectangle selection.
 - Improved shortcut handling so broken `.lnk` files use the native Windows resolve/delete prompt when opened.
 - Improved file operations around cut/copy, mapped folders, desktop drag-out refresh, and shell clipboard data.
-- Updated README to English by default, added a Chinese README switch, and refreshed release documentation.
+- Updated README to Chinese by default, added an English README switch, and refreshed release documentation.
 
 ## 1.0.1 - 2026-06-12
 

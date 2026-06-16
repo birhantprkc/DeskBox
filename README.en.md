@@ -1,6 +1,6 @@
 # DeskBox
 
-[中文](README.zh-CN.md) | English
+[中文](README.md) | English
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
