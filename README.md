@@ -17,18 +17,17 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它可以创
 
 当前版本：
 
-- [DeskBox_Setup_1.0.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.3/DeskBox_Setup_1.0.3_x64.exe)
+- [DeskBox_Setup_1.0.4_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.4/DeskBox_Setup_1.0.4_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
-## 1.0.3 更新
+## 1.0.4 更新
 
-- 新增桌面格子显示/隐藏动画效果和动画速度设置，可在设置中选择滑动、淡入、缩放淡入或关闭动画。
-- 优化动画底层实现，降低毛玻璃背景闪屏、黑底和图标二次动画的概率。
-- 优化托盘左键逻辑：桌面格子被其他窗口遮挡时，点击托盘会稳定临时置顶，再次点击才隐藏。
-- 优化托盘右键打开设置的体验，设置窗口会临时置顶展示，切到其他窗口后自动恢复普通层级。
-- 优化新增组件、拖动组件、文件夹选择弹窗等场景的临时置顶行为。
-- 增加性能日志辅助能力，便于后续定位卡顿和启动耗时问题。
+- 优化托盘左键逻辑：格子临时置顶后，移动鼠标不会触发层级恢复，只有点击其他应用窗口才会回到桌面层级。
+- 优化托盘右键菜单定位，菜单会基于真实托盘图标位置弹出，并避开托盘图标点击区域。
+- 增加多格子托盘置顶后的二次确认，降低偶尔漏掉某个格子没有展示的概率。
+- 增加毛玻璃背景自动刷新重试，在显示格子、托盘唤起、主题和外观变化后自动恢复偶发的灰底问题。
+- 重构设置窗口为左侧导航布局，将常规、外观、格子布局、动画、文件与收纳、操作、重置与维护和关于分区展示。
 
 完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -108,7 +107,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.0.3_x64.exe
+Output\DeskBox_Setup_1.0.4_x64.exe
 ```
 
 ## 项目结构

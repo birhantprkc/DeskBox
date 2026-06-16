@@ -11,7 +11,7 @@
 
     <Grid
         x:Name="SettingsRoot"
-        MinWidth="600"
+        MinWidth="800"
         MinHeight="560"
         IsTabStop="True"
         Background="Transparent">
@@ -192,20 +192,93 @@
             Background="{ThemeResource DividerStrokeColorDefaultBrush}"
             Opacity="0.18" />
 
-        <ScrollViewer
-            x:Name="PageScroller"
+        <NavigationView
+            x:Name="SettingsNavigationView"
             Grid.Row="1"
-            Padding="20,16,20,38"
-            HorizontalContentAlignment="Stretch"
-            HorizontalScrollBarVisibility="Disabled"
-            VerticalScrollBarVisibility="Auto">
-            <StackPanel
-                x:Name="ContentHost"
-                Width="720"
-                MaxWidth="720"
-                HorizontalAlignment="Center"
-                Spacing="24">
-                <StackPanel Style="{StaticResource SectionPanelStyle}">
+            CompactPaneLength="48"
+            IsBackButtonVisible="Collapsed"
+            IsPaneOpen="True"
+            IsSettingsVisible="False"
+            OpenPaneLength="208"
+            PaneDisplayMode="Left"
+            SelectionChanged="SettingsNavigationView_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem
+                    x:Name="GeneralNavItem"
+                    Tag="General"
+                    svc:Localized.Key="Settings.Nav.General">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Setting" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    Tag="Appearance"
+                    svc:Localized.Key="Settings.Nav.Appearance">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Edit" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    Tag="WidgetLayout"
+                    svc:Localized.Key="Settings.Nav.WidgetLayout">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="NewFolder" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    Tag="Animation"
+                    svc:Localized.Key="Settings.Nav.Animation">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Play" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    Tag="Storage"
+                    svc:Localized.Key="Settings.Nav.Storage">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Folder" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    Tag="Interaction"
+                    svc:Localized.Key="Settings.Nav.Interaction">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="TouchPointer" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    Tag="Maintenance"
+                    svc:Localized.Key="Settings.Nav.Maintenance">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Refresh" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    Tag="About"
+                    svc:Localized.Key="Settings.Nav.About">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Help" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <Grid x:Name="SettingsContentRoot">
+                <ScrollViewer
+                    x:Name="PageScroller"
+                    Padding="20,16,20,38"
+                    HorizontalContentAlignment="Stretch"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel
+                        x:Name="ContentHost"
+                        Width="720"
+                        MaxWidth="720"
+                        HorizontalAlignment="Center"
+                        Spacing="24">
+                <StackPanel
+                    x:Name="AppearanceSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Appearance" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
@@ -228,30 +301,6 @@
                                     Style="{StaticResource InlineDropDownButtonStyle}"
                                     Tag="Theme" />
                             </Grid>
-
-                            <Border Style="{StaticResource SettingDividerStyle}" />
-
-                            <Grid Style="{StaticResource SettingRowStyle}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Language.Title" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Language.Description" />
-                                </StackPanel>
-                                <DropDownButton
-                                    x:Name="LanguageDropDownButton"
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    Click="SettingsDropDownButton_Click"
-                                    Content="{Binding SelectedLanguageText}"
-                                    Style="{StaticResource InlineDropDownButtonStyle}"
-                                    Tag="Language" />
-                            </Grid>
-
-                            <Border Style="{StaticResource SettingDividerStyle}" />
 
                             <Grid Style="{StaticResource SettingRowStyle}">
                                 <Grid.ColumnDefinitions>
@@ -356,8 +405,11 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.WidgetDefaults" />
+                <StackPanel
+                    x:Name="WidgetLayoutSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.WidgetLayout" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -397,14 +449,9 @@
                                     Style="{StaticResource InlineNumberTextBoxStyle}"
                                     Text="{Binding DefaultHeightInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
 
-                <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.DisplayDensity" />
-                    <Border Style="{StaticResource SettingsGroupStyle}">
-                        <StackPanel>
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
                             <Grid Style="{StaticResource SettingRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -423,48 +470,6 @@
                                     Content="{Binding SelectedWidgetCornerPreferenceText}"
                                     Style="{StaticResource InlineDropDownButtonStyle}"
                                     Tag="WidgetCorner" />
-                            </Grid>
-
-                            <Border Style="{StaticResource SettingDividerStyle}" />
-
-                            <Grid Style="{StaticResource SettingRowStyle}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Animation.Effect.Title" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Animation.Effect.Description" />
-                                </StackPanel>
-                                <DropDownButton
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    Click="SettingsDropDownButton_Click"
-                                    Content="{Binding SelectedWidgetAnimationEffectText}"
-                                    Style="{StaticResource InlineDropDownButtonStyle}"
-                                    Tag="WidgetAnimationEffect" />
-                            </Grid>
-
-                            <Border Style="{StaticResource SettingDividerStyle}" />
-
-                            <Grid Style="{StaticResource SettingRowStyle}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Animation.Speed.Title" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Animation.Speed.Description" />
-                                </StackPanel>
-                                <DropDownButton
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    Click="SettingsDropDownButton_Click"
-                                    Content="{Binding SelectedWidgetAnimationSpeedText}"
-                                    Style="{StaticResource InlineDropDownButtonStyle}"
-                                    Tag="WidgetAnimationSpeed" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -694,11 +699,32 @@
                                     Style="{StaticResource InlineNumberTextBoxStyle}"
                                     Text="{Binding FileNameWidthPercentInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.ListDetails.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ListDetails.Description" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    Grid.Column="1"
+                                    IsOn="{Binding ShowListItemDetails, Mode=TwoWay}"
+                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                            </Grid>
+
                         </StackPanel>
                     </Border>
                 </StackPanel>
 
-                <StackPanel Style="{StaticResource SectionPanelStyle}">
+                <StackPanel
+                    x:Name="StorageSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Storage" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
@@ -774,7 +800,60 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Style="{StaticResource SectionPanelStyle}">
+                <StackPanel
+                    x:Name="AnimationSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Animation" />
+                    <Border Style="{StaticResource SettingsGroupStyle}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Animation.Effect.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Animation.Effect.Description" />
+                                </StackPanel>
+                                <DropDownButton
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Click="SettingsDropDownButton_Click"
+                                    Content="{Binding SelectedWidgetAnimationEffectText}"
+                                    Style="{StaticResource InlineDropDownButtonStyle}"
+                                    Tag="WidgetAnimationEffect" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Animation.Speed.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Animation.Speed.Description" />
+                                </StackPanel>
+                                <DropDownButton
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Click="SettingsDropDownButton_Click"
+                                    Content="{Binding SelectedWidgetAnimationSpeedText}"
+                                    Style="{StaticResource InlineDropDownButtonStyle}"
+                                    Tag="WidgetAnimationSpeed" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel
+                    x:Name="InteractionSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Interaction" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
@@ -810,30 +889,38 @@
                                     Style="{StaticResource SettingToggleSwitchStyle}" />
                             </Grid>
 
-                            <Border Style="{StaticResource SettingDividerStyle}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
+                <StackPanel
+                    x:Name="GeneralSection"
+                    Style="{StaticResource SectionPanelStyle}">
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.General" />
+                    <Border Style="{StaticResource SettingsGroupStyle}">
+                        <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.ListDetails.Title" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ListDetails.Description" />
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Language.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Language.Description" />
                                 </StackPanel>
-                                <ToggleSwitch
+                                <DropDownButton
+                                    x:Name="LanguageDropDownButton"
                                     Grid.Column="1"
-                                    IsOn="{Binding ShowListItemDetails, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Click="SettingsDropDownButton_Click"
+                                    Content="{Binding SelectedLanguageText}"
+                                    Style="{StaticResource InlineDropDownButtonStyle}"
+                                    Tag="Language" />
                             </Grid>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
 
-                <StackPanel Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.System" />
-                    <Border Style="{StaticResource SettingsGroupStyle}">
-                        <StackPanel>
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
                             <Grid Style="{StaticResource SettingRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -872,8 +959,17 @@
                                 </Button>
                             </Grid>
 
-                            <Border Style="{StaticResource SettingDividerStyle}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
+                <StackPanel
+                    x:Name="MaintenanceSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
+                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Maintenance" />
+                    <Border Style="{StaticResource SettingsGroupStyle}">
+                        <StackPanel>
                             <Grid Style="{StaticResource SettingRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -898,7 +994,10 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Style="{StaticResource SectionPanelStyle}">
+                <StackPanel
+                    x:Name="AboutSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.About" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
@@ -964,7 +1063,9 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
-            </StackPanel>
-        </ScrollViewer>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </NavigationView>
     </Grid>
 </Window>

@@ -17,18 +17,17 @@ Download the latest installer from [GitHub Releases](https://github.com/Tianyu19
 
 Current release:
 
-- [DeskBox_Setup_1.0.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.3/DeskBox_Setup_1.0.3_x64.exe)
+- [DeskBox_Setup_1.0.4_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.4/DeskBox_Setup_1.0.4_x64.exe)
 
 The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.0.3
+## What's New In 1.0.4
 
-- Added widget show/hide animation effect and speed settings, including slide, fade, scale fade, and no-animation options.
-- Improved the animation pipeline to reduce acrylic surface flicker, black backing, and duplicated icon motion.
-- Improved tray left-click behavior so widgets hidden behind other windows are raised first, then hidden on the next click.
-- Improved the tray Settings command so the Settings window opens temporarily on top and returns to normal layering after focus leaves.
-- Improved temporary foreground behavior for new widgets, widget dragging, and native folder picker flows.
-- Added performance logging support to help diagnose future stutter and startup timing issues.
+- Improved tray left-click behavior so raised widgets stay visible while moving the pointer, then return to desktop level only after clicking another app.
+- Improved tray right-click menu positioning so the menu opens above the tray icon without covering the icon hit area.
+- Added extra confirmation when raising multiple widgets from the tray to avoid an occasional missed widget.
+- Added automatic acrylic backdrop refresh retries after widget reveal, theme, and appearance changes.
+- Reworked Settings into a left-side navigation layout with clearer sections for General, Appearance, Layout, Animation, Storage, Interaction, Maintenance, and About.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -106,7 +105,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.0.3_x64.exe
+Output\DeskBox_Setup_1.0.4_x64.exe
 ```
 
 ## Project Structure

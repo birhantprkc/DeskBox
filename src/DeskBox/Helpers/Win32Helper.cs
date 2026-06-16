@@ -65,6 +65,12 @@ public static partial class Win32Helper
     public static partial IntPtr GetForegroundWindow();
 
     [LibraryImport("user32.dll")]
+    public static partial IntPtr WindowFromPoint(POINT point);
+
+    [LibraryImport("user32.dll")]
+    public static partial IntPtr GetParent(IntPtr hWnd);
+
+    [LibraryImport("user32.dll")]
     public static partial IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 
     public const uint GA_ROOT = 2;
@@ -119,6 +125,23 @@ public static partial class Win32Helper
     [LibraryImport("user32.dll")]
     public static partial short GetKeyState(int nVirtKey);
 
+    [LibraryImport("user32.dll")]
+    private static partial short GetAsyncKeyState(int vKey);
+
+    public static bool HasMouseButtonActivity()
+    {
+        return HasAsyncKeyActivity(0x01) ||
+               HasAsyncKeyActivity(0x02) ||
+               HasAsyncKeyActivity(0x04) ||
+               HasAsyncKeyActivity(0x05) ||
+               HasAsyncKeyActivity(0x06);
+    }
+
+    private static bool HasAsyncKeyActivity(int virtualKey)
+    {
+        return (GetAsyncKeyState(virtualKey) & 0x8001) != 0;
+    }
+
     // ────────────────────────────────────────────────────────────────
     //  Shell operations
     // ────────────────────────────────────────────────────────────────
@@ -131,6 +154,32 @@ public static partial class Win32Helper
         string? lpParameters,
         string? lpDirectory,
         int nShowCmd);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NOTIFYICONIDENTIFIER
+    {
+        public uint cbSize;
+        public IntPtr hWnd;
+        public uint uID;
+        public Guid guidItem;
+    }
+
+    [LibraryImport("shell32.dll", SetLastError = true)]
+    public static partial int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER identifier, out RECT iconLocation);
+
+    public static bool TryGetNotifyIconRect(IntPtr hWnd, Guid id, out RECT iconLocation)
+    {
+        var identifier = new NOTIFYICONIDENTIFIER
+        {
+            cbSize = (uint)Marshal.SizeOf<NOTIFYICONIDENTIFIER>(),
+            hWnd = hWnd,
+            guidItem = id
+        };
+
+        return Shell_NotifyIconGetRect(ref identifier, out iconLocation) == 0 &&
+               iconLocation.Right > iconLocation.Left &&
+               iconLocation.Bottom > iconLocation.Top;
+    }
 
 
     // ────────────────────────────────────────────────────────────────
@@ -474,9 +523,59 @@ public static partial class Win32Helper
         public int Bottom;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    public const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [LibraryImport("user32.dll")]
+    public static partial IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    public static bool TryGetMonitorWorkArea(int x, int y, out RECT monitor, out RECT workArea)
+    {
+        var point = new POINT
+        {
+            X = x,
+            Y = y
+        };
+        IntPtr handle = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+        if (handle == IntPtr.Zero)
+        {
+            monitor = default;
+            workArea = default;
+            return false;
+        }
+
+        var info = new MONITORINFO
+        {
+            cbSize = Marshal.SizeOf<MONITORINFO>()
+        };
+
+        if (!GetMonitorInfo(handle, ref info))
+        {
+            monitor = default;
+            workArea = default;
+            return false;
+        }
+
+        monitor = info.rcMonitor;
+        workArea = info.rcWork;
+        return true;
+    }
 
     /// <summary>
     /// Open a file or URL using the default associated application.

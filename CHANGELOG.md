@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.4 - 2026-06-16
+
+- Improved tray left-click behavior so raised widgets stay on top while the pointer moves, then return to desktop level only after the user clicks another non-DeskBox window.
+- Added follow-up topmost confirmation when raising multiple widgets from the tray so every visible widget is brought forward consistently.
+- Improved tray right-click menu positioning by anchoring the WinUI menu from the actual tray icon rectangle and keeping it out of the tray icon hit area.
+- Added automatic backdrop refresh retries after widget show, tray reveal, theme, and appearance changes to recover acrylic surfaces that occasionally render as flat gray.
+- Reworked Settings into a left-side navigation layout with dedicated General, Appearance, Widget layout, Animation, Storage, Interaction, Maintenance, and About sections.
+
 ## 1.0.3 - 2026-06-16
 
 - Added configurable widget show/hide animation effects and speed presets in Settings, with Chinese and English labels.

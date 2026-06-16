@@ -18,14 +18,16 @@ namespace DeskBox.Views;
 
 public sealed partial class SettingsWindow : Window
 {
-    private const int DefaultWindowWidth = 760;
+    private const int DefaultWindowWidth = 920;
     private const int DefaultWindowHeight = 760;
-    private const int MinWindowWidth = 600;
+    private const int MinWindowWidth = 800;
     private const int MinWindowHeight = 560;
     private const double ContentMaxWidth = 720;
     private const double PageSidePadding = 20;
-    private const double NarrowLayoutThreshold = 560;
+    private const double RowStackContentThreshold = 620;
     private const double NarrowTitleThreshold = 560;
+    private const double NavigationCompactThreshold = 900;
+    private static readonly TimeSpan ResizeSettleDelay = TimeSpan.FromMilliseconds(120);
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcDestroy = 0x0082;
     private static readonly UIntPtr SettingsWindowSubclassId = new(1);
@@ -38,6 +40,7 @@ public sealed partial class SettingsWindow : Window
     private readonly List<Grid> _settingRows = [];
     private readonly List<Grid> _metricRows = [];
     private readonly HashSet<Slider> _pressedAppearanceSliders = [];
+    private readonly DispatcherTimer _resizeSettleTimer = new() { Interval = ResizeSettleDelay };
     private bool _isSubclassInstalled;
     private bool _isAppearanceSliderDragging;
     private bool _keepTopMostUntilDeactivate;
@@ -101,16 +104,23 @@ public sealed partial class SettingsWindow : Window
 
         ApplyTitleBarButtonColors();
         ApplyLocalizedText();
+        SettingsNavigationView.SelectedItem = GeneralNavItem;
+        ShowSettingsSection("General");
         UpdateResponsiveLayout(GetWindowWidth());
 
         SizeChanged += (_, args) =>
         {
-            UpdateResponsiveLayout(args.Size.Width);
+            UpdateResponsiveLayout(args.Size.Width, preferMeasuredContentWidth: false);
+            RestartResizeSettleTimer();
         };
+
+        _resizeSettleTimer.Tick += ResizeSettleTimer_Tick;
 
         Activated += SettingsWindow_Activated;
         Closed += (_, _) =>
         {
+            _resizeSettleTimer.Stop();
+            _resizeSettleTimer.Tick -= ResizeSettleTimer_Tick;
             Win32Helper.ClearWindowTopMost(_hWnd);
             RemoveMinimumSizeHook();
             _themeService.AppearanceChanged -= OnAppearanceChanged;
@@ -145,6 +155,33 @@ public sealed partial class SettingsWindow : Window
 
         _keepTopMostUntilDeactivate = false;
         Win32Helper.ClearWindowTopMost(_hWnd);
+    }
+
+    private void SettingsNavigationView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (args.SelectedItem is NavigationViewItem { Tag: string sectionTag })
+        {
+            ShowSettingsSection(sectionTag);
+        }
+    }
+
+    private void ShowSettingsSection(string sectionTag)
+    {
+        AppearanceSection.Visibility = sectionTag == "Appearance" ? Visibility.Visible : Visibility.Collapsed;
+        WidgetLayoutSection.Visibility = sectionTag == "WidgetLayout" ? Visibility.Visible : Visibility.Collapsed;
+        AnimationSection.Visibility = sectionTag == "Animation" ? Visibility.Visible : Visibility.Collapsed;
+        StorageSection.Visibility = sectionTag == "Storage" ? Visibility.Visible : Visibility.Collapsed;
+        InteractionSection.Visibility = sectionTag == "Interaction" ? Visibility.Visible : Visibility.Collapsed;
+        GeneralSection.Visibility = sectionTag == "General" ? Visibility.Visible : Visibility.Collapsed;
+        MaintenanceSection.Visibility = sectionTag == "Maintenance" ? Visibility.Visible : Visibility.Collapsed;
+        AboutSection.Visibility = sectionTag == "About" ? Visibility.Visible : Visibility.Collapsed;
+
+        PageScroller.ChangeView(null, 0, null, disableAnimation: true);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            CollectResponsiveRows(SettingsRoot);
+            UpdateResponsiveLayout(GetWindowWidth());
+        });
     }
 
     private async void AccentColorButton_Click(object sender, RoutedEventArgs e)
@@ -814,15 +851,34 @@ public sealed partial class SettingsWindow : Window
             : _appWindow.Size.Width;
     }
 
-    private void UpdateResponsiveLayout(double width)
+    private void UpdateResponsiveLayout(double width, bool preferMeasuredContentWidth = true)
     {
-        bool isNarrow = width < NarrowLayoutThreshold;
+        bool useCompactNavigation = width < NavigationCompactThreshold;
+
+        SettingsNavigationView.PaneDisplayMode = useCompactNavigation
+            ? NavigationViewPaneDisplayMode.LeftCompact
+            : NavigationViewPaneDisplayMode.Left;
+        SettingsNavigationView.IsPaneOpen = !useCompactNavigation;
+
+        double expectedPaneWidth = useCompactNavigation
+            ? SettingsNavigationView.CompactPaneLength
+            : SettingsNavigationView.OpenPaneLength;
+        double calculatedContentSurfaceWidth = Math.Max(0, width - expectedPaneWidth);
+        double contentSurfaceWidth = calculatedContentSurfaceWidth;
+        if (preferMeasuredContentWidth && SettingsContentRoot.ActualWidth > 0)
+        {
+            contentSurfaceWidth = calculatedContentSurfaceWidth > 0
+                ? Math.Min(SettingsContentRoot.ActualWidth, calculatedContentSurfaceWidth)
+                : SettingsContentRoot.ActualWidth;
+        }
+
+        double availableContentWidth = Math.Max(0, contentSurfaceWidth - PageSidePadding * 2);
+        bool isNarrow = availableContentWidth < RowStackContentThreshold;
 
         PageScroller.Padding = isNarrow
             ? new Thickness(PageSidePadding, 16, PageSidePadding, 34)
             : new Thickness(PageSidePadding, 16, PageSidePadding, 38);
 
-        double availableContentWidth = Math.Max(0, width - PageSidePadding * 2);
         ContentHost.Width = Math.Min(ContentMaxWidth, availableContentWidth);
         ContentHost.MaxWidth = ContentMaxWidth;
         PathActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
@@ -845,6 +901,23 @@ public sealed partial class SettingsWindow : Window
         AppTitleBar.Padding = width < NarrowTitleThreshold
             ? new Thickness(12, 0, 88, 0)
             : new Thickness(18, 0, 128, 0);
+    }
+
+    private void RestartResizeSettleTimer()
+    {
+        _resizeSettleTimer.Stop();
+        _resizeSettleTimer.Start();
+    }
+
+    private void ResizeSettleTimer_Tick(object? sender, object e)
+    {
+        _resizeSettleTimer.Stop();
+
+        SettingsRoot.InvalidateMeasure();
+        SettingsRoot.InvalidateArrange();
+        SettingsRoot.UpdateLayout();
+        UpdateResponsiveLayout(GetWindowWidth());
+        SettingsRoot.UpdateLayout();
     }
 
     private void CollectResponsiveRows(DependencyObject root)

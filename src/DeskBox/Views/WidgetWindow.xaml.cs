@@ -131,6 +131,7 @@ public sealed partial class WidgetWindow : Window
     private bool _isTrayWindowAnimationShowing;
     private Windows.Graphics.PointInt32? _lastAppliedTrayWindowPosition;
     private bool _isApplyingTrayAnimationBounds;
+    private long _backdropRefreshGeneration;
     private bool _areItemTransitionsSuppressed;
     private TransitionCollection? _savedGridItemTransitions;
     private TransitionCollection? _savedListItemTransitions;
@@ -153,6 +154,7 @@ public sealed partial class WidgetWindow : Window
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
+        QueueBackdropRefresh();
     }
 
     public WidgetWindow(WidgetViewModel viewModel, SettingsService settingsService, LocalizationService? localizationService = null)
@@ -251,6 +253,7 @@ public sealed partial class WidgetWindow : Window
 
             ApplyBackdropPreference();
             Win32Helper.ApplyFullWindowFrame(_hWnd);
+            QueueBackdropRefresh();
         };
 
         RootGrid.ActualThemeChanged += (_, _) => ApplyBackdropPreference();
@@ -329,6 +332,7 @@ public sealed partial class WidgetWindow : Window
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
+        QueueBackdropRefresh();
         PushToBottom();
     }
 
@@ -347,6 +351,7 @@ public sealed partial class WidgetWindow : Window
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
+        QueueBackdropRefresh();
 
         DispatcherQueue.TryEnqueue(async () =>
         {
@@ -356,6 +361,19 @@ public sealed partial class WidgetWindow : Window
                 HoldTemporaryTopMost();
             }
         });
+    }
+
+    internal void EnsureRaisedFromTrayTopMost()
+    {
+        if (!Visible)
+        {
+            return;
+        }
+
+        _appWindow.Show();
+        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
+        HoldTemporaryTopMost();
+        QueueBackdropRefresh();
     }
 
     public void ActivateRaisedFromTrayBatch()
@@ -906,6 +924,7 @@ public sealed partial class WidgetWindow : Window
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
+        QueueBackdropRefresh();
         PlayTrayRaiseAnimation();
 
         if (!autoRestore)
@@ -947,6 +966,7 @@ public sealed partial class WidgetWindow : Window
 
         ViewModel.ApplyAppearancePreview();
         ApplyBackdropPreference();
+        QueueBackdropRefresh();
     }
 
     private void ElevateForInteraction()
@@ -1072,6 +1092,7 @@ public sealed partial class WidgetWindow : Window
         {
             ApplyWindowCornerPreference();
             ApplyBackdropPreference();
+            QueueBackdropRefresh();
             UpdateInteractiveSurfaces();
             ApplyTitleBarLayout();
             return;
@@ -1081,6 +1102,7 @@ public sealed partial class WidgetWindow : Window
         {
             ApplyWindowCornerPreference();
             ApplyBackdropPreference();
+            QueueBackdropRefresh();
             UpdateInteractiveSurfaces();
             ApplyTitleBarLayout();
         });
@@ -1141,6 +1163,48 @@ public sealed partial class WidgetWindow : Window
         }
 
         ApplySurfaceStyle();
+    }
+
+    private void QueueBackdropRefresh()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(QueueBackdropRefresh);
+            return;
+        }
+
+        long generation = ++_backdropRefreshGeneration;
+        _ = RefreshBackdropAfterDelayAsync(generation, 80);
+        _ = RefreshBackdropAfterDelayAsync(generation, 320);
+        _ = RefreshBackdropAfterDelayAsync(generation, 900);
+    }
+
+    private async Task RefreshBackdropAfterDelayAsync(long generation, int delayMs)
+    {
+        await Task.Delay(delayMs);
+
+        if (generation != _backdropRefreshGeneration)
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => RefreshBackdropIfCurrent(generation));
+            return;
+        }
+
+        RefreshBackdropIfCurrent(generation);
+    }
+
+    private void RefreshBackdropIfCurrent(long generation)
+    {
+        if (generation != _backdropRefreshGeneration)
+        {
+            return;
+        }
+
+        ApplyBackdropPreference();
     }
 
     private bool ApplyAcrylicController(
