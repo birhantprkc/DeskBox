@@ -12,6 +12,8 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Shapes;
 using System.Runtime.InteropServices;
 using System.Text;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.System;
 using WinRT.Interop;
 
 namespace DeskBox.Views;
@@ -27,6 +29,7 @@ public sealed partial class SettingsWindow : Window
     private const double RowStackContentThreshold = 620;
     private const double NarrowTitleThreshold = 560;
     private const double NavigationCompactThreshold = 900;
+    private const string DownloadLink = "https://pan.quark.cn/s/f7a6769cdaf3";
     private static readonly TimeSpan ResizeSettleDelay = TimeSpan.FromMilliseconds(120);
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcDestroy = 0x0082;
@@ -36,7 +39,7 @@ public sealed partial class SettingsWindow : Window
     private readonly LocalizationService _localizationService;
     private readonly AppWindow _appWindow;
     private readonly IntPtr _hWnd;
-    private readonly SubclassProc _windowSubclassProc;
+    private readonly Win32Helper.SubclassProc _windowSubclassProc;
     private readonly List<Grid> _settingRows = [];
     private readonly List<Grid> _metricRows = [];
     private readonly HashSet<Slider> _pressedAppearanceSliders = [];
@@ -44,6 +47,7 @@ public sealed partial class SettingsWindow : Window
     private bool _isSubclassInstalled;
     private bool _isAppearanceSliderDragging;
     private bool _keepTopMostUntilDeactivate;
+    private bool _isRecordingHotkey;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -67,6 +71,9 @@ public sealed partial class SettingsWindow : Window
         SettingsRoot.Loaded += (_, _) =>
         {
             CollectResponsiveRows(SettingsRoot);
+            ViewModel.RefreshQuickAccessState();
+            ViewModel.RefreshGlobalHotkeyState();
+            RefreshGlobalHotkeyControls();
             UpdateResponsiveLayout(GetWindowWidth());
         };
 
@@ -101,6 +108,10 @@ public sealed partial class SettingsWindow : Window
         _themeService.TrackWindow(this);
         _themeService.AppearanceChanged += OnAppearanceChanged;
         _localizationService.LanguageChanged += OnLanguageChanged;
+        if (App.Current.GlobalHotkeyService is { } hotkeyService)
+        {
+            hotkeyService.RegistrationChanged += OnGlobalHotkeyRegistrationChanged;
+        }
 
         ApplyTitleBarButtonColors();
         ApplyLocalizedText();
@@ -125,7 +136,15 @@ public sealed partial class SettingsWindow : Window
             RemoveMinimumSizeHook();
             _themeService.AppearanceChanged -= OnAppearanceChanged;
             _localizationService.LanguageChanged -= OnLanguageChanged;
+            if (App.Current.GlobalHotkeyService is { } hotkeyService)
+            {
+                hotkeyService.RegistrationChanged -= OnGlobalHotkeyRegistrationChanged;
+            }
             ViewModel.Dispose();
+            SettingsRoot.DataContext = null;
+            _settingRows.Clear();
+            _metricRows.Clear();
+            _pressedAppearanceSliders.Clear();
         };
     }
 
@@ -320,6 +339,8 @@ public sealed partial class SettingsWindow : Window
     {
         Title = _localizationService.T("Settings.WindowTitle");
         Localized.RefreshAll(_localizationService);
+        ViewModel.RefreshGlobalHotkeyState();
+        RefreshGlobalHotkeyControls();
     }
 
     private void EditableSettingsTextBox_GotFocus(object sender, RoutedEventArgs e)
@@ -344,6 +365,64 @@ public sealed partial class SettingsWindow : Window
 
         SettingsRoot.Focus(FocusState.Programmatic);
         e.Handled = true;
+    }
+
+    private void ChangeGlobalHotkeyButton_Click(object sender, RoutedEventArgs e)
+    {
+        BeginHotkeyRecording();
+    }
+
+    private void GlobalHotkeyCaptureButton_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (!_isRecordingHotkey)
+        {
+            return;
+        }
+
+        if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            EndHotkeyRecording();
+            e.Handled = true;
+            return;
+        }
+
+        if (IsModifierKey(e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var gesture = new DeskBox.Models.GlobalHotkeyGesture(
+            GetPressedHotkeyModifiers(),
+            (int)e.Key);
+        _ = ApplyRecordedHotkeyAsync(gesture);
+        e.Handled = true;
+    }
+
+    private void GlobalHotkeyCaptureButton_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_isRecordingHotkey)
+        {
+            EndHotkeyRecording();
+        }
+    }
+
+    private async void ResetGlobalHotkeyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (App.Current.GlobalHotkeyService is not { } hotkeyService)
+        {
+            return;
+        }
+
+        if (!hotkeyService.ResetToDefault(out string? error))
+        {
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.GlobalHotkey.Dialog.FailedTitle"),
+                error ?? _localizationService.T("Settings.GlobalHotkey.Status.Unregistered"));
+        }
+
+        ViewModel.RefreshGlobalHotkeyState();
+        RefreshGlobalHotkeyControls();
     }
 
     private void AppearanceSlider_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -460,6 +539,82 @@ public sealed partial class SettingsWindow : Window
         _pressedAppearanceSliders.Clear();
     }
 
+    private void BeginHotkeyRecording()
+    {
+        _isRecordingHotkey = true;
+        GlobalHotkeyCaptureButton.Content = _localizationService.T("Settings.GlobalHotkey.Recording");
+        GlobalHotkeyCaptureButton.Focus(FocusState.Programmatic);
+    }
+
+    private void EndHotkeyRecording()
+    {
+        _isRecordingHotkey = false;
+        RefreshGlobalHotkeyControls();
+    }
+
+    private void RefreshGlobalHotkeyControls()
+    {
+        if (!_isRecordingHotkey)
+        {
+            GlobalHotkeyCaptureButton.Content = ViewModel.GlobalHotkeyText;
+        }
+    }
+
+    private async Task ApplyRecordedHotkeyAsync(DeskBox.Models.GlobalHotkeyGesture gesture)
+    {
+        EndHotkeyRecording();
+        if (App.Current.GlobalHotkeyService is not { } hotkeyService)
+        {
+            return;
+        }
+
+        if (!hotkeyService.TryApplyGesture(gesture, out string? error))
+        {
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.GlobalHotkey.Dialog.FailedTitle"),
+                error ?? _localizationService.T("Settings.GlobalHotkey.Status.Unregistered"));
+        }
+
+        ViewModel.RefreshGlobalHotkeyState();
+    }
+
+    private DeskBox.Models.HotkeyModifierKeys GetPressedHotkeyModifiers()
+    {
+        var modifiers = DeskBox.Models.HotkeyModifierKeys.None;
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
+        {
+            modifiers |= DeskBox.Models.HotkeyModifierKeys.Control;
+        }
+
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Menu))
+        {
+            modifiers |= DeskBox.Models.HotkeyModifierKeys.Alt;
+        }
+
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift))
+        {
+            modifiers |= DeskBox.Models.HotkeyModifierKeys.Shift;
+        }
+
+        return modifiers;
+    }
+
+    private static bool IsModifierKey(Windows.System.VirtualKey key)
+    {
+        return key is
+            Windows.System.VirtualKey.Control or
+            Windows.System.VirtualKey.LeftControl or
+            Windows.System.VirtualKey.RightControl or
+            Windows.System.VirtualKey.Menu or
+            Windows.System.VirtualKey.LeftMenu or
+            Windows.System.VirtualKey.RightMenu or
+            Windows.System.VirtualKey.Shift or
+            Windows.System.VirtualKey.LeftShift or
+            Windows.System.VirtualKey.RightShift or
+            Windows.System.VirtualKey.LeftWindows or
+            Windows.System.VirtualKey.RightWindows;
+    }
+
     private static bool TryFindAncestor<T>(DependencyObject? source, out T result) where T : DependencyObject
     {
         var current = source;
@@ -546,7 +701,14 @@ public sealed partial class SettingsWindow : Window
         {
             try
             {
-                await App.Current.WidgetManager.UpdateDefaultManagedStorageRootAsync(normalizedPath);
+                var result = await App.Current.WidgetManager.UpdateDefaultManagedStorageRootAsync(normalizedPath);
+                await ShowInfoDialogAsync(
+                    _localizationService.T("Settings.Dialog.MigrateCompleteTitle"),
+                    _localizationService.Format(
+                        "Settings.Dialog.MigrateCompleteBody",
+                        result.AffectedWidgetCount,
+                        result.OldRootPath,
+                        result.NewRootPath));
             }
             catch (Exception ex)
             {
@@ -578,9 +740,81 @@ public sealed partial class SettingsWindow : Window
         Win32Helper.OpenFile(path);
     }
 
+    private async void PinManagedStorageToQuickAccessButton_Click(object sender, RoutedEventArgs e)
+    {
+        string path = ViewModel.ManagedStorageRootPath;
+        bool shouldUnpin = ViewModel.ShouldUnpinManagedStorageFromQuickAccess;
+        string? error;
+        bool succeeded;
+        if (shouldUnpin)
+        {
+            succeeded = ExplorerQuickAccessHelper.TryUnpinFolderFromQuickAccess(path, out error);
+        }
+        else
+        {
+            succeeded = ExplorerQuickAccessHelper.TryPinFolderToQuickAccess(path, out error);
+        }
+
+        ViewModel.RefreshQuickAccessState();
+
+        if (succeeded)
+        {
+            await Task.Delay(350);
+            ViewModel.RefreshQuickAccessState();
+            return;
+        }
+
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = shouldUnpin
+                ? _localizationService.T("Settings.Dialog.UnpinQuickAccessFailedTitle")
+                : _localizationService.T("Settings.Dialog.PinQuickAccessFailedTitle"),
+            CloseButtonText = _localizationService.T("Common.Ok"),
+            DefaultButton = ContentDialogButton.Close,
+            Content = new TextBlock
+            {
+                Text = shouldUnpin
+                    ? _localizationService.Format("Settings.Dialog.UnpinQuickAccessFailedBody", error ?? string.Empty)
+                    : _localizationService.Format("Settings.Dialog.PinQuickAccessFailedBody", error ?? string.Empty),
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+
+        await dialog.ShowAsync();
+    }
+
     private void OpenRepositoryButton_Click(object sender, RoutedEventArgs e)
     {
         Win32Helper.OpenFile(ViewModel.OpenSourceRepositoryUrl);
+    }
+
+    private async void CopyDownloadLinkButton_Click(object sender, RoutedEventArgs e)
+    {
+        var package = new DataPackage();
+        package.SetText(DownloadLink);
+        Clipboard.SetContent(package);
+        Clipboard.Flush();
+
+        if (SettingsRoot.XamlRoot is not null)
+        {
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.Download.CopiedTitle"),
+                DownloadLink);
+        }
+    }
+
+    private async void OpenDownloadLinkButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Uri.TryCreate(DownloadLink, UriKind.Absolute, out var uri))
+        {
+            await Launcher.LaunchUriAsync(uri);
+        }
     }
 
     private void ShowOnboardingButton_Click(object sender, RoutedEventArgs e)
@@ -775,6 +1009,22 @@ public sealed partial class SettingsWindow : Window
         await dialog.ShowAsync();
     }
 
+    private void OnGlobalHotkeyRegistrationChanged()
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            ViewModel.RefreshGlobalHotkeyState();
+            RefreshGlobalHotkeyControls();
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ViewModel.RefreshGlobalHotkeyState();
+            RefreshGlobalHotkeyControls();
+        });
+    }
+
     private static TextBlock CreateDialogParagraph(string text)
     {
         return new TextBlock
@@ -884,8 +1134,16 @@ public sealed partial class SettingsWindow : Window
         PathActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         PathActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
         OpenPathButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        PinQuickAccessButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         ChangePathButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         CleanupStorageButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        DownloadLinkActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        DownloadLinkActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
+        CopyDownloadLinkButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        OpenDownloadLinkButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        GlobalHotkeyActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        GlobalHotkeyCaptureButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        ResetGlobalHotkeyButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
 
         foreach (var row in _settingRows)
         {
@@ -996,7 +1254,7 @@ public sealed partial class SettingsWindow : Window
 
     private void InstallMinimumSizeHook()
     {
-        _isSubclassInstalled = SetWindowSubclass(_hWnd, _windowSubclassProc, SettingsWindowSubclassId, UIntPtr.Zero);
+        _isSubclassInstalled = Win32Helper.SetWindowSubclass(_hWnd, _windowSubclassProc, SettingsWindowSubclassId, UIntPtr.Zero);
     }
 
     private void RemoveMinimumSizeHook()
@@ -1006,7 +1264,7 @@ public sealed partial class SettingsWindow : Window
             return;
         }
 
-        RemoveWindowSubclass(_hWnd, _windowSubclassProc, SettingsWindowSubclassId);
+        Win32Helper.RemoveWindowSubclass(_hWnd, _windowSubclassProc, SettingsWindowSubclassId);
         _isSubclassInstalled = false;
     }
 
@@ -1032,38 +1290,8 @@ public sealed partial class SettingsWindow : Window
             RemoveMinimumSizeHook();
         }
 
-        return DefSubclassProc(hWnd, message, wParam, lParam);
+        return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
     }
-
-    private delegate IntPtr SubclassProc(
-        IntPtr hWnd,
-        uint message,
-        UIntPtr wParam,
-        IntPtr lParam,
-        UIntPtr subclassId,
-        UIntPtr refData);
-
-    [DllImport("comctl32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowSubclass(
-        IntPtr hWnd,
-        SubclassProc subclassProc,
-        UIntPtr subclassId,
-        UIntPtr refData);
-
-    [DllImport("comctl32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool RemoveWindowSubclass(
-        IntPtr hWnd,
-        SubclassProc subclassProc,
-        UIntPtr subclassId);
-
-    [DllImport("comctl32.dll", SetLastError = true)]
-    private static extern IntPtr DefSubclassProc(
-        IntPtr hWnd,
-        uint message,
-        UIntPtr wParam,
-        IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint

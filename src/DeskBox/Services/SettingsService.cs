@@ -33,7 +33,6 @@ public sealed class SettingsService
     public const string WidgetAnimationSpeedStandard = "Standard";
     public const string WidgetAnimationSpeedRelaxed = "Relaxed";
     public const string WidgetAnimationSpeedSlow = "Slow";
-    public const bool DefaultNativeBackdropBlur = true;
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
     public const string LanguageSystem = "System";
@@ -41,6 +40,9 @@ public sealed class SettingsService
     public const string LanguageEnglish = "en-US";
     public const double DefaultWidgetWidth = 280;
     public const double DefaultWidgetHeight = 400;
+    public const bool DefaultGlobalHotkeyEnabled = false;
+    public const int DefaultGlobalHotkeyModifiers = (int)Models.HotkeyModifierKeys.None;
+    public const int DefaultGlobalHotkeyKey = (int)Windows.System.VirtualKey.F7;
     public const double MinWidgetWidth = 200;
     public const double MinWidgetHeight = 200;
     public const double DefaultIconSize = 30;
@@ -126,6 +128,7 @@ public sealed class SettingsService
                 changed |= NormalizeAppearanceSettings(_settings);
                 changed |= NormalizeWidgetContentSettings(_settings);
                 changed |= NormalizeOrganizerSettings(_settings);
+                changed |= NormalizeHotkeySettings(_settings);
                 changed |= NormalizeDeletionSettings(_settings);
             }
 
@@ -183,6 +186,7 @@ public sealed class SettingsService
             {
                 NormalizePresentationSettings(_settings);
                 NormalizeOrganizerSettings(_settings);
+                NormalizeHotkeySettings(_settings);
                 json = JsonSerializer.Serialize(_settings, s_jsonOptions);
             }
             await File.WriteAllTextAsync(_settingsPath, json);
@@ -331,12 +335,6 @@ public sealed class SettingsService
             WidgetAnimationSpeedSlow))
         {
             settings.WidgetAnimationSpeed = WidgetAnimationSpeedStandard;
-            changed = true;
-        }
-
-        if (settings.UseNativeBackdropBlur != DefaultNativeBackdropBlur)
-        {
-            settings.UseNativeBackdropBlur = DefaultNativeBackdropBlur;
             changed = true;
         }
 
@@ -606,6 +604,29 @@ public sealed class SettingsService
                     changed = true;
                 }
             }
+        }
+
+        return changed;
+    }
+
+    private static bool NormalizeHotkeySettings(AppSettings settings)
+    {
+        bool changed = false;
+        int normalizedModifiers = (int)((Models.HotkeyModifierKeys)settings.GlobalHotkeyModifiers &
+            (Models.HotkeyModifierKeys.Alt | Models.HotkeyModifierKeys.Control | Models.HotkeyModifierKeys.Shift));
+
+        if (settings.GlobalHotkeyModifiers != normalizedModifiers)
+        {
+            settings.GlobalHotkeyModifiers = normalizedModifiers;
+            changed = true;
+        }
+
+        var gesture = GlobalHotkeyService.NormalizeGesture(settings.GlobalHotkeyModifiers, settings.GlobalHotkeyKey);
+        if (!GlobalHotkeyService.IsValidGesture(gesture))
+        {
+            settings.GlobalHotkeyModifiers = DefaultGlobalHotkeyModifiers;
+            settings.GlobalHotkeyKey = DefaultGlobalHotkeyKey;
+            changed = true;
         }
 
         return changed;

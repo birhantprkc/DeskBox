@@ -700,8 +700,6 @@
                                     Text="{Binding FileNameWidthPercentInput, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                             </Grid>
 
-                            <Border Style="{StaticResource SettingDividerStyle}" />
-
                             <Grid Style="{StaticResource SettingRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -759,6 +757,9 @@
                                     IsReadOnly="True"
                                     Text="{Binding ManagedStorageRootPath, Mode=OneWay}"
                                     TextWrapping="NoWrap" />
+                                <TextBlock
+                                    Style="{StaticResource SettingDescriptionTextStyle}"
+                                    Text="{Binding QuickAccessStatusText}" />
                                 <StackPanel
                                     x:Name="PathActionsPanel"
                                     HorizontalAlignment="Right"
@@ -772,6 +773,16 @@
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <SymbolIcon Symbol="OpenFile" />
                                             <TextBlock svc:Localized.Key="Common.Open" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        x:Name="PinQuickAccessButton"
+                                        Click="PinManagedStorageToQuickAccessButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        ToolTipService.ToolTip="{Binding PinQuickAccessToolTipText}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="Pin" />
+                                            <TextBlock Text="{Binding PinQuickAccessButtonText}" />
                                         </StackPanel>
                                     </Button>
                                     <Button
@@ -857,6 +868,65 @@
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Interaction" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
                         <StackPanel>
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.GlobalHotkey.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding GlobalHotkeyDescription}" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding GlobalHotkeyStatusText}" />
+                                </StackPanel>
+                                <Grid
+                                    x:Name="GlobalHotkeyActionsPanel"
+                                    Grid.Column="1"
+                                    MinWidth="252"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    ColumnSpacing="10"
+                                    RowSpacing="8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleSwitch
+                                        Grid.Row="0"
+                                        Grid.Column="1"
+                                        IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}"
+                                        Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    <Button
+                                        x:Name="GlobalHotkeyCaptureButton"
+                                        Grid.Row="1"
+                                        Grid.Column="0"
+                                        MinWidth="132"
+                                        HorizontalAlignment="Stretch"
+                                        Click="ChangeGlobalHotkeyButton_Click"
+                                        KeyDown="GlobalHotkeyCaptureButton_KeyDown"
+                                        LostFocus="GlobalHotkeyCaptureButton_LostFocus"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.GlobalHotkey.ChangeTooltip" />
+                                    <Button
+                                        x:Name="ResetGlobalHotkeyButton"
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Click="ResetGlobalHotkeyButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.GlobalHotkey.ResetTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="Refresh" />
+                                            <TextBlock svc:Localized.Key="Common.Restore" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
                             <Grid Style="{StaticResource SettingRowStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -990,6 +1060,45 @@
                                     </StackPanel>
                                 </Button>
                             </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <StackPanel Padding="16,14" Spacing="12">
+                                <StackPanel Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Download.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Download.Description" />
+                                </StackPanel>
+                                <TextBox
+                                    IsReadOnly="True"
+                                    Text="https://pan.quark.cn/s/f7a6769cdaf3"
+                                    TextWrapping="NoWrap" />
+                                <StackPanel
+                                    x:Name="DownloadLinkActionsPanel"
+                                    HorizontalAlignment="Right"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                                    <Button
+                                        x:Name="CopyDownloadLinkButton"
+                                        Click="CopyDownloadLinkButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.Download.CopyTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="Copy" />
+                                            <TextBlock svc:Localized.Key="Common.Copy" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        x:Name="OpenDownloadLinkButton"
+                                        Click="OpenDownloadLinkButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.Download.OpenTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="OpenFile" />
+                                            <TextBlock svc:Localized.Key="Common.Open" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

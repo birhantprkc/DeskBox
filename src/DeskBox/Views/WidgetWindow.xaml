@@ -481,6 +481,44 @@
             <Border Grid.Row="1" Grid.Column="0" Background="Transparent" Tag="Left" PointerEntered="ResizeBorder_PointerEntered" PointerPressed="ResizeBorder_PointerPressed" />
             <Border Grid.Row="1" Grid.Column="2" Background="Transparent" Tag="Right" PointerEntered="ResizeBorder_PointerEntered" PointerPressed="ResizeBorder_PointerPressed" />
         </Grid>
+
+        <Grid
+            x:Name="MigrationOverlay"
+            Grid.RowSpan="2"
+            Background="#66000000"
+            IsHitTestVisible="True"
+            Visibility="Collapsed">
+            <Border
+                MaxWidth="260"
+                Padding="18,16"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="10">
+                    <ProgressRing
+                        x:Name="MigrationProgressRing"
+                        Width="28"
+                        Height="28"
+                        HorizontalAlignment="Center"
+                        IsActive="False" />
+                    <TextBlock
+                        x:Name="MigrationTitleText"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="MigrationDescriptionText"
+                        FontSize="12"
+                        Opacity="0.78"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>
 

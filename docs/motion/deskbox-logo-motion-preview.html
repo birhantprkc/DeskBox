@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeskBox Logo Motion Preview</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --panel-2: #eef4fb;
+      --text: #1a2433;
+      --muted: #647286;
+      --line: #dce5ef;
+      --accent: #0078d4;
+      --accent-2: #58aafe;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101418;
+        --panel: #171d24;
+        --panel-2: #111821;
+        --text: #edf4fb;
+        --muted: #a3b1c2;
+        --line: #283442;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 24% 12%, rgba(88, 170, 254, 0.14), transparent 28rem),
+        linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--bg) 82%, #ffffff));
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 40px 0 52px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 48px);
+      line-height: 1.04;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 15px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    button,
+    select {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+      padding: 0 12px;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:hover {
+      border-color: color-mix(in srgb, var(--accent) 62%, var(--line));
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 20px;
+      align-items: stretch;
+      margin-bottom: 20px;
+    }
+
+    .stage,
+    .notes,
+    .motion-card,
+    .asset-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--panel) 96%, transparent);
+      box-shadow: 0 12px 40px rgba(17, 39, 75, 0.08);
+    }
+
+    .stage {
+      min-height: 360px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(90deg, rgba(100, 114, 134, 0.07) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(100, 114, 134, 0.07) 1px, transparent 1px),
+        var(--panel);
+      background-size: 28px 28px;
+      overflow: hidden;
+    }
+
+    .hero .motion-image {
+      width: min(220px, 56vw);
+      height: min(220px, 56vw);
+      display: block;
+    }
+
+    .notes {
+      padding: 18px;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+    }
+
+    .notes h2,
+    .section-title {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: color-mix(in srgb, var(--accent) 88%, var(--text));
+      padding: 0 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .motion-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .motion-card {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      min-height: 248px;
+    }
+
+    .thumb {
+      display: grid;
+      place-items: center;
+      min-height: 124px;
+      border-radius: 8px;
+      background: var(--panel-2);
+      overflow: hidden;
+    }
+
+    .thumb .motion-thumb {
+      width: 82px;
+      height: 82px;
+      display: block;
+    }
+
+    .motion-card h3,
+    .asset-card h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .motion-card p,
+    .asset-card p {
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .asset-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .asset-card {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
+    }
+
+    .asset-card img {
+      width: 56px;
+      height: 56px;
+      justify-self: center;
+    }
+
+    .path {
+      margin-top: 6px;
+      color: var(--muted);
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .muted { color: var(--muted); }
+
+    @media (max-width: 920px) {
+      header,
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        justify-content: flex-start;
+      }
+
+      .motion-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 620px) {
+      main {
+        width: min(100% - 24px, 1120px);
+        padding-top: 24px;
+      }
+
+      .motion-grid,
+      .asset-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .asset-card {
+        grid-template-columns: 58px minmax(0, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>DeskBox Logo Motion</h1>
+        <p>基于现有产品 SVG 的动效候选，先作为预览资产独立存在，后续可挑一版接入启动、引导、托盘或设置页。</p>
+      </div>
+      <div class="controls">
+        <select id="variantSelect" aria-label="选择主预览版本">
+          <option value="deskbox-motion-01-layer-assemble.svg">01 层级组装</option>
+          <option value="deskbox-motion-02-calm-breathe.svg">02 呼吸待机</option>
+          <option value="deskbox-motion-03-focus-sheen.svg">03 扫光反馈</option>
+          <option value="deskbox-motion-04-tray-summon.svg">04 托盘唤起</option>
+        </select>
+        <button id="replayButton" type="button">Replay</button>
+      </div>
+    </header>
+
+    <section class="hero" aria-label="主预览">
+      <div class="stage">
+        <img id="heroImage" class="motion-image" src="deskbox-motion-01-layer-assemble.svg" alt="DeskBox animated logo">
+      </div>
+      <aside class="notes">
+        <h2 id="variantTitle">01 层级组装</h2>
+        <p id="variantBody">三层格子按阅读顺序错峰归位，适合首次启动、欢迎页、官网首屏或发布视频开头。</p>
+        <div class="tag-list" id="variantTags">
+          <span class="tag">Staging</span>
+          <span class="tag">Overlapping</span>
+          <span class="tag">Settle</span>
+        </div>
+        <p class="muted">动效关键词：干净、轻量、整理感。整体避免夸张弹跳，保留 Windows 工具型产品的克制感。</p>
+      </aside>
+    </section>
+
+    <h2 class="section-title">候选版本</h2>
+    <section class="motion-grid" aria-label="候选版本">
+      <article class="motion-card" data-file="deskbox-motion-01-layer-assemble.svg">
+        <div class="thumb"><img class="motion-thumb" src="deskbox-motion-01-layer-assemble.svg" alt="层级组装"></div>
+        <h3>01 层级组装</h3>
+        <p>适合 splash、引导页首屏、官网视觉。最像“把桌面文件收纳成格子”的品牌表达。</p>
+      </article>
+      <article class="motion-card" data-file="deskbox-motion-02-calm-breathe.svg">
+        <div class="thumb"><img class="motion-thumb" src="deskbox-motion-02-calm-breathe.svg" alt="呼吸待机"></div>
+        <h3>02 呼吸待机</h3>
+        <p>适合设置页空状态、等待权限、同步状态。低幅度循环，长时间看也不会抢注意力。</p>
+      </article>
+      <article class="motion-card" data-file="deskbox-motion-03-focus-sheen.svg">
+        <div class="thumb"><img class="motion-thumb" src="deskbox-motion-03-focus-sheen.svg" alt="扫光反馈"></div>
+        <h3>03 扫光反馈</h3>
+        <p>适合完成整理、保存设置、托盘菜单 hover。更像一次确认反馈，不建议一直循环展示。</p>
+      </article>
+      <article class="motion-card" data-file="deskbox-motion-04-tray-summon.svg">
+        <div class="thumb"><img class="motion-thumb" src="deskbox-motion-04-tray-summon.svg" alt="托盘唤起"></div>
+        <h3>04 托盘唤起</h3>
+        <p>适合从系统托盘打开窗口、显示全部格子、临时置顶后的提示。运动方向呼应从角落唤出。</p>
+      </article>
+    </section>
+
+    <h2 class="section-title">静态 SVG</h2>
+    <section class="asset-grid" aria-label="静态资产">
+      <article class="asset-card">
+        <img src="deskbox-logo-static.svg" alt="DeskBox 原始静态 logo">
+        <div>
+          <h3>原始产品 SVG</h3>
+          <p>直接复制自当前应用资产，作为最终帧基准。</p>
+          <div class="path">docs/motion/deskbox-logo-static.svg</div>
+        </div>
+      </article>
+      <article class="asset-card">
+        <img src="deskbox-logo-motion-ready.svg" alt="DeskBox motion-ready logo">
+        <div>
+          <h3>Motion-ready SVG</h3>
+          <p>同一视觉结果，但给三层 path 增加了稳定 id，便于动效编排。</p>
+          <div class="path">docs/motion/deskbox-logo-motion-ready.svg</div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const variants = {
+      "deskbox-motion-01-layer-assemble.svg": {
+        title: "01 层级组装",
+        body: "三层格子按阅读顺序错峰归位，适合首次启动、欢迎页、官网首屏或发布视频开头。",
+        tags: ["Staging", "Overlapping", "Settle"]
+      },
+      "deskbox-motion-02-calm-breathe.svg": {
+        title: "02 呼吸待机",
+        body: "几乎不改变图形，只做轻微呼吸和层间位移，适合等待、空状态和长期驻留。",
+        tags: ["Slow In/Out", "Appeal", "Loop"]
+      },
+      "deskbox-motion-03-focus-sheen.svg": {
+        title: "03 扫光反馈",
+        body: "用一次短扫光表达完成、保存或聚焦，适合作为微交互反馈，不适合首屏长期循环。",
+        tags: ["Secondary Action", "Timing", "Feedback"]
+      },
+      "deskbox-motion-04-tray-summon.svg": {
+        title: "04 托盘唤起",
+        body: "从右下角缩放进入并展开层级，适合系统托盘唤起、显示隐藏全部格子、临时置顶提示。",
+        tags: ["Anticipation", "Arcs", "Follow-through"]
+      }
+    };
+
+    const hero = document.querySelector("#heroImage");
+    const select = document.querySelector("#variantSelect");
+    const title = document.querySelector("#variantTitle");
+    const body = document.querySelector("#variantBody");
+    const tags = document.querySelector("#variantTags");
+
+    function renderTags(items) {
+      tags.innerHTML = "";
+      for (const item of items) {
+        const span = document.createElement("span");
+        span.className = "tag";
+        span.textContent = item;
+        tags.append(span);
+      }
+    }
+
+    function setVariant(file) {
+      const meta = variants[file];
+      hero.src = `${file}?replay=${Date.now()}`;
+      title.textContent = meta.title;
+      body.textContent = meta.body;
+      renderTags(meta.tags);
+      select.value = file;
+    }
+
+    select.addEventListener("change", () => setVariant(select.value));
+    document.querySelector("#replayButton").addEventListener("click", () => setVariant(select.value));
+    document.querySelectorAll(".motion-card").forEach((card) => {
+      card.addEventListener("click", () => setVariant(card.dataset.file));
+    });
+  </script>
+</body>
+</html>

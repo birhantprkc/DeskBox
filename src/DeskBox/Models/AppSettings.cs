@@ -28,6 +28,15 @@ public class AppSettings
     /// <summary>Whether DeskBox should launch automatically at Windows startup.</summary>
     public bool AutoStart { get; set; }
 
+    /// <summary>Whether the global hotkey is enabled.</summary>
+    public bool GlobalHotkeyEnabled { get; set; }
+
+    /// <summary>Global hotkey modifier bit flags.</summary>
+    public int GlobalHotkeyModifiers { get; set; } = (int)HotkeyModifierKeys.None;
+
+    /// <summary>Global hotkey virtual key code.</summary>
+    public int GlobalHotkeyKey { get; set; } = (int)Windows.System.VirtualKey.F7;
+
     /// <summary>Whether the first-run onboarding has been completed or skipped.</summary>
     public bool HasCompletedOnboarding { get; set; }
 
@@ -125,12 +134,6 @@ public class AppSettings
     /// Smaller values keep labels narrower.
     /// </summary>
     public double FileNameWidthScale { get; set; } = 0.36;
-
-    /// <summary>
-    /// Whether widgets should use the native Windows acrylic backdrop blur.
-    /// Kept in settings for compatibility with older config files.
-    /// </summary>
-    public bool UseNativeBackdropBlur { get; set; } = true;
 
     /// <summary>All configured widgets.</summary>
     public List<WidgetConfig> Widgets { get; set; } = [];

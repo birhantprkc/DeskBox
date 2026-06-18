@@ -25,13 +25,15 @@ public sealed partial class OnboardingWindow : Window
         Action<OnboardingWindow> BuildOptions,
         Action<OnboardingWindow> BuildScene);
 
+    private sealed record IntroMarkTarget(double TranslateX, double TranslateY, double Scale);
+
     private static readonly OnboardingStep[] Steps =
     [
         new("Onboarding.Step1", "\uE8B7", window => window.BuildWelcomeOptions(), window => window.BuildWelcomeScene()),
-        new("Onboarding.Step2", "\uE8A5", window => window.BuildDropActionOptions(), window => window.BuildDropActionScene()),
-        new("Onboarding.Step3", "\uE8B7", window => window.BuildStoragePathOptions(), window => window.BuildStoragePathScene()),
+        new("Onboarding.Step2", "\uE8B7", window => window.BuildFirstWidgetOptions(), window => window.BuildFirstWidgetScene()),
+        new("Onboarding.Step3", "\uE8A5", window => window.BuildDropActionOptions(), window => window.BuildDropActionScene()),
         new("Onboarding.Step4", "\uE8B7", window => window.BuildMappingOptions(), window => window.BuildMappingScene()),
-        new("Onboarding.Step5", "\uE77B", window => window.BuildStartupOptions(), window => window.BuildStartupScene())
+        new("Onboarding.Step5", "\uE77B", window => window.BuildDailyAccessOptions(), window => window.BuildDailyAccessScene())
     ];
 
     private readonly SettingsService _settingsService;
@@ -40,10 +42,14 @@ public sealed partial class OnboardingWindow : Window
     private readonly IntPtr _hWnd;
     private DispatcherQueueTimer? _sceneLoopTimer;
     private Storyboard? _contentTransitionStoryboard;
+    private Storyboard? _introStoryboard;
+    private Storyboard? _brandLogoShineStoryboard;
     private Storyboard? _sceneLoopStoryboard;
     private Func<Storyboard>? _sceneLoopStoryboardFactory;
     private int _sceneAnimationGeneration;
+    private int _introGeneration;
     private int _stepIndex;
+    private bool _hasLoaded;
 
     public OnboardingWindow(SettingsService settingsService, LocalizationService localizationService)
     {
@@ -80,21 +86,44 @@ public sealed partial class OnboardingWindow : Window
 
         RootGrid.Loaded += (_, _) =>
         {
+            _hasLoaded = true;
             ApplyTitleBarButtonColors();
             BuildProgressDots();
             RenderStep(animate: false);
+            StartBrandLogoShine();
+            PlayIntroSequence();
         };
         RootGrid.ActualThemeChanged += (_, _) =>
         {
             ApplyTitleBarButtonColors();
+            PrepareIntroContent();
             RenderStep(animate: false);
         };
 
         Closed += (_, _) =>
         {
+            _introGeneration++;
+            _introStoryboard?.Stop();
+            _brandLogoShineStoryboard?.Stop();
             StopSceneAnimations();
+            IntroMarkHost.Children.Clear();
+            DemoScene.Children.Clear();
+            StepHintPanel.Children.Clear();
+            StepOptionPanel.Children.Clear();
             _localizationService.LanguageChanged -= OnLanguageChanged;
         };
+    }
+
+    public void RestartIntro()
+    {
+        if (!_hasLoaded)
+        {
+            return;
+        }
+
+        _stepIndex = 0;
+        RenderStep(animate: false);
+        PlayIntroSequence();
     }
 
     private void BackButton_Click(object sender, RoutedEventArgs e)
@@ -191,7 +220,250 @@ public sealed partial class OnboardingWindow : Window
 
     private void OnLanguageChanged()
     {
+        PrepareIntroContent();
         RenderStep(animate: false);
+    }
+
+    private void PrepareIntroContent()
+    {
+        IntroTitleText.Text = _localizationService.T("Onboarding.Intro.Title");
+        IntroBodyText.Text = _localizationService.T("Onboarding.Intro.Body");
+    }
+
+    private async void PlayIntroSequence()
+    {
+        _introStoryboard?.Stop();
+        int introGeneration = ++_introGeneration;
+        PrepareIntroContent();
+        ApplyOnboardingPalette();
+
+        MainContentGrid.IsHitTestVisible = false;
+        FooterNav.IsHitTestVisible = false;
+        MainContentGrid.Opacity = 0;
+        FooterNav.Opacity = 0;
+        BrandLogoHost.Opacity = 0;
+        IntroOverlay.Opacity = 1;
+        IntroOverlay.Visibility = Visibility.Visible;
+        IntroMarkHost.Children.Clear();
+        SetElementTransform(IntroOverlay);
+        SetElementTransform(MainContentGrid, translateY: 8, scale: 0.995);
+        SetElementTransform(FooterNav, translateY: 8);
+        SetElementTransform(BrandLogoHost);
+
+        var mark = CreateDeskBoxMark(size: 170, layerWidth: 108, layerHeight: 102, cornerRadius: 18, offsetX: 25, offsetY: 20);
+        IntroMarkHost.Children.Add(mark);
+        SetElementTransform(IntroMarkHost);
+
+        var backLayer = mark.Children[0];
+        var middleLayer = mark.Children[1];
+        var frontLayer = mark.Children[2];
+
+        SetElementOpacity(backLayer, 0);
+        SetElementOpacity(middleLayer, 0);
+        SetElementOpacity(frontLayer, 0);
+        SetTransformValues(backLayer, translateX: -36, translateY: -18, scale: 0.9);
+        SetTransformValues(middleLayer, translateX: -14, translateY: -8, scale: 0.93);
+        SetTransformValues(frontLayer, translateX: 28, translateY: 18, scale: 0.95);
+
+        IntroTitleText.Opacity = 0;
+        IntroBodyText.Opacity = 0;
+        SetElementTransform(IntroTitleText, translateY: 8, scale: 1);
+        SetElementTransform(IntroBodyText, translateY: 8, scale: 1);
+
+        try
+        {
+            await RunIntroAnimationAsync(introGeneration, backLayer, middleLayer, frontLayer);
+        }
+        catch
+        {
+            if (introGeneration == _introGeneration)
+            {
+                await Task.Delay(900);
+            }
+        }
+
+        if (introGeneration == _introGeneration)
+        {
+            DismissIntro();
+        }
+    }
+
+    private async Task RunIntroAnimationAsync(
+        int introGeneration,
+        UIElement backLayer,
+        UIElement middleLayer,
+        UIElement frontLayer)
+    {
+        await AnimateIntroLayerAsync(introGeneration, backLayer, -36, -18, 0, 0, 0.9, 1, 380);
+        await Task.Delay(70);
+        if (introGeneration != _introGeneration) return;
+        await AnimateIntroLayerAsync(introGeneration, middleLayer, -14, -8, 0, 0, 0.93, 1, 340);
+        await Task.Delay(70);
+        if (introGeneration != _introGeneration) return;
+        await AnimateIntroLayerAsync(introGeneration, frontLayer, 28, 18, 0, 0, 0.95, 1, 340);
+        if (introGeneration != _introGeneration) return;
+
+        await AnimateIntroElementAsync(introGeneration, IntroTitleText, 0, 1, 0, 0, 8, 0, 1, 1, 220);
+        await AnimateIntroElementAsync(introGeneration, IntroBodyText, 0, 1, 0, 0, 8, 0, 1, 1, 220);
+        await Task.Delay(520);
+        if (introGeneration != _introGeneration) return;
+
+        _ = AnimateIntroElementAsync(introGeneration, IntroTitleText, 1, 0, 0, 0, 0, -6, 1, 0.98, 180);
+        _ = AnimateIntroElementAsync(introGeneration, IntroBodyText, 1, 0, 0, 0, 0, -6, 1, 0.98, 180);
+        _ = AnimateIntroElementAsync(introGeneration, MainContentGrid, 0, 1, 0, 0, 8, 0, 0.995, 1, 360);
+        _ = AnimateIntroElementAsync(introGeneration, FooterNav, 0, 1, 0, 0, 8, 0, 1, 1, 320);
+        _ = AnimateIntroElementAsync(introGeneration, BrandLogoHost, 0, 1, 0, 0, 0, 0, 1, 1, 240);
+        var target = GetIntroMarkTargetTransform();
+        await AnimateIntroElementAsync(
+            introGeneration,
+            IntroMarkHost,
+            1,
+            0.98,
+            0,
+            target.TranslateX,
+            0,
+            target.TranslateY,
+            1,
+            target.Scale,
+            620);
+        if (introGeneration != _introGeneration) return;
+
+        await AnimateIntroElementAsync(introGeneration, IntroOverlay, 1, 0, 0, 0, 0, 0, 1, 1, 220);
+    }
+
+    private Task AnimateIntroLayerAsync(
+        int introGeneration,
+        UIElement element,
+        double fromX,
+        double fromY,
+        double toX,
+        double toY,
+        double fromScale,
+        double toScale,
+        int milliseconds)
+    {
+        return AnimateIntroElementAsync(
+            introGeneration,
+            element,
+            0,
+            1,
+            fromX,
+            toX,
+            fromY,
+            toY,
+            fromScale,
+            toScale,
+            milliseconds);
+    }
+
+    private async Task AnimateIntroElementAsync(
+        int introGeneration,
+        UIElement element,
+        double fromOpacity,
+        double toOpacity,
+        double fromX,
+        double toX,
+        double fromY,
+        double toY,
+        double fromScale,
+        double toScale,
+        int milliseconds)
+    {
+        const int FrameMs = 16;
+        int frameCount = Math.Max(1, milliseconds / FrameMs);
+        for (int frame = 0; frame <= frameCount; frame++)
+        {
+            if (introGeneration != _introGeneration)
+            {
+                return;
+            }
+
+            double progress = frame / (double)frameCount;
+            double eased = EaseInOutCubic(progress);
+            element.Opacity = Lerp(fromOpacity, toOpacity, eased);
+            SetTransformValues(
+                element,
+                Lerp(fromX, toX, eased),
+                Lerp(fromY, toY, eased),
+                Lerp(fromScale, toScale, eased));
+            await Task.Delay(FrameMs);
+        }
+    }
+
+    private void DismissIntro()
+    {
+        IntroOverlay.Visibility = Visibility.Collapsed;
+        IntroOverlay.Opacity = 0;
+        MainContentGrid.Opacity = 1;
+        FooterNav.Opacity = 1;
+        BrandLogoHost.Opacity = 1;
+        MainContentGrid.IsHitTestVisible = true;
+        FooterNav.IsHitTestVisible = true;
+        SetTransformValues(IntroMarkHost);
+        SetTransformValues(MainContentGrid);
+        SetTransformValues(FooterNav);
+        SetTransformValues(BrandLogoHost);
+        _introStoryboard = null;
+    }
+
+    private IntroMarkTarget GetIntroMarkTargetTransform()
+    {
+        try
+        {
+            double introWidth = IntroMarkHost.ActualWidth > 0 ? IntroMarkHost.ActualWidth : IntroMarkHost.Width;
+            double introHeight = IntroMarkHost.ActualHeight > 0 ? IntroMarkHost.ActualHeight : IntroMarkHost.Height;
+            double brandWidth = BrandLogoHost.ActualWidth > 0 ? BrandLogoHost.ActualWidth : BrandLogoHost.Width;
+            double brandHeight = BrandLogoHost.ActualHeight > 0 ? BrandLogoHost.ActualHeight : BrandLogoHost.Height;
+            var introCenter = IntroMarkHost
+                .TransformToVisual(RootGrid)
+                .TransformPoint(new Windows.Foundation.Point(introWidth / 2, introHeight / 2));
+            var brandCenter = BrandLogoHost
+                .TransformToVisual(RootGrid)
+                .TransformPoint(new Windows.Foundation.Point(brandWidth / 2, brandHeight / 2));
+
+            return new IntroMarkTarget(
+                brandCenter.X - introCenter.X,
+                brandCenter.Y - introCenter.Y,
+                Math.Clamp(brandWidth / Math.Max(1, introWidth), 0.18, 0.28));
+        }
+        catch
+        {
+            return new IntroMarkTarget(-304, -172, 0.22);
+        }
+    }
+
+    private void StartBrandLogoShine()
+    {
+        _brandLogoShineStoryboard?.Stop();
+        BrandLogoShineTransform.TranslateX = -44;
+
+        var storyboard = new Storyboard
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        AddTransformAnimation(
+            storyboard,
+            BrandLogoShineTransform,
+            "TranslateX",
+            -44,
+            66,
+            1450,
+            beginMs: 700,
+            EasingMode.EaseInOut);
+        _brandLogoShineStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
+    private static double Lerp(double from, double to, double progress)
+    {
+        return from + ((to - from) * progress);
+    }
+
+    private static double EaseInOutCubic(double progress)
+    {
+        return progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.Pow(-2 * progress + 2, 3) / 2;
     }
 
     private void UpdateProgressDots()
@@ -225,6 +497,18 @@ public sealed partial class OnboardingWindow : Window
             _localizationService.T("Onboarding.Welcome.MappedDescription")));
     }
 
+    private void BuildFirstWidgetOptions()
+    {
+        StepOptionPanel.Children.Add(CreateInfoCard(
+            "\uE710",
+            _localizationService.T("Onboarding.FirstWidget.CreateTitle"),
+            _localizationService.T("Onboarding.FirstWidget.CreateDescription")));
+        StepOptionPanel.Children.Add(CreateInfoCard(
+            "\uE8A5",
+            _localizationService.T("Onboarding.FirstWidget.DropTitle"),
+            _localizationService.T("Onboarding.FirstWidget.DropDescription")));
+    }
+
     private void BuildDropActionOptions()
     {
         var moveButton = CreateDropActionRadio(
@@ -238,31 +522,22 @@ public sealed partial class OnboardingWindow : Window
             _localizationService.T("Onboarding.DropAction.CopyDescription"),
             "\uE8C8");
 
-        StepOptionPanel.Children.Add(moveButton);
-        StepOptionPanel.Children.Add(copyButton);
-    }
-
-    private RadioButton CreateDropActionRadio(string action, string title, string description, string glyph)
-    {
-        var radio = new RadioButton
+        StepOptionPanel.Children.Add(new Grid
         {
-            GroupName = "ManagedDropAction",
-            IsChecked = string.Equals(_settingsService.Settings.ManagedDropAction, action, StringComparison.OrdinalIgnoreCase),
-            Content = CreateInlineOptionContent(glyph, title, description)
-        };
+            ColumnSpacing = 10,
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }
+            },
+            Children =
+            {
+                moveButton,
+                copyButton
+            }
+        });
+        Grid.SetColumn(copyButton, 1);
 
-        radio.Checked += (_, _) =>
-        {
-            _settingsService.Settings.ManagedDropAction = action;
-            _settingsService.SaveDebounced();
-            RenderStep(animate: false);
-        };
-
-        return radio;
-    }
-
-    private void BuildStoragePathOptions()
-    {
         string path = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
         StepOptionPanel.Children.Add(CreateInfoCard(
             "\uE8B7",
@@ -280,6 +555,77 @@ public sealed partial class OnboardingWindow : Window
         StepOptionPanel.Children.Add(changeButton);
     }
 
+    private RadioButton CreateDropActionRadio(string action, string title, string description, string glyph)
+    {
+        var radio = new RadioButton
+        {
+            GroupName = "ManagedDropAction",
+            IsChecked = string.Equals(_settingsService.Settings.ManagedDropAction, action, StringComparison.OrdinalIgnoreCase),
+            Padding = new Thickness(8),
+            MinHeight = 62,
+            Content = CreateCompactDropActionContent(glyph, title, description)
+        };
+
+        radio.Checked += (_, _) =>
+        {
+            _settingsService.Settings.ManagedDropAction = action;
+            _settingsService.SaveDebounced();
+            RenderStep(animate: false);
+        };
+
+        return radio;
+    }
+
+    private Grid CreateCompactDropActionContent(string glyph, string title, string description)
+    {
+        var content = new Grid
+        {
+            ColumnSpacing = 8,
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }
+            }
+        };
+
+        content.Children.Add(new FontIcon
+        {
+            Glyph = glyph,
+            FontSize = 18,
+            Width = 22,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = AccentBrush()
+        });
+
+        var textStack = new StackPanel
+        {
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = title,
+                    FontSize = 13.5,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Foreground = PrimaryTextBrush(),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                },
+                new TextBlock
+                {
+                    Text = description,
+                    FontSize = 11.5,
+                    Foreground = SecondaryTextBrush(),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    TextWrapping = TextWrapping.NoWrap
+                }
+            }
+        };
+        Grid.SetColumn(textStack, 1);
+        content.Children.Add(textStack);
+        return content;
+    }
+
     private void BuildMappingOptions()
     {
         StepOptionPanel.Children.Add(CreateInfoCard(
@@ -292,8 +638,23 @@ public sealed partial class OnboardingWindow : Window
             _localizationService.T("Onboarding.Mapping.MappedDescription")));
     }
 
-    private void BuildStartupOptions()
+    private void BuildDailyAccessOptions()
     {
+        string hotkeyText = GlobalHotkeyService.FormatGesture(
+            GlobalHotkeyService.NormalizeGesture(
+                _settingsService.Settings.GlobalHotkeyModifiers,
+                _settingsService.Settings.GlobalHotkeyKey),
+            _localizationService);
+
+        StepOptionPanel.Children.Add(CreateInfoCard(
+            "\uE77B",
+            _localizationService.T("Onboarding.Daily.TrayTitle"),
+            _localizationService.T("Onboarding.Daily.TrayDescription")));
+        StepOptionPanel.Children.Add(CreateInfoCard(
+            "\uE765",
+            _localizationService.T("Onboarding.Daily.HotkeyTitle"),
+            _localizationService.Format("Onboarding.Daily.HotkeyDescription", hotkeyText)));
+
         var toggle = new ToggleSwitch
         {
             Header = _localizationService.T("Onboarding.Startup.Title"),
@@ -309,10 +670,6 @@ public sealed partial class OnboardingWindow : Window
             RenderStep(animate: false);
         };
 
-        StepOptionPanel.Children.Add(CreateInfoCard(
-            "\uE7F4",
-            _localizationService.T("Onboarding.Startup.Title"),
-            _localizationService.T("Onboarding.Startup.Description")));
         StepOptionPanel.Children.Add(toggle);
     }
 
@@ -401,31 +758,101 @@ public sealed partial class OnboardingWindow : Window
         var folder = CreateMiniFile(_localizationService.T("Onboarding.Scene.ProjectFolder"), "\uE8B7");
         var widget = CreateWidgetCard(_localizationService.T("Onboarding.Scene.ManagedWidget"), "\uE8B7");
         var badge = CreateBadge(_localizationService.T("Onboarding.Scene.NativeDesktop"));
+        var layerBadge = CreateBadge(_localizationService.T("Onboarding.Scene.LightLayer"));
 
-        AddToScene(file, 34, 66);
-        AddToScene(folder, 34, 138);
+        AddToScene(file, 34, 56);
+        AddToScene(folder, 34, 142);
         AddToScene(widget, 172, 58);
-        AddToScene(badge, 170, 192);
+        AddToScene(badge, 32, 202);
+        AddToScene(layerBadge, 176, 190);
 
-        SetElementOpacity(widget, 0.42);
-        SetElementOpacity(badge, 0);
-        SetElementTransform(widget, translateX: 34, scale: 0.96);
-        SetElementTransform(badge, translateY: 8, scale: 0.96);
+        SetElementOpacity(file, 1);
+        SetElementOpacity(folder, 1);
+        SetElementOpacity(widget, 0.92);
+        SetElementOpacity(badge, 0.84);
+        SetElementOpacity(layerBadge, 1);
+        SetElementTransform(file);
+        SetElementTransform(folder);
+        SetElementTransform(widget);
+        SetElementTransform(badge);
+        SetElementTransform(layerBadge);
 
         SetSceneLoop(() =>
         {
+            SetElementOpacity(file, 1);
+            SetElementOpacity(folder, 1);
             SetElementOpacity(widget, 0.42);
+            SetElementOpacity(badge, 0.84);
+            SetElementOpacity(layerBadge, 0);
+            SetTransformValues(file);
+            SetTransformValues(folder);
+            SetTransformValues(widget, translateX: 28, translateY: 0, scale: 0.96);
+            SetTransformValues(badge);
+            SetTransformValues(layerBadge, translateY: 8, scale: 0.96);
+
+            var storyboard = new Storyboard();
+            AddOpacityAnimation(storyboard, widget, 0.42, 0.92, 420, beginMs: 120);
+            AddTranslateXAnimation(storyboard, GetElementTransform(widget), 28, 0, 480, beginMs: 120);
+            AddScaleAnimation(storyboard, GetElementTransform(widget), 0.96, 1, 480, beginMs: 120);
+            AddScaleAnimation(storyboard, GetElementTransform(file), 1, 1.045, 180, beginMs: 620, autoReverse: true);
+            AddScaleAnimation(storyboard, GetElementTransform(folder), 1, 1.045, 180, beginMs: 760, autoReverse: true);
+            AddOpacityAnimation(storyboard, layerBadge, 0, 1, 220, beginMs: 920);
+            AddTranslateYAnimation(storyboard, GetElementTransform(layerBadge), 8, 0, 220, beginMs: 920);
+            AddScaleAnimation(storyboard, GetElementTransform(layerBadge), 0.96, 1, 220, beginMs: 920);
+            return storyboard;
+        });
+    }
+
+    private void BuildFirstWidgetScene()
+    {
+        DemoScene.Children.Add(CreateDesktopSurface());
+
+        var addButton = CreateAddWidgetButton();
+        var widget = CreateWidgetCard(_localizationService.T("Onboarding.Scene.ManagedWidget"), "\uE8B7");
+        var sourceFile = CreateMiniFile(_localizationService.T("Onboarding.Scene.DesktopFile"), "\uE8A5");
+        var movingFile = CreateMiniFile(string.Empty, "\uE8A5");
+        var badge = CreateBadge(_localizationService.T("Onboarding.Scene.FileAdded"));
+
+        AddToScene(addButton, 34, 54);
+        AddToScene(sourceFile, 36, 144);
+        AddToScene(movingFile, 36, 144);
+        AddToScene(widget, 172, 58);
+        AddToScene(badge, 180, 190);
+
+        SetElementOpacity(widget, 1);
+        SetElementOpacity(movingFile, 0);
+        SetElementOpacity(badge, 1);
+        SetElementTransform(addButton);
+        SetElementTransform(widget);
+        SetElementTransform(movingFile);
+        SetElementTransform(badge);
+
+        SetSceneLoop(() =>
+        {
+            SetElementOpacity(widget, 0);
+            SetElementOpacity(sourceFile, 1);
+            SetElementOpacity(movingFile, 0);
             SetElementOpacity(badge, 0);
-            SetTransformValues(widget, translateX: 34, scale: 0.96);
+            SetTransformValues(addButton);
+            SetTransformValues(widget, translateX: 22, translateY: 8, scale: 0.94);
+            SetTransformValues(movingFile);
             SetTransformValues(badge, translateY: 8, scale: 0.96);
 
             var storyboard = new Storyboard();
-            AddOpacityAnimation(storyboard, widget, 0.42, 1, 520, beginMs: 0);
-            AddTranslateXAnimation(storyboard, GetElementTransform(widget), 34, 0, 520, beginMs: 0);
-            AddScaleAnimation(storyboard, GetElementTransform(widget), 0.96, 1, 520, beginMs: 0);
-            AddOpacityAnimation(storyboard, badge, 0, 1, 260, beginMs: 360);
-            AddTranslateYAnimation(storyboard, GetElementTransform(badge), 8, 0, 260, beginMs: 360);
-            AddScaleAnimation(storyboard, GetElementTransform(badge), 0.96, 1, 260, beginMs: 360);
+            AddScaleAnimation(storyboard, GetElementTransform(addButton), 1, 1.08, 180, beginMs: 80, autoReverse: true);
+            AddOpacityAnimation(storyboard, widget, 0, 1, 360, beginMs: 260);
+            AddTranslateXAnimation(storyboard, GetElementTransform(widget), 22, 0, 420, beginMs: 260);
+            AddTranslateYAnimation(storyboard, GetElementTransform(widget), 8, 0, 420, beginMs: 260);
+            AddScaleAnimation(storyboard, GetElementTransform(widget), 0.94, 1, 420, beginMs: 260);
+            AddOpacityAnimation(storyboard, movingFile, 0, 1, 120, beginMs: 740);
+            AddTranslateXAnimation(storyboard, GetElementTransform(movingFile), 0, 145, 720, beginMs: 820, EasingMode.EaseInOut);
+            AddTranslateYAnimation(storyboard, GetElementTransform(movingFile), 0, -56, 720, beginMs: 820, EasingMode.EaseInOut);
+            AddOpacityAnimation(storyboard, movingFile, 1, 0, 160, beginMs: 1430);
+            AddOpacityAnimation(storyboard, sourceFile, 1, 0.35, 220, beginMs: 1280);
+            AddScaleAnimation(storyboard, GetElementTransform(widget), 1, 1.035, 180, beginMs: 1460, autoReverse: true);
+            AddOpacityAnimation(storyboard, badge, 0, 1, 220, beginMs: 1580);
+            AddTranslateYAnimation(storyboard, GetElementTransform(badge), 8, 0, 220, beginMs: 1580);
+            AddScaleAnimation(storyboard, GetElementTransform(badge), 0.96, 1, 220, beginMs: 1580);
             return storyboard;
         });
     }
@@ -436,93 +863,59 @@ public sealed partial class OnboardingWindow : Window
             ? "Onboarding.Scene.CopyBadge"
             : "Onboarding.Scene.MoveBadge";
         bool isCopy = string.Equals(_settingsService.Settings.ManagedDropAction, SettingsService.ManagedDropActionCopy, StringComparison.OrdinalIgnoreCase);
+        string path = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
 
         DemoScene.Children.Add(CreateDesktopSurface());
         var sourceFile = CreateMiniFile(_localizationService.T("Onboarding.Scene.DesktopFile"), "\uE8A5");
         var movingFile = CreateMiniFile(string.Empty, "\uE8A5");
-        var arrow = CreateArrow();
         var widget = CreateWidgetCard(_localizationService.T("Onboarding.Scene.ManagedWidget"), "\uE8B7");
-        var folder = CreateFolderCard(_localizationService.T("Onboarding.Scene.DefaultStorage"));
+        var pathCard = CreatePathCard(path);
         var badge = CreateBadge(_localizationService.T(badgeKey));
 
-        AddToScene(sourceFile, 26, 92);
-        AddToScene(movingFile, 26, 92);
-        AddToScene(arrow, 108, 104);
-        AddToScene(widget, 166, 54);
-        AddToScene(folder, 174, 168);
-        AddToScene(badge, 28, 172);
+        AddToScene(sourceFile, 34, 76);
+        AddToScene(movingFile, 34, 76);
+        AddToScene(widget, 174, 52);
+        AddToScene(pathCard, 34, 184);
+        AddToScene(badge, 204, 184);
 
+        SetElementOpacity(sourceFile, isCopy ? 1 : 0.38);
         SetElementOpacity(movingFile, 0);
-        SetElementOpacity(badge, 0);
+        SetElementOpacity(pathCard, 1);
+        SetElementOpacity(badge, 1);
+        SetElementTransform(sourceFile);
         SetElementTransform(movingFile);
-        SetElementTransform(badge, translateY: 8, scale: 0.96);
+        SetElementTransform(pathCard);
+        SetElementTransform(badge);
         SetElementTransform(widget);
 
         SetSceneLoop(() =>
         {
             SetElementOpacity(sourceFile, 1);
             SetElementOpacity(movingFile, 0);
+            SetElementOpacity(pathCard, 0.92);
             SetElementOpacity(badge, 0);
+            SetTransformValues(sourceFile);
             SetTransformValues(movingFile);
+            SetTransformValues(pathCard);
             SetTransformValues(badge, translateY: 8, scale: 0.96);
             SetTransformValues(widget);
 
             var storyboard = new Storyboard();
             AddOpacityAnimation(storyboard, movingFile, 0, 1, 120, beginMs: 80);
-            AddTranslateXAnimation(storyboard, GetElementTransform(movingFile), 0, 142, 850, beginMs: 160, EasingMode.EaseInOut);
-            AddTranslateYAnimation(storyboard, GetElementTransform(movingFile), 0, -28, 850, beginMs: 160, EasingMode.EaseInOut);
-            AddOpacityAnimation(storyboard, movingFile, 1, 0, 180, beginMs: 880);
+            AddTranslateXAnimation(storyboard, GetElementTransform(movingFile), 0, 148, 760, beginMs: 160, EasingMode.EaseInOut);
+            AddTranslateYAnimation(storyboard, GetElementTransform(movingFile), 0, -10, 760, beginMs: 160, EasingMode.EaseInOut);
+            AddOpacityAnimation(storyboard, movingFile, 1, 0, 180, beginMs: 790);
             if (!isCopy)
             {
                 AddOpacityAnimation(storyboard, sourceFile, 1, 0.28, 260, beginMs: 620);
             }
 
-            AddScaleAnimation(storyboard, GetElementTransform(widget), 1, 1.035, 180, beginMs: 840, autoReverse: true);
-            AddOpacityAnimation(storyboard, badge, 0, 1, 220, beginMs: 960);
-            AddTranslateYAnimation(storyboard, GetElementTransform(badge), 8, 0, 220, beginMs: 960);
-            AddScaleAnimation(storyboard, GetElementTransform(badge), 0.96, 1, 220, beginMs: 960);
-            return storyboard;
-        });
-    }
-
-    private void BuildStoragePathScene()
-    {
-        string path = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
-
-        DemoScene.Children.Add(CreateDesktopSurface());
-        var widget = CreateWidgetCard(_localizationService.T("Onboarding.Scene.ManagedWidget"), "\uE8B7");
-        var movingFile = CreateMiniFile(string.Empty, "\uE8A5");
-        var connector = CreateConnectorLine(width: 54);
-        var arrow = CreateArrow();
-        var folder = CreateFolderCard(_localizationService.T("Onboarding.Scene.DefaultStorage"));
-        var pathCard = CreatePathCard(path);
-
-        AddToScene(widget, 26, 54);
-        AddToScene(movingFile, 58, 96);
-        AddToScene(connector, 132, 111);
-        AddToScene(arrow, 146, 98);
-        AddToScene(folder, 190, 62);
-        AddToScene(pathCard, 34, 174);
-
-        SetElementOpacity(movingFile, 0);
-        SetElementTransform(movingFile);
-        SetElementTransform(folder);
-        SetElementTransform(pathCard);
-
-        SetSceneLoop(() =>
-        {
-            SetElementOpacity(movingFile, 0);
-            SetTransformValues(movingFile);
-            SetTransformValues(folder);
-            SetTransformValues(pathCard);
-
-            var storyboard = new Storyboard();
-            AddOpacityAnimation(storyboard, movingFile, 0, 1, 120, beginMs: 80);
-            AddTranslateXAnimation(storyboard, GetElementTransform(movingFile), 0, 150, 760, beginMs: 140, EasingMode.EaseInOut);
-            AddTranslateYAnimation(storyboard, GetElementTransform(movingFile), 0, -18, 760, beginMs: 140, EasingMode.EaseInOut);
-            AddOpacityAnimation(storyboard, movingFile, 1, 0, 160, beginMs: 800);
-            AddScaleAnimation(storyboard, GetElementTransform(folder), 1, 1.045, 210, beginMs: 820, autoReverse: true);
-            AddScaleAnimation(storyboard, GetElementTransform(pathCard), 1, 1.018, 220, beginMs: 980, autoReverse: true);
+            AddScaleAnimation(storyboard, GetElementTransform(widget), 1, 1.035, 180, beginMs: 820, autoReverse: true);
+            AddOpacityAnimation(storyboard, pathCard, 0.92, 1, 220, beginMs: 1010, autoReverse: true);
+            AddScaleAnimation(storyboard, GetElementTransform(pathCard), 1, 1.012, 220, beginMs: 1010, autoReverse: true);
+            AddOpacityAnimation(storyboard, badge, 0, 1, 220, beginMs: 1120);
+            AddTranslateYAnimation(storyboard, GetElementTransform(badge), 8, 0, 220, beginMs: 1120);
+            AddScaleAnimation(storyboard, GetElementTransform(badge), 0.96, 1, 220, beginMs: 1120);
             return storyboard;
         });
     }
@@ -533,74 +926,93 @@ public sealed partial class OnboardingWindow : Window
         var sourceFolder = CreateFolderCard(_localizationService.T("Onboarding.Scene.OriginalFolder"));
         var connector = CreateConnectorLine(width: 62, dashed: true);
         var mappedWidget = CreateWidgetCard(_localizationService.T("Onboarding.Scene.MappedWidget"), "\uE8A5");
+        var mirrorFile = CreateMiniFile(string.Empty, "\uE8A5");
         var badge = CreateBadge(_localizationService.T("Onboarding.Scene.ViewOnly"));
 
         AddToScene(sourceFolder, 26, 84);
         AddToScene(connector, 136, 119);
         AddToScene(mappedWidget, 190, 62);
+        AddToScene(mirrorFile, 210, 116);
         AddToScene(badge, 82, 184);
 
-        SetElementOpacity(connector, 0.38);
+        SetElementOpacity(connector, 0.78);
+        SetElementOpacity(mirrorFile, 0.9);
         SetElementTransform(sourceFolder);
         SetElementTransform(mappedWidget);
+        SetElementTransform(mirrorFile);
         SetElementTransform(badge);
 
         SetSceneLoop(() =>
         {
             SetElementOpacity(connector, 0.38);
+            SetElementOpacity(mirrorFile, 0);
             SetTransformValues(sourceFolder);
             SetTransformValues(mappedWidget);
+            SetTransformValues(mirrorFile, translateX: -18, scale: 0.94);
             SetTransformValues(badge);
 
             var storyboard = new Storyboard();
             AddScaleAnimation(storyboard, GetElementTransform(sourceFolder), 1, 1.045, 260, beginMs: 80, autoReverse: true);
             AddOpacityAnimation(storyboard, connector, 0.38, 1, 260, beginMs: 250, autoReverse: true);
-            AddScaleAnimation(storyboard, GetElementTransform(mappedWidget), 1, 1.035, 260, beginMs: 420, autoReverse: true);
-            AddScaleAnimation(storyboard, GetElementTransform(badge), 1, 1.035, 210, beginMs: 680, autoReverse: true);
+            AddOpacityAnimation(storyboard, mirrorFile, 0, 0.92, 260, beginMs: 420);
+            AddTranslateXAnimation(storyboard, GetElementTransform(mirrorFile), -18, 0, 320, beginMs: 420);
+            AddScaleAnimation(storyboard, GetElementTransform(mirrorFile), 0.94, 1, 320, beginMs: 420);
+            AddScaleAnimation(storyboard, GetElementTransform(mappedWidget), 1, 1.035, 260, beginMs: 620, autoReverse: true);
+            AddScaleAnimation(storyboard, GetElementTransform(badge), 1, 1.035, 210, beginMs: 820, autoReverse: true);
             return storyboard;
         });
     }
 
-    private void BuildStartupScene()
+    private void BuildDailyAccessScene()
     {
         DemoScene.Children.Add(CreateDesktopSurface());
         bool autoStart = StartupService.IsEnabled();
         var widget = CreateWidgetCard(_localizationService.T("Onboarding.Scene.ManagedWidget"), "\uE8B7");
         var taskbar = CreateTaskbar();
         var tray = CreateTrayGlyph();
+        var hotkey = CreateHotkeyKeycap();
         var badge = CreateBadge(_localizationService.T(autoStart ? "Onboarding.Scene.Startup" : "Onboarding.Scene.StartupOff"));
 
-        AddToScene(widget, 96, 50);
+        AddToScene(widget, 96, 48);
         AddToScene(taskbar, 0, 208);
         AddToScene(tray, 248, 214);
-        AddToScene(badge, 70, 162);
+        AddToScene(hotkey, 34, 160);
+        AddToScene(badge, 148, 162);
 
-        SetElementOpacity(widget, autoStart ? 0.38 : 0.82);
-        SetElementOpacity(badge, 0);
-        SetElementTransform(widget, translateX: autoStart ? 24 : 0, scale: autoStart ? 0.98 : 1);
+        SetElementOpacity(widget, 1);
+        SetElementOpacity(hotkey, 1);
+        SetElementOpacity(badge, 1);
+        SetElementTransform(widget);
         SetElementTransform(tray);
-        SetElementTransform(badge, translateY: 8, scale: 0.96);
+        SetElementTransform(hotkey);
+        SetElementTransform(badge);
 
         SetSceneLoop(() =>
         {
-            SetElementOpacity(widget, autoStart ? 0.38 : 0.82);
+            SetElementOpacity(widget, autoStart ? 0.52 : 1);
+            SetElementOpacity(hotkey, 1);
             SetElementOpacity(badge, 0);
             SetTransformValues(widget, translateX: autoStart ? 24 : 0, scale: autoStart ? 0.98 : 1);
             SetTransformValues(tray);
+            SetTransformValues(hotkey);
             SetTransformValues(badge, translateY: 8, scale: 0.96);
 
             var storyboard = new Storyboard();
             AddScaleAnimation(storyboard, GetElementTransform(tray), 1, 1.14, 220, beginMs: 120, autoReverse: true);
             if (autoStart)
             {
-                AddOpacityAnimation(storyboard, widget, 0.38, 1, 520, beginMs: 320);
+                AddOpacityAnimation(storyboard, widget, 0.52, 1, 520, beginMs: 320);
                 AddTranslateXAnimation(storyboard, GetElementTransform(widget), 24, 0, 520, beginMs: 320);
                 AddScaleAnimation(storyboard, GetElementTransform(widget), 0.98, 1, 520, beginMs: 320);
             }
 
-            AddOpacityAnimation(storyboard, badge, 0, 1, 220, beginMs: 820);
-            AddTranslateYAnimation(storyboard, GetElementTransform(badge), 8, 0, 220, beginMs: 820);
-            AddScaleAnimation(storyboard, GetElementTransform(badge), 0.96, 1, 220, beginMs: 820);
+            AddScaleAnimation(storyboard, GetElementTransform(hotkey), 1, 1.07, 180, beginMs: 820, autoReverse: true);
+            AddOpacityAnimation(storyboard, widget, 1, 1, 260, beginMs: 960);
+            AddTranslateXAnimation(storyboard, GetElementTransform(widget), autoStart ? 0 : 0, 0, 420, beginMs: 960);
+            AddScaleAnimation(storyboard, GetElementTransform(widget), 1, 1.03, 170, beginMs: 1040, autoReverse: true);
+            AddOpacityAnimation(storyboard, badge, 0, 1, 220, beginMs: 1240);
+            AddTranslateYAnimation(storyboard, GetElementTransform(badge), 8, 0, 220, beginMs: 1240);
+            AddScaleAnimation(storyboard, GetElementTransform(badge), 0.96, 1, 220, beginMs: 1240);
             return storyboard;
         });
     }
@@ -715,14 +1127,129 @@ public sealed partial class OnboardingWindow : Window
         };
     }
 
-    private TextBlock CreateSceneLabel(string key)
+    private Canvas CreateDeskBoxMark(
+        double size = 130,
+        double layerWidth = 82,
+        double layerHeight = 78,
+        double cornerRadius = 14,
+        double offsetX = 18,
+        double offsetY = 14)
     {
-        return new TextBlock
+        var canvas = new Canvas
         {
-            Text = _localizationService.T(key),
-            FontSize = 12,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = PrimaryTextBrush()
+            Width = size,
+            Height = size
+        };
+
+        canvas.Children.Add(CreateDeskBoxMarkLayer(0, layerWidth, layerHeight, cornerRadius, offsetX, offsetY));
+        canvas.Children.Add(CreateDeskBoxMarkLayer(1, layerWidth, layerHeight, cornerRadius, offsetX, offsetY));
+        canvas.Children.Add(CreateDeskBoxMarkLayer(2, layerWidth, layerHeight, cornerRadius, offsetX, offsetY));
+        return canvas;
+    }
+
+    private Border CreateDeskBoxMarkLayer(
+        int index,
+        double layerWidth,
+        double layerHeight,
+        double cornerRadius,
+        double offsetX,
+        double offsetY)
+    {
+        Color[] colors =
+        [
+            ColorHelper.FromArgb(0xFF, 0x0B, 0x64, 0xBF),
+            ColorHelper.FromArgb(0xFF, 0x16, 0x91, 0xE8),
+            ColorHelper.FromArgb(0xFF, 0x58, 0xAA, 0xFE)
+        ];
+
+        var layer = new Border
+        {
+            Width = layerWidth,
+            Height = layerHeight,
+            Background = BrushFromColor(colors[index]),
+            BorderBrush = BrushFromColor(ColorHelper.FromArgb(0x42, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(cornerRadius),
+            Opacity = 0,
+            RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5)
+        };
+
+        layer.RenderTransform = new CompositeTransform
+        {
+            SkewY = -12
+        };
+
+        Canvas.SetLeft(layer, 14 + index * offsetX);
+        Canvas.SetTop(layer, 14 + index * offsetY);
+        return layer;
+    }
+
+    private Border CreateAddWidgetButton()
+    {
+        return new Border
+        {
+            Width = 86,
+            Height = 58,
+            Padding = new Thickness(8),
+            Background = SceneCardBrush(),
+            BorderBrush = AccentBrush(),
+            BorderThickness = new Thickness(1.5),
+            CornerRadius = new CornerRadius(8),
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    new FontIcon { Glyph = "\uE710", FontSize = 20, Foreground = AccentBrush() },
+                    new TextBlock
+                    {
+                        Text = _localizationService.T("Onboarding.Scene.NewWidget"),
+                        FontSize = 10.5,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Foreground = PrimaryTextBrush(),
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    }
+                }
+            }
+        };
+    }
+
+    private Border CreateHotkeyKeycap()
+    {
+        string hotkeyText = GlobalHotkeyService.FormatGesture(
+            GlobalHotkeyService.NormalizeGesture(
+                _settingsService.Settings.GlobalHotkeyModifiers,
+                _settingsService.Settings.GlobalHotkeyKey),
+            _localizationService);
+
+        return new Border
+        {
+            MinWidth = 94,
+            Height = 34,
+            Padding = new Thickness(10, 0, 10, 0),
+            Background = SceneCardBrush(),
+            BorderBrush = StrokeBrush(),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(7),
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 7,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    new FontIcon { Glyph = "\uE765", FontSize = 14, Foreground = AccentBrush() },
+                    new TextBlock
+                    {
+                        Text = hotkeyText,
+                        FontSize = 12,
+                        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = PrimaryTextBrush(),
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    }
+                }
+            }
         };
     }
 
@@ -949,22 +1476,12 @@ public sealed partial class OnboardingWindow : Window
             {
                 Text = text,
                 FontSize = 11,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
                 Foreground = new SolidColorBrush(Colors.White),
                 TextTrimming = TextTrimming.CharacterEllipsis
             }
-        };
-    }
-
-    private FontIcon CreateArrow()
-    {
-        return new FontIcon
-        {
-            Glyph = "\uE72A",
-            Width = 36,
-            Height = 36,
-            FontSize = 22,
-            Foreground = AccentBrush()
         };
     }
 
@@ -1032,6 +1549,7 @@ public sealed partial class OnboardingWindow : Window
 
         int animationGeneration = _sceneAnimationGeneration;
         _sceneLoopTimer = DispatcherQueue.CreateTimer();
+        _sceneLoopTimer.IsRepeating = true;
         _sceneLoopTimer.Interval = TimeSpan.FromMilliseconds(SceneLoopIntervalMs);
         _sceneLoopTimer.Tick += (_, _) =>
         {
@@ -1132,9 +1650,10 @@ public sealed partial class OnboardingWindow : Window
         double to,
         int milliseconds,
         int beginMs = 0,
-        EasingMode easingMode = EasingMode.EaseOut)
+        EasingMode easingMode = EasingMode.EaseOut,
+        bool autoReverse = false)
     {
-        AddTransformAnimation(storyboard, transform, "TranslateX", from, to, milliseconds, beginMs, easingMode);
+        AddTransformAnimation(storyboard, transform, "TranslateX", from, to, milliseconds, beginMs, easingMode, autoReverse);
     }
 
     private static void AddTranslateYAnimation(
@@ -1144,9 +1663,10 @@ public sealed partial class OnboardingWindow : Window
         double to,
         int milliseconds,
         int beginMs = 0,
-        EasingMode easingMode = EasingMode.EaseOut)
+        EasingMode easingMode = EasingMode.EaseOut,
+        bool autoReverse = false)
     {
-        AddTransformAnimation(storyboard, transform, "TranslateY", from, to, milliseconds, beginMs, easingMode);
+        AddTransformAnimation(storyboard, transform, "TranslateY", from, to, milliseconds, beginMs, easingMode, autoReverse);
     }
 
     private static void AddScaleAnimation(
@@ -1223,6 +1743,22 @@ public sealed partial class OnboardingWindow : Window
         transform.TranslateY = translateY;
         transform.ScaleX = scale;
         transform.ScaleY = scale;
+    }
+
+    private static void AddLayerSettleAnimation(
+        Storyboard storyboard,
+        UIElement element,
+        double fromX,
+        double fromY,
+        double toX,
+        double toY,
+        int milliseconds,
+        int beginMs)
+    {
+        AddOpacityAnimation(storyboard, element, 0, 1, milliseconds, beginMs);
+        AddTranslateXAnimation(storyboard, GetElementTransform(element), fromX, toX, milliseconds, beginMs);
+        AddTranslateYAnimation(storyboard, GetElementTransform(element), fromY, toY, milliseconds, beginMs);
+        AddScaleAnimation(storyboard, GetElementTransform(element), 0.94, 1, milliseconds, beginMs);
     }
 
     private static CompositeTransform GetElementTransform(UIElement element)

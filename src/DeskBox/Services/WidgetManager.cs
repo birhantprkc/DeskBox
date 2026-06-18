@@ -29,6 +29,8 @@ public sealed record ManagedStorageFolderCleanupCandidate(
 /// </summary>
 public sealed class WidgetManager
 {
+    private const string ManagedShortcutDescriptionPrefix = "DeskBox mapped widget shortcut:";
+
     private readonly SettingsService _settingsService;
     private readonly FileService _fileService;
     private readonly OrganizerService _organizerService;
@@ -207,6 +209,7 @@ public sealed class WidgetManager
         };
 
         _settingsService.Settings.Widgets.Add(config);
+        SyncMappedWidgetShortcut(config);
         await _settingsService.SaveAsync();
 
         return await CreateWidgetFromConfigAsync(config, revealAfterCreate: true);
@@ -278,7 +281,7 @@ public sealed class WidgetManager
                          .Where(widget => widget.WidgetKind == WidgetKind.File && !widget.IsDisabled && !IsDeleted(widget.Id))
                          .ToList())
             {
-                var window = await PrepareWidgetForBatchShowAsync(widget);
+                var window = await PrepareWidgetForBatchShowAsync(widget, showRaisedWhileInitializing: true);
                 if (window is null)
                 {
                     continue;
@@ -358,6 +361,7 @@ public sealed class WidgetManager
         if (config is not null)
         {
             await ApplyWidgetRemovalActionAsync(config, removalAction);
+            RemoveMappedWidgetShortcut(config);
         }
 
         _deletedWidgetIds.Add(widgetId);
@@ -375,6 +379,73 @@ public sealed class WidgetManager
         await _settingsService.SaveAsync();
         App.Log($"[WidgetManager] Widget delete persisted: {widgetId}");
         WidgetRemoved?.Invoke(widgetId);
+    }
+
+    public async Task RenameWidgetAsync(string widgetId, string newName)
+    {
+        var config = FindConfig(widgetId);
+        if (config is null || IsDeleted(widgetId))
+        {
+            return;
+        }
+
+        config.Name = newName;
+        if (config.FollowsDefaultStoragePath)
+        {
+            await RenameManagedWidgetFolderAsync(config, newName);
+        }
+        else
+        {
+            SyncMappedWidgetShortcut(config, newName);
+        }
+
+        _settingsService.UpdateWidget(config);
+    }
+
+    public void SyncMappedWidgetShortcut(string widgetId)
+    {
+        var config = FindConfig(widgetId);
+        if (config is null || IsDeleted(widgetId))
+        {
+            return;
+        }
+
+        SyncMappedWidgetShortcut(config);
+    }
+
+    public void SyncStorageFolderEntries()
+    {
+        string rootPath = GetManagedStorageRootPath();
+        Directory.CreateDirectory(rootPath);
+
+        var activeWidgetIds = _settingsService.Settings.Widgets
+            .Where(widget => widget.WidgetKind == WidgetKind.File && !IsDeleted(widget.Id))
+            .Select(widget => widget.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        RemoveStaleMappedWidgetShortcuts(rootPath, activeWidgetIds);
+
+        foreach (var config in _settingsService.Settings.Widgets
+                     .Where(widget => widget.WidgetKind == WidgetKind.File && !IsDeleted(widget.Id))
+                     .ToList())
+        {
+            if (config.FollowsDefaultStoragePath)
+            {
+                continue;
+            }
+
+            SyncMappedWidgetShortcut(config);
+        }
+    }
+
+    private void SyncStorageFolderEntries(string oldRootPath)
+    {
+        if (!string.IsNullOrWhiteSpace(oldRootPath))
+        {
+            RemoveAllMappedWidgetShortcuts(oldRootPath);
+        }
+
+        SyncStorageFolderEntries();
     }
 
     public void RemoveWidget(string widgetId)
@@ -395,7 +466,9 @@ public sealed class WidgetManager
         }
     }
 
-    private async Task<WidgetWindow?> PrepareWidgetForBatchShowAsync(WidgetConfig config)
+    private async Task<WidgetWindow?> PrepareWidgetForBatchShowAsync(
+        WidgetConfig config,
+        bool showRaisedWhileInitializing = false)
     {
         if (IsDeleted(config.Id) ||
             config.WidgetKind != WidgetKind.File ||
@@ -410,7 +483,10 @@ public sealed class WidgetManager
             return existing.Window;
         }
 
-        var window = await CreateWidgetFromConfigAsync(config, keepPreparedForAnimation: true);
+        var window = await CreateWidgetFromConfigAsync(
+            config,
+            keepPreparedForAnimation: true,
+            showRaisedWhileInitializing: showRaisedWhileInitializing);
         window.PrepareTrayShowAnimation();
         return window;
     }
@@ -829,8 +905,19 @@ public sealed class WidgetManager
             .ToList();
 
         var completedMoves = new List<(string SourceFolder, string DestinationFolder)>(affectedWidgets.Count);
+        var originalWidgetStorage = affectedWidgets.ToDictionary(
+            widget => widget.Widget.Id,
+            widget => (widget.Widget.ManagedFolderName, widget.Widget.MappedFolderPath),
+            StringComparer.Ordinal);
+
+        SetManagedStorageMigrationBusy(affectedWidgets.Select(widget => widget.Widget.Id), isBusy: true);
         try
         {
+            if (affectedWidgets.Count > 0)
+            {
+                await Task.Delay(100);
+            }
+
             foreach (var widgetPlan in affectedWidgets)
             {
                 await _fileService.RelocateDirectoryAsync(widgetPlan.SourceFolder, widgetPlan.DestinationFolder);
@@ -845,9 +932,39 @@ public sealed class WidgetManager
             }
 
             await _settingsService.SaveAsync();
+            SyncStorageFolderEntries(oldRootPath);
+
+            foreach (var widgetPlan in affectedWidgets)
+            {
+                if (!_widgets.TryGetValue(widgetPlan.Widget.Id, out var entry))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await entry.ViewModel.RefreshFromConfigAsync();
+                }
+                catch (Exception ex)
+                {
+                    App.Log($"[ManagedStorageMigration] Refresh failed for widget '{widgetPlan.Widget.Id}': {ex}");
+                }
+            }
         }
         catch
         {
+            _settingsService.Settings.DefaultManagedStorageRootPath = oldRootPath;
+            foreach (var widgetPlan in affectedWidgets)
+            {
+                if (!originalWidgetStorage.TryGetValue(widgetPlan.Widget.Id, out var originalStorage))
+                {
+                    continue;
+                }
+
+                widgetPlan.Widget.ManagedFolderName = originalStorage.ManagedFolderName;
+                widgetPlan.Widget.MappedFolderPath = originalStorage.MappedFolderPath;
+            }
+
             foreach (var move in completedMoves.AsEnumerable().Reverse())
             {
                 try
@@ -862,21 +979,243 @@ public sealed class WidgetManager
 
             throw;
         }
-
-        foreach (var widgetPlan in affectedWidgets)
+        finally
         {
-            if (_widgets.TryGetValue(widgetPlan.Widget.Id, out var entry))
-            {
-                await entry.ViewModel.RefreshFromConfigAsync();
-            }
+            SetManagedStorageMigrationBusy(affectedWidgets.Select(widget => widget.Widget.Id), isBusy: false);
         }
 
         return new ManagedStorageMigrationResult(affectedWidgets.Count, oldRootPath, normalizedNewRootPath);
     }
 
+    private void SetManagedStorageMigrationBusy(IEnumerable<string> widgetIds, bool isBusy)
+    {
+        foreach (string widgetId in widgetIds.Distinct(StringComparer.Ordinal))
+        {
+            if (_widgets.TryGetValue(widgetId, out var entry))
+            {
+                entry.Window.SetMigrationBusy(isBusy);
+            }
+        }
+    }
+
     private WidgetConfig? FindConfig(string widgetId)
     {
         return _settingsService.Settings.Widgets.FirstOrDefault(widget => widget.Id == widgetId);
+    }
+
+    private async Task RenameManagedWidgetFolderAsync(WidgetConfig config, string newName)
+    {
+        if (!config.FollowsDefaultStoragePath)
+        {
+            return;
+        }
+
+        string rootPath = GetManagedStorageRootPath();
+        string currentFolderPath = string.IsNullOrWhiteSpace(config.MappedFolderPath)
+            ? Path.Combine(rootPath, config.ManagedFolderName ?? string.Empty)
+            : Path.GetFullPath(config.MappedFolderPath);
+
+        string desiredFolderName = CreateManagedFolderName(newName, config.Id, currentFolderPath);
+        string destinationFolderPath = Path.Combine(rootPath, desiredFolderName);
+
+        if (Directory.Exists(currentFolderPath) &&
+            !string.Equals(currentFolderPath, destinationFolderPath, StringComparison.OrdinalIgnoreCase))
+        {
+            await _fileService.RelocateDirectoryAsync(currentFolderPath, destinationFolderPath);
+        }
+        else
+        {
+            Directory.CreateDirectory(destinationFolderPath);
+        }
+
+        config.ManagedFolderName = desiredFolderName;
+        config.MappedFolderPath = destinationFolderPath;
+
+        if (_widgets.TryGetValue(config.Id, out var entry))
+        {
+            await entry.ViewModel.RefreshFromConfigAsync();
+        }
+    }
+
+    private void SyncMappedWidgetShortcut(WidgetConfig config, string? displayNameOverride = null)
+    {
+        if (config.FollowsDefaultStoragePath ||
+            string.IsNullOrWhiteSpace(config.MappedFolderPath))
+        {
+            RemoveMappedWidgetShortcut(config);
+            return;
+        }
+
+        try
+        {
+            string rootPath = GetManagedStorageRootPath();
+            Directory.CreateDirectory(rootPath);
+
+            string targetPath = Path.GetFullPath(config.MappedFolderPath);
+            string shortcutPath = GetExistingMappedWidgetShortcutPath(config, rootPath);
+            string desiredShortcutPath = BuildAvailableMappedShortcutPath(
+                displayNameOverride ?? config.Name,
+                config.Id,
+                rootPath,
+                shortcutPath);
+
+            if (!string.Equals(shortcutPath, desiredShortcutPath, StringComparison.OrdinalIgnoreCase))
+            {
+                DeleteMappedWidgetShortcut(shortcutPath, config.Id);
+                shortcutPath = desiredShortcutPath;
+            }
+
+            ShortcutHelper.CreateOrUpdateFolderShortcut(
+                shortcutPath,
+                targetPath,
+                BuildMappedWidgetShortcutDescription(config.Id));
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[MappedShortcut] Failed to sync shortcut for widget '{config.Id}': {ex}");
+        }
+    }
+
+    private void RemoveMappedWidgetShortcut(WidgetConfig config)
+    {
+        DeleteMappedWidgetShortcut(GetExistingMappedWidgetShortcutPath(config, GetManagedStorageRootPath()), config.Id);
+    }
+
+    private void DeleteMappedWidgetShortcut(string shortcutPath, string widgetId)
+    {
+        if (string.IsNullOrWhiteSpace(shortcutPath) ||
+            !File.Exists(shortcutPath) ||
+            !IsDeskBoxMappedWidgetShortcut(shortcutPath, widgetId))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(shortcutPath);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[MappedShortcut] Failed to delete shortcut '{shortcutPath}': {ex}");
+        }
+    }
+
+    private void RemoveStaleMappedWidgetShortcuts(string rootPath, ISet<string> activeWidgetIds)
+    {
+        if (!Directory.Exists(rootPath))
+        {
+            return;
+        }
+
+        foreach (string shortcutPath in Directory.EnumerateFiles(rootPath, "*.lnk", SearchOption.TopDirectoryOnly))
+        {
+            string? widgetId = GetDeskBoxMappedWidgetShortcutId(shortcutPath);
+            if (string.IsNullOrWhiteSpace(widgetId) || activeWidgetIds.Contains(widgetId))
+            {
+                continue;
+            }
+
+            DeleteMappedWidgetShortcut(shortcutPath, widgetId);
+        }
+    }
+
+    private void RemoveAllMappedWidgetShortcuts(string rootPath)
+    {
+        if (!Directory.Exists(rootPath))
+        {
+            return;
+        }
+
+        foreach (string shortcutPath in Directory.EnumerateFiles(rootPath, "*.lnk", SearchOption.TopDirectoryOnly))
+        {
+            string? widgetId = GetDeskBoxMappedWidgetShortcutId(shortcutPath);
+            if (string.IsNullOrWhiteSpace(widgetId))
+            {
+                continue;
+            }
+
+            DeleteMappedWidgetShortcut(shortcutPath, widgetId);
+        }
+    }
+
+    private string GetExistingMappedWidgetShortcutPath(WidgetConfig config, string rootPath)
+    {
+        if (!Directory.Exists(rootPath))
+        {
+            return string.Empty;
+        }
+
+        return Directory.EnumerateFiles(rootPath, "*.lnk", SearchOption.TopDirectoryOnly)
+            .FirstOrDefault(path => IsDeskBoxMappedWidgetShortcut(path, config.Id)) ?? string.Empty;
+    }
+
+    private string BuildAvailableMappedShortcutPath(
+        string displayName,
+        string widgetId,
+        string rootPath,
+        string currentShortcutPath)
+    {
+        string shortcutName = FileService.SanitizeFileSystemName(displayName);
+        if (string.IsNullOrWhiteSpace(shortcutName))
+        {
+            shortcutName = _localizationService.T("Widget.MappedShortcutBaseName");
+        }
+
+        string desiredPath = Path.Combine(rootPath, $"{shortcutName}.lnk");
+        if (!string.IsNullOrWhiteSpace(currentShortcutPath) &&
+            string.Equals(Path.GetFullPath(currentShortcutPath), desiredPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return currentShortcutPath;
+        }
+
+        if (CanUseMappedShortcutPath(desiredPath, widgetId))
+        {
+            return desiredPath;
+        }
+
+        int suffix = 2;
+        while (true)
+        {
+            string candidatePath = Path.Combine(rootPath, $"{shortcutName} ({suffix++}).lnk");
+            if (CanUseMappedShortcutPath(candidatePath, widgetId))
+            {
+                return candidatePath;
+            }
+        }
+    }
+
+    private bool CanUseMappedShortcutPath(string shortcutPath, string widgetId)
+    {
+        if (!File.Exists(shortcutPath) && !Directory.Exists(shortcutPath))
+        {
+            return true;
+        }
+
+        return File.Exists(shortcutPath) && IsDeskBoxMappedWidgetShortcut(shortcutPath, widgetId);
+    }
+
+    private static bool IsDeskBoxMappedWidgetShortcut(string shortcutPath, string widgetId)
+    {
+        return string.Equals(
+            GetDeskBoxMappedWidgetShortcutId(shortcutPath),
+            widgetId,
+            StringComparison.Ordinal);
+    }
+
+    private static string? GetDeskBoxMappedWidgetShortcutId(string shortcutPath)
+    {
+        var shortcut = ShortcutHelper.Resolve(shortcutPath);
+        if (shortcut?.Description.StartsWith(ManagedShortcutDescriptionPrefix, StringComparison.Ordinal) != true)
+        {
+            return null;
+        }
+
+        return shortcut.Description[ManagedShortcutDescriptionPrefix.Length..];
+    }
+
+    private static string BuildMappedWidgetShortcutDescription(string widgetId)
+    {
+        return $"{ManagedShortcutDescriptionPrefix}{widgetId}";
     }
 
     private async Task ApplyWidgetRemovalActionAsync(WidgetConfig config, WidgetRemovalAction removalAction)
@@ -1026,11 +1365,19 @@ public sealed class WidgetManager
     private string BuildManagedFolderPath(string managedFolderName)
     {
         return Path.Combine(
-            SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath),
+            GetManagedStorageRootPath(),
             managedFolderName);
     }
 
-    private string CreateManagedFolderName(string displayName, string? widgetId = null)
+    private string GetManagedStorageRootPath()
+    {
+        return SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
+    }
+
+    private string CreateManagedFolderName(
+        string displayName,
+        string? widgetId = null,
+        string? reusableFolderPath = null)
     {
         string baseFolderName = FileService.SanitizeFileSystemName(displayName);
         if (string.IsNullOrWhiteSpace(baseFolderName))
@@ -1038,7 +1385,7 @@ public sealed class WidgetManager
             baseFolderName = _localizationService.T("Widget.ManagedFolderBaseName");
         }
 
-        string rootPath = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
+        string rootPath = GetManagedStorageRootPath();
         var usedNames = _settingsService.Settings.Widgets
             .Where(widget => widget.WidgetKind == WidgetKind.File &&
                              widget.FollowsDefaultStoragePath &&
@@ -1047,14 +1394,30 @@ public sealed class WidgetManager
             .Select(widget => widget.ManagedFolderName!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        string? reusablePath = string.IsNullOrWhiteSpace(reusableFolderPath)
+            ? null
+            : Path.GetFullPath(reusableFolderPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         string candidate = baseFolderName;
         int suffix = 2;
-        while (usedNames.Contains(candidate) || Directory.Exists(Path.Combine(rootPath, candidate)))
+        while (usedNames.Contains(candidate) ||
+               IsUnavailableManagedFolderPath(Path.Combine(rootPath, candidate), reusablePath))
         {
             candidate = $"{baseFolderName} ({suffix++})";
         }
 
         return candidate;
+    }
+
+    private static bool IsUnavailableManagedFolderPath(string folderPath, string? reusableFolderPath)
+    {
+        string normalizedPath = Path.GetFullPath(folderPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (reusableFolderPath is not null &&
+            string.Equals(normalizedPath, reusableFolderPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return Directory.Exists(normalizedPath) || File.Exists(normalizedPath);
     }
 
     private bool ShouldMoveManagedItems()
@@ -1065,7 +1428,8 @@ public sealed class WidgetManager
     private async Task<WidgetWindow> CreateWidgetFromConfigAsync(
         WidgetConfig config,
         bool keepPreparedForAnimation = false,
-        bool revealAfterCreate = false)
+        bool revealAfterCreate = false,
+        bool showRaisedWhileInitializing = false)
     {
         if (_widgets.TryGetValue(config.Id, out var existing))
         {
@@ -1102,6 +1466,13 @@ public sealed class WidgetManager
                 window.Activate();
                 window.PushToBottom();
             }
+            else if (showRaisedWhileInitializing)
+            {
+                viewModel.IsLoading = true;
+                QueueDeferredWidgetInitialization(config, window, viewModel);
+                WidgetCreated?.Invoke(window);
+                return window;
+            }
 
             await viewModel.InitializeAsync();
             if (!keepPreparedForAnimation)
@@ -1131,6 +1502,38 @@ public sealed class WidgetManager
 
         WidgetCreated?.Invoke(window);
         return window;
+    }
+
+    private void QueueDeferredWidgetInitialization(
+        WidgetConfig config,
+        WidgetWindow window,
+        WidgetViewModel viewModel)
+    {
+        App.UiDispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Yield();
+            try
+            {
+                await viewModel.InitializeAsync();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Failed to initialize widget '{config.Name}' ({config.Id}) after show: {ex}");
+                if (_widgets.TryGetValue(config.Id, out var entry) &&
+                    ReferenceEquals(entry.Window, window))
+                {
+                    _widgets.Remove(config.Id);
+                    viewModel.Dispose();
+                    try
+                    {
+                        window.Close();
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        });
     }
 
     private void NormalizeWidgetBounds(WidgetConfig config)
