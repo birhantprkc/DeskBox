@@ -28,11 +28,21 @@ public static class ShortcutHelper
             var file = (IPersistFile)link;
 
             file.Load(lnkPath, 0); // STGM_READ
-            link.Resolve(IntPtr.Zero, SLR_FLAGS.SLR_NO_UI | SLR_FLAGS.SLR_NOSEARCH);
+            try
+            {
+                link.Resolve(IntPtr.Zero, SLR_FLAGS.SLR_NO_UI | SLR_FLAGS.SLR_NOSEARCH);
+            }
+            catch
+            {
+                // Keep reading the stored shortcut metadata even if the target is unavailable.
+            }
 
             var targetBuilder = new StringBuilder(MAX_PATH);
             var findData = new WIN32_FIND_DATAW();
             link.GetPath(targetBuilder, MAX_PATH, ref findData, SLGP_FLAGS.SLGP_RAWPATH);
+
+            var descriptionBuilder = new StringBuilder(MAX_PATH);
+            link.GetDescription(descriptionBuilder, MAX_PATH);
 
             var argsBuilder = new StringBuilder(MAX_PATH);
             link.GetArguments(argsBuilder, MAX_PATH);
@@ -45,6 +55,7 @@ public static class ShortcutHelper
 
             return new ShortcutInfo(
                 TargetPath: targetBuilder.ToString(),
+                Description: descriptionBuilder.ToString(),
                 Arguments: argsBuilder.ToString(),
                 WorkingDirectory: workDirBuilder.ToString(),
                 IconLocation: iconBuilder.ToString(),
@@ -92,6 +103,29 @@ public static class ShortcutHelper
     // ────────────────────────────────────────────────────────────────
     //  COM definitions
     // ────────────────────────────────────────────────────────────────
+
+    public static void CreateOrUpdateFolderShortcut(
+        string shortcutPath,
+        string targetFolderPath,
+        string description)
+    {
+        string normalizedShortcutPath = Path.GetFullPath(shortcutPath);
+        string normalizedTargetPath = Path.GetFullPath(targetFolderPath);
+        string? shortcutDirectory = Path.GetDirectoryName(normalizedShortcutPath);
+        if (string.IsNullOrWhiteSpace(shortcutDirectory))
+        {
+            throw new ArgumentException("Shortcut path must include a directory.", nameof(shortcutPath));
+        }
+
+        Directory.CreateDirectory(shortcutDirectory);
+
+        var link = (IShellLinkW)new ShellLink();
+        var file = (IPersistFile)link;
+        link.SetPath(normalizedTargetPath);
+        link.SetWorkingDirectory(normalizedTargetPath);
+        link.SetDescription(description);
+        file.Save(normalizedShortcutPath, true);
+    }
 
     /// <summary>Shell Link CoClass (CLSID_ShellLink).</summary>
     [ComImport]
@@ -209,12 +243,14 @@ public enum BrokenShortcutResolution
 /// Immutable record holding the resolved information from a .lnk shortcut.
 /// </summary>
 /// <param name="TargetPath">Absolute path to the shortcut's target.</param>
+/// <param name="Description">Description stored in the shortcut.</param>
 /// <param name="Arguments">Command-line arguments stored in the shortcut.</param>
 /// <param name="WorkingDirectory">Working directory for the target process.</param>
 /// <param name="IconLocation">Path to the file containing the shortcut's icon.</param>
 /// <param name="IconIndex">Zero-based icon index within <paramref name="IconLocation"/>.</param>
 public record ShortcutInfo(
     string TargetPath,
+    string Description,
     string Arguments,
     string WorkingDirectory,
     string IconLocation,

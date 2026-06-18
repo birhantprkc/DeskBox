@@ -40,6 +40,7 @@ public partial class App : Application
     private Window? _trayWindow;
     private MenuFlyoutItem? _trayMapFolderItem;
     private MenuFlyoutItem? _trayNewWidgetItem;
+    private MenuFlyoutItem? _trayOpenManagedStorageItem;
     private MenuFlyoutItem? _traySettingsItem;
     private MenuFlyoutItem? _trayExitItem;
     private SettingsWindow? _settingsWindow;
@@ -57,6 +58,7 @@ public partial class App : Application
     public OrganizerService OrganizerService { get; }
     public LocalizationService LocalizationService { get; private set; } = null!;
     public ThemeService ThemeService { get; private set; } = null!;
+    public GlobalHotkeyService? GlobalHotkeyService { get; private set; }
     public WidgetManager? WidgetManager { get; private set; }
     public SettingsWindow? SettingsWindowInstance => _settingsWindow;
 
@@ -188,12 +190,14 @@ public partial class App : Application
             LocalizationService.LanguageChanged += OnLanguageChanged;
             ThemeService.RefreshAppearance();
 
+            GlobalHotkeyService = new GlobalHotkeyService(SettingsService, LocalizationService, ToggleTrayWidgetsAsync);
             WidgetManager = new WidgetManager(SettingsService, FileService, OrganizerService, ThemeService, LocalizationService);
             WidgetManager.TrayLayerStateChanged += UpdateTrayLayerStateText;
 
             CreateTrayIcon();
             RegisterActivationListener();
 
+            WidgetManager.SyncStorageFolderEntries();
             await WidgetManager.RestoreWidgetsAsync();
 
             if (SettingsService.Settings.Widgets.Count(widget =>
@@ -305,6 +309,15 @@ public partial class App : Application
         };
         settingsItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, OpenSettingsFromTray);
 
+        var openManagedStorageItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Tray.OpenManagedStorage"),
+            Width = TrayMenuItemWidth,
+            Icon = new SymbolIcon(Symbol.Folder),
+            Style = trayMenuItemStyle
+        };
+        openManagedStorageItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, OpenManagedStorageFromTray);
+
         var exitItem = new MenuFlyoutItem
         {
             Text = localization.T("Tray.Exit"),
@@ -324,12 +337,15 @@ public partial class App : Application
         contextMenu.Items.Add(newWidgetItem);
         contextMenu.Items.Add(mapFolderItem);
         contextMenu.Items.Add(new MenuFlyoutSeparator());
+        contextMenu.Items.Add(openManagedStorageItem);
+        contextMenu.Items.Add(new MenuFlyoutSeparator());
         contextMenu.Items.Add(settingsItem);
         contextMenu.Items.Add(new MenuFlyoutSeparator());
         contextMenu.Items.Add(exitItem);
 
         _trayMapFolderItem = mapFolderItem;
         _trayNewWidgetItem = newWidgetItem;
+        _trayOpenManagedStorageItem = openManagedStorageItem;
         _traySettingsItem = settingsItem;
         _trayExitItem = exitItem;
 
@@ -386,6 +402,8 @@ public partial class App : Application
         {
             _trayIcon.ForceCreate();
         }
+
+        GlobalHotkeyService?.Attach(WindowNative.GetWindowHandle(_trayWindow));
 
         _trayWindow.DispatcherQueue.TryEnqueue(() =>
         {
@@ -715,6 +733,11 @@ public partial class App : Application
             _traySettingsItem.Text = LocalizationService.T("Tray.Settings");
         }
 
+        if (_trayOpenManagedStorageItem is not null)
+        {
+            _trayOpenManagedStorageItem.Text = LocalizationService.T("Tray.OpenManagedStorage");
+        }
+
         if (_trayExitItem is not null)
         {
             _trayExitItem.Text = LocalizationService.T("Tray.Exit");
@@ -792,24 +815,32 @@ public partial class App : Application
 
     private void OpenSettings()
     {
-        if (_settingsWindow is null)
-        {
-            _settingsWindow = new SettingsWindow(SettingsService, ThemeService, LocalizationService);
-            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        }
-
-        _settingsWindow.Activate();
+        var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
+        settingsWindow.Activate();
     }
 
     private void OpenSettingsFromTray()
     {
-        if (_settingsWindow is null)
-        {
-            _settingsWindow = new SettingsWindow(SettingsService, ThemeService, LocalizationService);
-            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        }
+        var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
+        settingsWindow.ActivateFromTray();
+    }
 
-        _settingsWindow.ActivateFromTray();
+    private SettingsWindow CreateSettingsWindow()
+    {
+        _settingsWindow = new SettingsWindow(SettingsService, ThemeService, LocalizationService);
+        _settingsWindow.Closed += (_, _) =>
+        {
+            _settingsWindow = null;
+            ScheduleLightMemoryCleanup();
+        };
+        return _settingsWindow;
+    }
+
+    private void OpenManagedStorageFromTray()
+    {
+        string path = SettingsService.NormalizeManagedStorageRootPath(SettingsService.Settings.DefaultManagedStorageRootPath);
+        Directory.CreateDirectory(path);
+        Win32Helper.OpenFile(path);
     }
 
     public void ShowSettings()
@@ -819,14 +850,32 @@ public partial class App : Application
 
     public void ShowOnboarding()
     {
+        bool shouldRestartIntro = _onboardingWindow is not null;
         if (_onboardingWindow is null)
         {
             _onboardingWindow = new OnboardingWindow(SettingsService, LocalizationService);
-            _onboardingWindow.Closed += (_, _) => _onboardingWindow = null;
+            _onboardingWindow.Closed += (_, _) =>
+            {
+                _onboardingWindow = null;
+                ScheduleLightMemoryCleanup();
+            };
             ThemeService.TrackWindow(_onboardingWindow);
         }
 
         _onboardingWindow.Activate();
+        if (shouldRestartIntro)
+        {
+            _onboardingWindow.RestartIntro();
+        }
+    }
+
+    private static void ScheduleLightMemoryCleanup()
+    {
+        App.UiDispatcherQueue?.TryEnqueue(async () =>
+        {
+            await Task.Delay(2000);
+            GC.Collect(1, GCCollectionMode.Optimized, blocking: false, compacting: false);
+        });
     }
 
     private async void ExitApplication()
@@ -837,6 +886,8 @@ public partial class App : Application
             LocalizationService.LanguageChanged -= OnLanguageChanged;
         }
         await SettingsService.SaveAsync();
+        GlobalHotkeyService?.Dispose();
+        GlobalHotkeyService = null;
         WidgetManager?.CloseAll();
         _trayIcon?.Dispose();
         _activationRegistration?.Unregister(null);

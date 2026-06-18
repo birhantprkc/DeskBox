@@ -691,6 +691,11 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         MappedFolderPath = normalizedPath;
         OnPropertyChanged(nameof(FollowsDefaultStoragePath));
 
+        if (App.Current?.WidgetManager is { } widgetManager)
+        {
+            widgetManager.SyncMappedWidgetShortcut(Config.Id);
+        }
+
         _settingsService.UpdateWidget(Config);
         await LoadFolderContentsAsync(normalizedPath);
         ConfigureFolderWatchers(normalizedPath);
@@ -818,10 +823,16 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Rename the widget.
     /// </summary>
-    public void Rename(string newName)
+    public async Task RenameAsync(string newName)
     {
         Name = newName;
         Config.Name = newName;
+        if (App.Current?.WidgetManager is { } widgetManager)
+        {
+            await widgetManager.RenameWidgetAsync(Config.Id, newName);
+            return;
+        }
+
         _settingsService.UpdateWidget(Config);
     }
 

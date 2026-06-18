@@ -7,29 +7,29 @@
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#requirements)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](#build)
 
-DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It lets you create native-feeling desktop widgets for collecting files, mapping folders, and temporarily bringing your desktop groups forward from the tray without replacing the Windows desktop shell.
+DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates native-feeling desktop widgets for collecting files, mapping folders, and bringing those groups forward from the tray or a global hotkey. It does not replace the Windows desktop shell; it adds one focused layer for keeping files easier to reach and easier to clean up.
 
-![DeskBox light mode](docs/images/light-mode.png)
+![DeskBox product cover](docs/images/brand/product-cover-1280x720.png)
 
 ## Download
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release:
+Current release: 1.0.5
 
-- [DeskBox_Setup_1.0.4_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.4/DeskBox_Setup_1.0.4_x64.exe)
+- [DeskBox_Setup_1.0.5_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.5/DeskBox_Setup_1.0.5_x64.exe)
 
 The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.0.4
+## What's New In 1.0.5
 
-- Improved tray left-click behavior so raised widgets stay visible while moving the pointer, then return to desktop level only after clicking another app.
-- Improved tray right-click menu positioning so the menu opens above the tray icon without covering the icon hit area.
-- Added extra confirmation when raising multiple widgets from the tray to avoid an occasional missed widget.
-- Added automatic acrylic backdrop refresh retries after widget reveal, theme, and appearance changes.
-- Reworked Settings into a left-side navigation layout with clearer sections for General, Appearance, Layout, Animation, Storage, Interaction, Maintenance, and About.
+- Rebuilt first-run onboarding with a logo intro, a five-step guide, looping feature scenes, and Chinese, English, light-mode, and dark-mode support.
+- Added an optional global hotkey for the same show, hide, and temporary-raise behavior as the tray left-click action.
+- Improved Settings and tray access with managed storage shortcuts, Quick Access pinning, download-link actions, and clearer maintenance controls.
+- Improved storage workflows, including default storage migration, mapped shortcut sync, orphan managed-folder cleanup, and steadier drag/drop behavior.
+- Removed remaining stale blur-toggle plumbing and release animation/window references more promptly after Settings or onboarding closes.
 
-See the full [changelog](CHANGELOG.md).
+See the full [changelog](CHANGELOG.md). A bilingual GitHub Release draft is available in [docs/releases/v1.0.5.md](docs/releases/v1.0.5.md).
 
 ## Why DeskBox Exists
 
@@ -42,25 +42,38 @@ The product is intentionally built around native Windows behavior. Widgets use W
 - **Managed desktop widgets**: create file collection widgets backed by a real folder.
 - **Folder mapping**: display an existing folder as a desktop widget without moving its contents.
 - **Move or copy on drop**: choose whether managed widgets organize by moving files or by keeping originals and adding copies.
-- **Tray controls**: create widgets, map folders, show or hide all widgets, temporarily raise widgets, open Settings, toggle startup launch, and exit.
+- **Tray controls**: create widgets, map folders, show or hide all widgets, temporarily raise widgets, open managed storage, open Settings, toggle startup launch, and exit.
+- **Global hotkey**: enable a keyboard shortcut for quickly showing, hiding, or raising widgets.
 - **Native file operations**: drag in, drag out, paste, cut, rename, delete, open, reveal in Explorer, and use keyboard shortcuts.
 - **Appearance controls**: tune theme, opacity, DWM corner style, icon size, text size, spacing, filename width, and list details.
-- **Safe cleanup prompts**: make widget deletion and managed-folder cleanup explicit so user files are not removed unexpectedly.
-- **First-run onboarding**: configure important defaults before using the app, then replay onboarding from Settings when needed.
+- **Storage maintenance**: change the default managed storage root, pin it to Quick Access, clean orphan folders, and confirm actions that may affect user files.
+- **First-run onboarding**: learn the core concepts and configure important defaults before using the app, then replay onboarding from Settings when needed.
 
 ## Screenshots
 
+DeskBox includes both Chinese and English localization. The widget screenshots below use the Chinese UI; Settings and onboarding screenshots are shown in English.
+
 ### Desktop Widgets
 
-![DeskBox dark mode](docs/images/dark-mode.png)
+![DeskBox light widget](docs/images/screenshots/zh-cn/widget-light.png)
+
+![DeskBox dark widget](docs/images/screenshots/zh-cn/widget-dark.png)
 
 ### Settings
 
-![DeskBox settings](docs/images/PixPin_2026-06-12_18-18-39.png)
+![DeskBox general settings](docs/images/screenshots/en-us/settings-general.png)
+
+![DeskBox storage settings](docs/images/screenshots/en-us/settings-storage.png)
 
 ### Onboarding
 
-![DeskBox onboarding](docs/images/PixPin_2026-06-12_18-20-17.png)
+![DeskBox onboarding](docs/images/screenshots/en-us/onboarding-step-1.png)
+
+### Logo Motion
+
+<p align="center">
+  <img src="docs/motion/deskbox-motion-01-layer-assemble.svg" width="120" alt="DeskBox logo layer assembly animation" />
+</p>
 
 ## Requirements
 
@@ -105,7 +118,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.0.4_x64.exe
+Output\DeskBox_Setup_1.0.5_x64.exe
 ```
 
 ## Project Structure
@@ -115,6 +128,8 @@ src\DeskBox                 WinUI 3 app source
 tests\DeskBox.Tests         core service tests
 installer                   Inno Setup scripts
 docs\images                 README and release images
+docs\motion                 logo motion concepts and SVG assets
+docs\releases               GitHub Releases copy
 ```
 
 ## Data Locations

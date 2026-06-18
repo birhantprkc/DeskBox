@@ -7,29 +7,29 @@
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](#构建)
 
-DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它可以创建轻量桌面格子，用于收纳文件、映射文件夹，并通过托盘快速显示、隐藏或临时置顶这些格子，同时尽量保留 Windows 原生桌面的质感和使用习惯。
+DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量桌面格子帮你收纳文件、映射文件夹，并通过托盘或全局快捷键快速显示、隐藏、临时置顶这些格子。它不会替换 Windows 桌面，只是在原生桌面之上补一层更好整理的能力。
 
-![DeskBox 产品封面](docs/images/DeskBox_产品封面_1280x720.png)
+![DeskBox 产品封面](docs/images/brand/product-cover-1280x720.png)
 
 ## 下载
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：
+当前版本：1.0.5
 
-- [DeskBox_Setup_1.0.4_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.4/DeskBox_Setup_1.0.4_x64.exe)
+- [DeskBox_Setup_1.0.5_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.5/DeskBox_Setup_1.0.5_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
-## 1.0.4 更新
+## 1.0.5 更新
 
-- 优化托盘左键逻辑：格子临时置顶后，移动鼠标不会触发层级恢复，只有点击其他应用窗口才会回到桌面层级。
-- 优化托盘右键菜单定位，菜单会基于真实托盘图标位置弹出，并避开托盘图标点击区域。
-- 增加多格子托盘置顶后的二次确认，降低偶尔漏掉某个格子没有展示的概率。
-- 增加毛玻璃背景自动刷新重试，在显示格子、托盘唤起、主题和外观变化后自动恢复偶发的灰底问题。
-- 重构设置窗口为左侧导航布局，将常规、外观、格子布局、动画、文件与收纳、操作、重置与维护和关于分区展示。
+- 重构新用户引导：加入前置品牌 logo 动效、五步引导流程、循环演示动效，并适配中文、英文、浅色和深色模式。
+- 新增全局快捷键：可用键盘触发与托盘左键一致的显示、隐藏和临时置顶流程。
+- 优化设置与托盘入口：补充默认收纳目录入口、快速访问固定、下载链接和更清晰的维护操作。
+- 优化文件收纳体验：默认收纳路径迁移、映射快捷方式同步、孤立收纳目录清理和拖拽细节更稳定。
+- 清理旧的模糊开关残留，并在设置窗口、新用户引导关闭后更及时释放动画和窗口引用。
 
-完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.0.5.md](docs/releases/v1.0.5.md) 中的中英文发布文案。
 
 ## 为什么做这个产品
 
@@ -42,27 +42,36 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它可以创
 - **收纳组件**：创建真实文件夹支撑的桌面格子，用于整理文件。
 - **文件夹映射**：把已有文件夹展示为桌面格子，不改变原文件位置。
 - **拖入后移动或复制**：可设置拖入收纳组件后的默认处理方式。
-- **托盘管理**：新建组件、映射文件夹、显示/隐藏全部组件、临时置顶、打开设置、开机自启和退出。
+- **托盘管理**：新建组件、映射文件夹、显示或隐藏全部组件、临时置顶、打开收纳目录、打开设置、开机自启和退出。
+- **全局快捷键**：在设置中开启后，可用快捷键快速显示、隐藏或唤起格子。
 - **原生文件操作**：拖入、拖出、粘贴、剪切、重命名、删除、打开、在资源管理器中显示和键盘快捷键。
 - **外观调节**：支持主题、透明度、DWM 圆角、图标大小、文字大小、间距、文件名宽度和列表详情。
-- **安全清理提示**：删除组件或清理收纳目录时明确提示影响范围，避免误删用户文件。
-- **新用户引导**：首次启动时配置关键默认项，也可以在设置中重新打开。
+- **收纳目录维护**：支持默认收纳路径调整、快速访问固定、孤立目录清理和安全确认。
+- **新用户引导**：首次启动时解释核心概念并配置关键默认项，也可以在设置中重新打开。
 
 ## 截图
 
 ### 桌面格子
 
-![DeskBox 浅色模式](docs/images/light-mode.png)
+![DeskBox 浅色格子](docs/images/screenshots/zh-cn/widget-light.png)
 
-![DeskBox 深色模式](docs/images/dark-mode.png)
+![DeskBox 深色格子](docs/images/screenshots/zh-cn/widget-dark.png)
 
 ### 设置
 
-![DeskBox 设置](docs/images/PixPin_2026-06-12_18-18-39.png)
+![DeskBox 设置常规页](docs/images/screenshots/zh-cn/settings-general.png)
+
+![DeskBox 文件与收纳设置](docs/images/screenshots/zh-cn/settings-storage.png)
 
 ### 新用户引导
 
-![DeskBox 新用户引导](docs/images/PixPin_2026-06-12_18-20-17.png)
+![DeskBox 新用户引导](docs/images/screenshots/zh-cn/onboarding-step-1.png)
+
+### 品牌动效
+
+<p align="center">
+  <img src="docs/motion/deskbox-motion-01-layer-assemble.svg" width="120" alt="DeskBox logo layer assembly animation" />
+</p>
 
 ## 环境要求
 
@@ -107,7 +116,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.0.4_x64.exe
+Output\DeskBox_Setup_1.0.5_x64.exe
 ```
 
 ## 项目结构
@@ -117,6 +126,8 @@ src\DeskBox                 WinUI 3 应用源码
 tests\DeskBox.Tests         核心服务测试
 installer                   Inno Setup 安装脚本
 docs\images                 README 和发布截图资源
+docs\motion                 品牌动效方案与 SVG 资源
+docs\releases               GitHub Releases 发布文案
 ```
 
 ## 数据位置

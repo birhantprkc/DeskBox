@@ -3,6 +3,7 @@ using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DeskBox.Helpers;
+using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -36,6 +37,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private bool _useSystemAccentColor;
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
     private string _managedStorageRootPath = SettingsService.GetDefaultManagedStorageRootPath();
+    private QuickAccessPinState _quickAccessPinState = QuickAccessPinState.Unknown;
+    private bool _globalHotkeyEnabled;
+    private string _globalHotkeyText = string.Empty;
+    private string _globalHotkeyStatusText = string.Empty;
+    private string _globalHotkeyStatusKind = "Normal";
     private bool _isRestoringDefaults;
 
     [ObservableProperty] private bool _autoStart;
@@ -231,6 +237,78 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _managedStorageRootPath, value);
     }
 
+    public QuickAccessPinState ManagedStorageQuickAccessPinState
+    {
+        get => _quickAccessPinState;
+        private set
+        {
+            if (!SetProperty(ref _quickAccessPinState, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(QuickAccessStatusText));
+            OnPropertyChanged(nameof(PinQuickAccessButtonText));
+            OnPropertyChanged(nameof(PinQuickAccessToolTipText));
+            OnPropertyChanged(nameof(ShouldUnpinManagedStorageFromQuickAccess));
+        }
+    }
+
+    public string QuickAccessStatusText => ManagedStorageQuickAccessPinState switch
+    {
+        QuickAccessPinState.Pinned => _localizationService.T("Settings.ManagedPath.QuickAccessStatusPinned"),
+        QuickAccessPinState.NotPinned => _localizationService.T("Settings.ManagedPath.QuickAccessStatusNotPinned"),
+        _ => _localizationService.T("Settings.ManagedPath.QuickAccessStatusUnknown")
+    };
+
+    public string PinQuickAccessButtonText => ManagedStorageQuickAccessPinState == QuickAccessPinState.Pinned
+        ? _localizationService.T("Settings.ManagedPath.UnpinQuickAccess")
+        : _localizationService.T("Settings.ManagedPath.PinQuickAccess");
+
+    public string PinQuickAccessToolTipText => ManagedStorageQuickAccessPinState == QuickAccessPinState.Pinned
+        ? _localizationService.T("Settings.ManagedPath.UnpinQuickAccessTooltip")
+        : _localizationService.T("Settings.ManagedPath.PinQuickAccessTooltip");
+
+    public bool ShouldUnpinManagedStorageFromQuickAccess => ManagedStorageQuickAccessPinState == QuickAccessPinState.Pinned;
+
+    public bool GlobalHotkeyEnabled
+    {
+        get => _globalHotkeyEnabled;
+        set
+        {
+            if (!SetProperty(ref _globalHotkeyEnabled, value))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            App.Current?.GlobalHotkeyService?.SetEnabled(value);
+            RefreshGlobalHotkeyStatus();
+        }
+    }
+
+    public string GlobalHotkeyText
+    {
+        get => _globalHotkeyText;
+        private set => SetProperty(ref _globalHotkeyText, value);
+    }
+
+    public string GlobalHotkeyStatusText
+    {
+        get => _globalHotkeyStatusText;
+        private set => SetProperty(ref _globalHotkeyStatusText, value);
+    }
+
+    public string GlobalHotkeyStatusKind
+    {
+        get => _globalHotkeyStatusKind;
+        private set => SetProperty(ref _globalHotkeyStatusKind, value);
+    }
+
     public string IconSizeValueText => $"{Math.Round(IconSize):0}px";
     public string WidgetOpacityValueText => $"{Math.Round(WidgetOpacity * 100):0}%";
     public string TextSizeValueText => $"{TextSize:0.#}pt";
@@ -326,6 +404,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         ? _localizationService.T("Settings.Accent.SystemDescription")
         : _localizationService.T("Settings.Accent.CustomDescription");
 
+    public string GlobalHotkeyDescription => _localizationService.T("Settings.GlobalHotkey.Description");
+    public bool CanShowGlobalHotkeyWarning => GlobalHotkeyEnabled && GlobalHotkeyService.IsRiskyGesture(GetCurrentGlobalHotkeyGesture());
+
     public SolidColorBrush AccentPreviewBrush { get; } = new(AccentColorHelper.DefaultAccentColor);
 
     public string[] AvailableThemes { get; } = [ThemeSystem, ThemeLight, ThemeDark];
@@ -366,6 +447,62 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             "Settings.About.Developer",
             RepositoryUrl.Replace("https://", string.Empty).Replace("http://", string.Empty).TrimEnd('/'));
 
+    public GlobalHotkeyGesture GetCurrentGlobalHotkeyGesture()
+    {
+        var settings = _settingsService.Settings;
+        return GlobalHotkeyService.NormalizeGesture(settings.GlobalHotkeyModifiers, settings.GlobalHotkeyKey);
+    }
+
+    public void RefreshGlobalHotkeyState()
+    {
+        var settings = _settingsService.Settings;
+        _globalHotkeyEnabled = settings.GlobalHotkeyEnabled;
+        GlobalHotkeyText = GlobalHotkeyService.FormatGesture(GetCurrentGlobalHotkeyGesture(), _localizationService);
+        RefreshGlobalHotkeyStatus();
+        OnPropertyChanged(nameof(GlobalHotkeyEnabled));
+        OnPropertyChanged(nameof(CanShowGlobalHotkeyWarning));
+        OnPropertyChanged(nameof(GlobalHotkeyDescription));
+        OnPropertyChanged(nameof(GlobalHotkeyText));
+        OnPropertyChanged(nameof(GlobalHotkeyStatusText));
+        OnPropertyChanged(nameof(GlobalHotkeyStatusKind));
+    }
+
+    public void RefreshGlobalHotkeyStatus()
+    {
+        if (!GlobalHotkeyEnabled)
+        {
+            GlobalHotkeyStatusKind = "Muted";
+            GlobalHotkeyStatusText = _localizationService.T("Settings.GlobalHotkey.Status.Disabled");
+            return;
+        }
+
+        if (App.Current?.GlobalHotkeyService is not { } hotkeyService)
+        {
+            GlobalHotkeyStatusKind = "Warning";
+            GlobalHotkeyStatusText = _localizationService.T("Settings.GlobalHotkey.Status.Unavailable");
+            return;
+        }
+
+        if (hotkeyService.IsRegistered)
+        {
+            GlobalHotkeyStatusKind = GlobalHotkeyService.IsRiskyGesture(hotkeyService.CurrentGesture) ? "Warning" : "Normal";
+            GlobalHotkeyStatusText = _localizationService.Format(
+                "Settings.GlobalHotkey.Status.Active",
+                hotkeyService.CurrentGestureText);
+            return;
+        }
+
+        GlobalHotkeyStatusKind = "Warning";
+        GlobalHotkeyStatusText = string.IsNullOrWhiteSpace(hotkeyService.LastError)
+            ? _localizationService.T("Settings.GlobalHotkey.Status.Unregistered")
+            : hotkeyService.LastError;
+    }
+
+    public void RefreshQuickAccessState()
+    {
+        ManagedStorageQuickAccessPinState = ExplorerQuickAccessHelper.GetQuickAccessPinState(ManagedStorageRootPath, out _);
+    }
+
     public SettingsViewModel(SettingsService settingsService, ThemeService themeService, LocalizationService? localizationService = null)
     {
         _settingsService = settingsService;
@@ -401,6 +538,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _managedStorageRootPath = settings.DefaultManagedStorageRootPath;
 
         RefreshAccentPreview();
+        RefreshQuickAccessState();
         _themeService.AppearanceChanged += OnAppearanceChanged;
         _localizationService.LanguageChanged += OnLanguageChanged;
     }
@@ -437,6 +575,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         ManagedStorageRootPath = normalizedPath;
         _settingsService.Settings.DefaultManagedStorageRootPath = normalizedPath;
         _settingsService.SaveDebounced();
+        RefreshQuickAccessState();
     }
 
     public async Task RestoreDefaultPreferencesAsync()
@@ -474,7 +613,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             settings.WidgetCornerPreference = SettingsService.WidgetCornerPreferenceSmall;
             settings.WidgetAnimationEffect = SettingsService.WidgetAnimationEffectSlideFade;
             settings.WidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
-            settings.UseNativeBackdropBlur = SettingsService.DefaultNativeBackdropBlur;
             settings.WidgetOpacity = SettingsService.DefaultWidgetOpacity;
             settings.IconSize = SettingsService.DefaultIconSize;
             settings.TextSize = SettingsService.DefaultTextSize;
@@ -484,6 +622,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             settings.VerticalSpacingScale = SettingsService.DefaultVerticalSpacingScale;
             settings.FileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
             settings.ManagedDropAction = SettingsService.ManagedDropActionMove;
+            settings.GlobalHotkeyEnabled = SettingsService.DefaultGlobalHotkeyEnabled;
+            settings.GlobalHotkeyModifiers = SettingsService.DefaultGlobalHotkeyModifiers;
+            settings.GlobalHotkeyKey = SettingsService.DefaultGlobalHotkeyKey;
             settings.DoubleClickToOpen = true;
             settings.HideShortcutArrowOverlay = true;
             settings.ShowListItemDetails = false;
@@ -492,6 +633,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             RefreshNumberInputs();
             OnPropertyChanged(nameof(CanEditCustomAccent));
             OnPropertyChanged(nameof(AccentColorDescription));
+            App.Current?.GlobalHotkeyService?.RefreshRegistration();
+            RefreshGlobalHotkeyState();
             RefreshLocalizedProperties();
             _themeService.RefreshAppearance();
             await _settingsService.SaveAsync();
@@ -580,6 +723,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AccentColorDescription));
         OnPropertyChanged(nameof(AboutVersionText));
         OnPropertyChanged(nameof(OpenSourceRepositoryDisplayText));
+        OnPropertyChanged(nameof(QuickAccessStatusText));
+        OnPropertyChanged(nameof(PinQuickAccessButtonText));
+        OnPropertyChanged(nameof(PinQuickAccessToolTipText));
+        OnPropertyChanged(nameof(GlobalHotkeyDescription));
+        OnPropertyChanged(nameof(GlobalHotkeyText));
+        OnPropertyChanged(nameof(GlobalHotkeyStatusText));
+        OnPropertyChanged(nameof(GlobalHotkeyStatusKind));
+        OnPropertyChanged(nameof(CanShowGlobalHotkeyWarning));
     }
 
     private static string NormalizeWidgetAnimationEffect(string? effect)

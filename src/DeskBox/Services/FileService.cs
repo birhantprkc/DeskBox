@@ -14,6 +14,15 @@ public sealed class FileService
 {
     private sealed record TransferOperation(string SourcePath, string DestinationPath);
 
+    private sealed record FileSystemEntrySnapshot(
+        string Path,
+        string Name,
+        bool IsFolder,
+        bool IsShortcut,
+        long? FileSize,
+        DateTime? LastModified,
+        int? FolderItemCount);
+
     public sealed record FileTransferPlan(string SourcePath, string DestinationPath);
 
     public sealed record FileTransferResult(string SourcePath, string DestinationPath);
@@ -39,37 +48,12 @@ public sealed class FileService
             return items;
         }
 
-        var entries = Directory.EnumerateFileSystemEntries(directoryPath)
-            .Where(p =>
-            {
-                try
-                {
-                    var name = Path.GetFileName(p);
-                    if (name.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return false;
-                    }
-
-                    var attr = File.GetAttributes(p);
-                    return (attr & System.IO.FileAttributes.Hidden) == 0;
-                }
-                catch
-                {
-                    return true;
-                }
-            })
-            .OrderBy(p => !Directory.Exists(p))
-            .ThenBy(p => Path.GetFileName(p));
+        var entries = await Task.Run(() => EnumerateEntrySnapshots(directoryPath));
 
         int sortOrder = 0;
-        foreach (var entryPath in entries)
+        foreach (var entry in entries)
         {
-            var item = await TryCreateWidgetItemAsync(entryPath, hideShortcutArrowOverlay);
-            if (item is null)
-            {
-                continue;
-            }
-
+            var item = await CreateWidgetItemAsync(entry, hideShortcutArrowOverlay);
             item.SortOrder = sortOrder++;
             items.Add(item);
         }
@@ -136,6 +120,36 @@ public sealed class FileService
         return item;
     }
 
+    private async Task<WidgetItem> CreateWidgetItemAsync(
+        FileSystemEntrySnapshot entry,
+        bool hideShortcutArrowOverlay = false)
+    {
+        using var perfScope = PerformanceLogger.Measure("FileService.CreateWidgetItem", $"path={entry.Path}");
+        var item = new WidgetItem
+        {
+            Path = entry.Path,
+            Name = entry.Name,
+            IsFolder = entry.IsFolder,
+            IsShortcut = entry.IsShortcut,
+            FileSize = entry.FileSize ?? 0,
+            LastModified = entry.LastModified ?? default,
+            FolderItemCount = entry.FolderItemCount ?? 0,
+            TargetPath = entry.Path
+        };
+
+        if (item.IsShortcut)
+        {
+            var info = ShortcutHelper.Resolve(entry.Path);
+            if (info is not null)
+            {
+                item.TargetPath = info.TargetPath;
+            }
+        }
+
+        item.Icon = await GetIconAsync(entry.Path, hideShortcutArrowOverlay);
+        return item;
+    }
+
     public async Task<WidgetItem?> TryCreateWidgetItemAsync(string path, bool hideShortcutArrowOverlay = false)
     {
         if (!ShouldDisplayEntry(path))
@@ -173,6 +187,68 @@ public sealed class FileService
         {
             return false;
         }
+    }
+
+    private static List<FileSystemEntrySnapshot> EnumerateEntrySnapshots(string directoryPath)
+    {
+        return Directory.EnumerateFileSystemEntries(directoryPath)
+            .Select(TryCreateEntrySnapshot)
+            .OfType<FileSystemEntrySnapshot>()
+            .OrderBy(entry => !entry.IsFolder)
+            .ThenBy(entry => entry.Name)
+            .ToList();
+    }
+
+    private static FileSystemEntrySnapshot? TryCreateEntrySnapshot(string path)
+    {
+        if (!ShouldDisplayEntry(path))
+        {
+            return null;
+        }
+
+        bool isFolder = Directory.Exists(path);
+        bool isShortcut = Path.GetExtension(path).Equals(".lnk", StringComparison.OrdinalIgnoreCase);
+        string name = isFolder
+            ? Path.GetFileName(path)
+            : Path.GetFileNameWithoutExtension(path);
+        long? fileSize = null;
+        DateTime? lastModified = null;
+        int? folderItemCount = null;
+
+        if (!isFolder && File.Exists(path))
+        {
+            try
+            {
+                var fileInfo = new FileInfo(path);
+                fileSize = fileInfo.Length;
+                lastModified = fileInfo.LastWriteTime;
+            }
+            catch
+            {
+            }
+        }
+        else if (isFolder)
+        {
+            try
+            {
+                folderItemCount = Directory.EnumerateFileSystemEntries(path)
+                    .Count(ShouldDisplayEntry);
+                lastModified = Directory.GetLastWriteTime(path);
+            }
+            catch
+            {
+                folderItemCount = 0;
+            }
+        }
+
+        return new FileSystemEntrySnapshot(
+            path,
+            name,
+            isFolder,
+            isShortcut,
+            fileSize,
+            lastModified,
+            folderItemCount);
     }
 
     public Task<BitmapImage?> GetIconAsync(string path, bool hideShortcutArrowOverlay = false)

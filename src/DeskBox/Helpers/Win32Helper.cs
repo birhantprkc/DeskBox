@@ -155,6 +155,50 @@ public static partial class Win32Helper
         string? lpDirectory,
         int nShowCmd);
 
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool RegisterHotKey(
+        IntPtr hWnd,
+        int id,
+        uint fsModifiers,
+        uint vk);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool UnregisterHotKey(
+        IntPtr hWnd,
+        int id);
+
+    [DllImport("comctl32.dll", EntryPoint = "SetWindowSubclass", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowSubclass(
+        IntPtr hWnd,
+        SubclassProc subclassProc,
+        UIntPtr uIdSubclass,
+        UIntPtr dwRefData);
+
+    [DllImport("comctl32.dll", EntryPoint = "RemoveWindowSubclass", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool RemoveWindowSubclass(
+        IntPtr hWnd,
+        SubclassProc subclassProc,
+        UIntPtr uIdSubclass);
+
+    [DllImport("comctl32.dll", EntryPoint = "DefSubclassProc", SetLastError = true)]
+    public static extern IntPtr DefSubclassProc(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam);
+
+    public delegate IntPtr SubclassProc(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr uIdSubclass,
+        UIntPtr dwRefData);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct NOTIFYICONIDENTIFIER
     {

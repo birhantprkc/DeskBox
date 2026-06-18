@@ -119,6 +119,7 @@ public sealed partial class WidgetWindow : Window
     private bool _keepRaisedUntilDeactivate;
     private bool _restoreDesktopLayerWhenIdle;
     private bool _isHideAnimationRunning;
+    private bool _isMigrationBusy;
     private long _trayAnimationGeneration;
     private bool _isTrayWindowRenderingSubscribed;
     private long _trayWindowAnimationStartTicks;
@@ -316,6 +317,8 @@ public sealed partial class WidgetWindow : Window
         ToolTipService.SetToolTip(AddButton, _localizationService.T("Widget.Tooltip.Add"));
         ToolTipService.SetToolTip(MoreButton, _localizationService.T("Widget.Tooltip.More"));
         ToolTipService.SetToolTip(CloseButton, _localizationService.T("Widget.Tooltip.DeleteWidget"));
+        MigrationTitleText.Text = _localizationService.T("Widget.Migration.Title");
+        MigrationDescriptionText.Text = _localizationService.T("Widget.Migration.Description");
     }
 
     public void PushToBottom()
@@ -969,6 +972,21 @@ public sealed partial class WidgetWindow : Window
         QueueBackdropRefresh();
     }
 
+    public void SetMigrationBusy(bool isBusy)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => SetMigrationBusy(isBusy));
+            return;
+        }
+
+        _isMigrationBusy = isBusy;
+        MigrationOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+        MigrationProgressRing.IsActive = isBusy;
+        ResizeGrid.IsHitTestVisible = !isBusy;
+        RootGrid.Focus(FocusState.Programmatic);
+    }
+
     private void ElevateForInteraction()
     {
         HoldTemporaryTopMost();
@@ -1146,7 +1164,7 @@ public sealed partial class WidgetWindow : Window
             }
 
             App.LogVerbose(
-                $"[Backdrop] hwnd=0x{_hWnd.ToInt64():X} useNativeBlur=true isDark={isDark} " +
+                $"[Backdrop] hwnd=0x{_hWnd.ToInt64():X} backdrop=acrylic isDark={isDark} " +
                 $"opacity={surfaceOpacity:F3} tint=#{tintColor.A:X2}{tintColor.R:X2}{tintColor.G:X2}{tintColor.B:X2} " +
                 $"dwmBackdropType={backdropType} systemBackdrop={(SystemBackdrop?.GetType().Name ?? "null")} " +
                 $"acrylicController={_acrylicController is not null}");
@@ -1831,6 +1849,13 @@ public sealed partial class WidgetWindow : Window
     {
         ClearFolderDropTarget();
 
+        if (_isMigrationBusy)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = false;
+            return;
+        }
+
         if (!HasPathDropData(e.DataView))
         {
             e.AcceptedOperation = DataPackageOperation.None;
@@ -1875,6 +1900,11 @@ public sealed partial class WidgetWindow : Window
     private async void RootGrid_Drop(object sender, DragEventArgs e)
     {
         ClearFolderDropTarget();
+
+        if (_isMigrationBusy)
+        {
+            return;
+        }
 
         if (!HasPathDropData(e.DataView))
         {
@@ -2006,6 +2036,14 @@ public sealed partial class WidgetWindow : Window
         copyItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: false);
         flyout.Items.Add(copyItem);
 
+        var copyPathItem = new MenuFlyoutItem
+        {
+            Text = _localizationService.T("Widget.CopyPath"),
+            Icon = new FontIcon { Glyph = "\uE8C8" }
+        };
+        copyPathItem.Click += (_, _) => CopySelectedPathsToClipboard();
+        flyout.Items.Add(copyPathItem);
+
         var cutItem = new MenuFlyoutItem
         {
             Text = _localizationService.T("Common.Cut"),
@@ -2094,6 +2132,14 @@ public sealed partial class WidgetWindow : Window
         };
         copyItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: false);
         flyout.Items.Add(copyItem);
+
+        var copyPathItem = new MenuFlyoutItem
+        {
+            Text = _localizationService.T("Widget.CopyPath"),
+            Icon = new FontIcon { Glyph = "\uE8C8" }
+        };
+        copyPathItem.Click += (_, _) => CopySelectedPathsToClipboard();
+        flyout.Items.Add(copyPathItem);
 
         var cutItem = new MenuFlyoutItem
         {
@@ -2319,13 +2365,15 @@ public sealed partial class WidgetWindow : Window
         }
 
         var storageItems = App.Current.FileService.GetStorageItems(sourcePaths);
+        if (storageItems.Count == 0)
+        {
+            _activeDragSourcePaths = [];
+            _activeDragHasStorageItems = false;
+            return false;
+        }
 
         dataPackage.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
-        dataPackage.SetText(string.Join(Environment.NewLine, sourcePaths));
-        if (storageItems.Count > 0)
-        {
-            dataPackage.SetStorageItems(storageItems, false);
-        }
+        dataPackage.SetStorageItems(storageItems, false);
 
         dataPackage.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
         dataPackage.Properties["DeskBoxSourcePaths"] = sourcePaths;
@@ -2349,7 +2397,7 @@ public sealed partial class WidgetWindow : Window
 
     private async Task HandleItemsKeyDownAsync(KeyRoutedEventArgs e)
     {
-        if (e.Handled)
+        if (e.Handled || _isMigrationBusy)
         {
             return;
         }
@@ -2514,10 +2562,13 @@ public sealed partial class WidgetWindow : Window
         if (!shellClipboardSet)
         {
             var storageItems = await App.Current.FileService.GetStorageItemsAsync(sourcePaths);
-            package.SetText(string.Join(Environment.NewLine, sourcePaths));
             if (storageItems.Count > 0)
             {
                 package.SetStorageItems(storageItems);
+            }
+            else
+            {
+                package.SetText(string.Join(Environment.NewLine, sourcePaths));
             }
 
             package.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
@@ -2862,6 +2913,12 @@ public sealed partial class WidgetWindow : Window
 
     private void RootGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        if (_isMigrationBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.OriginalSource is DependencyObject source && IsWithin(source, TitleBarGrid))
         {
             return;
@@ -2873,6 +2930,12 @@ public sealed partial class WidgetWindow : Window
 
     private void TitleBarGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        if (_isMigrationBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (!ShouldOpenTitleBarFlyout(e.OriginalSource))
         {
             return;
@@ -2895,6 +2958,11 @@ public sealed partial class WidgetWindow : Window
 
     private void WidgetItemSurface_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (_isMigrationBusy)
+        {
+            return;
+        }
+
         if (sender is Border border)
         {
             ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Hover);
@@ -2911,6 +2979,12 @@ public sealed partial class WidgetWindow : Window
 
     private void WidgetItemSurface_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (_isMigrationBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (sender is not Border border || border.DataContext is not WidgetItem item)
         {
             return;
@@ -2976,6 +3050,14 @@ public sealed partial class WidgetWindow : Window
 
     private void WidgetItemSurface_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
+        if (_isMigrationBusy)
+        {
+            args.Cancel = true;
+            _activeDragSourcePaths = [];
+            _activeDragHasStorageItems = false;
+            return;
+        }
+
         if (sender is not Border border || border.DataContext is not WidgetItem item)
         {
             args.Cancel = true;
@@ -3006,6 +3088,15 @@ public sealed partial class WidgetWindow : Window
 
     private void WidgetItemSurface_DragOver(object sender, DragEventArgs e)
     {
+        if (_isMigrationBusy)
+        {
+            e.Handled = true;
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = false;
+            ClearFolderDropTarget();
+            return;
+        }
+
         if (!TryGetFolderDropTarget(sender, out var border, out var targetFolder))
         {
             return;
@@ -3058,6 +3149,13 @@ public sealed partial class WidgetWindow : Window
 
     private async void WidgetItemSurface_Drop(object sender, DragEventArgs e)
     {
+        if (_isMigrationBusy)
+        {
+            e.Handled = true;
+            ClearFolderDropTarget();
+            return;
+        }
+
         if (!TryGetFolderDropTarget(sender, out _, out var targetFolder))
         {
             return;
@@ -3273,7 +3371,7 @@ public sealed partial class WidgetWindow : Window
         TitleEditBox.Text = ViewModel.Name;
     }
 
-    private void CommitRename()
+    private async Task CommitRenameAsync()
     {
         if (TitleEditBox.Visibility != Visibility.Visible)
         {
@@ -3283,7 +3381,17 @@ public sealed partial class WidgetWindow : Window
         string newName = TitleEditBox.Text.Trim();
         if (!string.IsNullOrEmpty(newName))
         {
-            ViewModel.Rename(newName);
+            try
+            {
+                await ViewModel.RenameAsync(newName);
+            }
+            catch (Exception ex)
+            {
+                await ShowErrorDialogAsync(_localizationService.T("Widget.RenameFailed"), ex.Message);
+                TitleEditBox.Focus(FocusState.Programmatic);
+                TitleEditBox.SelectAll();
+                return;
+            }
         }
 
         TitleEditBox.Visibility = Visibility.Collapsed;
@@ -3298,16 +3406,16 @@ public sealed partial class WidgetWindow : Window
         RestoreDesktopLayer();
     }
 
-    private void TitleEditBox_LostFocus(object sender, RoutedEventArgs e)
+    private async void TitleEditBox_LostFocus(object sender, RoutedEventArgs e)
     {
-        CommitRename();
+        await CommitRenameAsync();
     }
 
-    private void TitleEditBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    private async void TitleEditBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == Windows.System.VirtualKey.Enter)
         {
-            CommitRename();
+            await CommitRenameAsync();
             e.Handled = true;
         }
         else if (e.Key == Windows.System.VirtualKey.Escape)
@@ -3319,11 +3427,22 @@ public sealed partial class WidgetWindow : Window
 
     private void AddFileButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_isMigrationBusy)
+        {
+            return;
+        }
+
         ShowFlyoutWithElevation(CreateNewWidgetFlyout(), AddButton);
     }
 
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (_isMigrationBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (ViewModel.IsPositionLocked)
         {
             return;
