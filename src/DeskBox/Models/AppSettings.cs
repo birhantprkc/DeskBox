@@ -28,6 +28,24 @@ public class AppSettings
     /// <summary>Whether DeskBox should launch automatically at Windows startup.</summary>
     public bool AutoStart { get; set; }
 
+    /// <summary>Whether the built-in Quick Capture widget is enabled.</summary>
+    public bool QuickCaptureEnabled { get; set; }
+
+    /// <summary>Whether Quick Capture should record recent clipboard text and links.</summary>
+    public bool QuickCaptureClipboardEnabled { get; set; }
+
+    /// <summary>Whether Quick Capture should record clipboard images.</summary>
+    public bool QuickCaptureImageClipboardEnabled { get; set; } = true;
+
+    /// <summary>Maximum number of recent clipboard text/link entries kept by Quick Capture.</summary>
+    public int QuickCaptureRecentLimit { get; set; } = 30;
+
+    /// <summary>Whether the user has accepted the local clipboard capture notice.</summary>
+    public bool HasConfirmedQuickCaptureClipboardNotice { get; set; }
+
+    /// <summary>Last file widget used as the target for saving Quick Capture content.</summary>
+    public string LastQuickCaptureFileWidgetId { get; set; } = string.Empty;
+
     /// <summary>Whether the global hotkey is enabled.</summary>
     public bool GlobalHotkeyEnabled { get; set; }
 
@@ -134,6 +152,16 @@ public class AppSettings
     /// Smaller values keep labels narrower.
     /// </summary>
     public double FileNameWidthScale { get; set; } = 0.36;
+
+    /// <summary>
+    /// Whether widget item labels should include file extensions.
+    /// </summary>
+    public bool ShowFileExtensions { get; set; }
+
+    /// <summary>
+    /// Whether .lnk shortcuts should keep their extension hidden even when file extensions are shown.
+    /// </summary>
+    public bool HideShortcutExtensionWhenShowingFileExtensions { get; set; } = true;
 
     /// <summary>All configured widgets.</summary>
     public List<WidgetConfig> Widgets { get; set; } = [];
