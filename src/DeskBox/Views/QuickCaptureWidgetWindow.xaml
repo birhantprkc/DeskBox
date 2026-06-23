@@ -415,7 +415,7 @@
                                 <StackPanel
                                     x:Name="ItemContentHost"
                                     Grid.Column="1"
-                                    Margin="0,0,82,0"
+                                    Margin="0,0,28,0"
                                     MinWidth="0"
                                     Spacing="4">
                                     <Border
@@ -567,6 +567,85 @@
                     Padding="8,2"
                     Visibility="Collapsed" />
             </StackPanel>
+        </Border>
+
+        <Border
+            x:Name="EditOverlay"
+            Grid.Row="1"
+            Canvas.ZIndex="20"
+            Margin="10,6,6,8"
+            Padding="10"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Visibility="Collapsed">
+            <Grid RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Name="EditTitleText"
+                        Grid.Column="0"
+                        FontSize="{Binding TextSize}"
+                        FontWeight="SemiBold"
+                        TextTrimming="CharacterEllipsis"
+                        VerticalAlignment="Center" />
+                    <Button
+                        x:Name="EditCloseButton"
+                        Grid.Column="1"
+                        Width="24"
+                        Height="24"
+                        MinWidth="24"
+                        Padding="0"
+                        Click="EditCancelButton_Click"
+                        Style="{StaticResource QuickCaptureIconButtonStyle}">
+                        <FontIcon FontSize="10" Glyph="&#xE711;" />
+                    </Button>
+                </Grid>
+
+                <TextBox
+                    x:Name="EditTextBox"
+                    Grid.Row="1"
+                    AcceptsReturn="True"
+                    BorderThickness="1"
+                    FontSize="{Binding TextSize}"
+                    KeyDown="EditTextBox_KeyDown"
+                    MinHeight="0"
+                    Padding="8,6"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    TextWrapping="Wrap"
+                    VerticalAlignment="Stretch" />
+
+                <StackPanel
+                    Grid.Row="2"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        x:Name="EditCancelButton"
+                        Click="EditCancelButton_Click"
+                        FontSize="{Binding SegmentTextSize}"
+                        MinWidth="58"
+                        Padding="10,3"
+                        Style="{StaticResource QuickCaptureSegmentButtonStyle}" />
+                    <Button
+                        x:Name="EditSaveButton"
+                        Click="EditSaveButton_Click"
+                        FontSize="{Binding SegmentTextSize}"
+                        MinWidth="58"
+                        Padding="10,3"
+                        Style="{StaticResource QuickCaptureSegmentButtonStyle}" />
+                </StackPanel>
+            </Grid>
         </Border>
 
         <Grid

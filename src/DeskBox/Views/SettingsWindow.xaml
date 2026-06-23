@@ -141,6 +141,16 @@
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
 
+            <Style x:Key="CompactTextActionButtonStyle" TargetType="Button">
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="Height" Value="32" />
+                <Setter Property="MinWidth" Value="54" />
+                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+
             <Style x:Key="BreadcrumbButtonStyle" TargetType="Button">
                 <Setter Property="MinWidth" Value="0" />
                 <Setter Property="MinHeight" Value="28" />
@@ -265,6 +275,7 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
+                    x:Name="StorageNavItem"
                     Tag="Storage"
                     svc:Localized.Key="Settings.Nav.Storage">
                     <NavigationViewItem.Icon>
@@ -905,14 +916,85 @@
                                         x:Name="CleanupStorageButton"
                                         Click="CleanupManagedStorageButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        svc:Localized.ToolTipKey="Settings.ManagedPath.CleanupTooltip">
+                                        svc:Localized.ToolTipKey="Settings.ManagedStorage.ManageTooltip">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <SymbolIcon Symbol="Delete" />
-                                            <TextBlock svc:Localized.Key="Common.Cleanup" />
+                                            <SymbolIcon Symbol="Setting" />
+                                            <TextBlock svc:Localized.Key="Settings.ManagedStorage.Manage" />
                                         </StackPanel>
                                     </Button>
                                 </StackPanel>
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel
+                    x:Name="ManagedStorageSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
+                    <StackPanel Spacing="6">
+                        <StackPanel
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <Button
+                                Click="ManagedStorageBreadcrumbBackButton_Click"
+                                Style="{StaticResource BreadcrumbButtonStyle}">
+                                <TextBlock
+                                    FontSize="15"
+                                    FontWeight="SemiBold"
+                                    svc:Localized.Key="Settings.Section.Storage" />
+                            </Button>
+                            <FontIcon
+                                VerticalAlignment="Center"
+                                FontSize="10"
+                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Glyph="&#xE974;" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SectionTitleTextStyle}"
+                                svc:Localized.Key="Settings.ManagedStorage.PageTitle" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ManagedStorage.Description" />
+                    </StackPanel>
+                    <Border Style="{StaticResource SettingsGroupStyle}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.ManagedStorage.ListTitle" />
+                                    <TextBlock
+                                        x:Name="ManagedStorageSummaryText"
+                                        Style="{StaticResource SettingDescriptionTextStyle}" />
+                                </StackPanel>
+                                <Button
+                                    x:Name="ManagedStorageRefreshButton"
+                                    Grid.Column="1"
+                                    Click="RefreshManagedStorageButton_Click"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    svc:Localized.ToolTipKey="Settings.ManagedStorage.RefreshTooltip">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <SymbolIcon Symbol="Refresh" />
+                                        <TextBlock svc:Localized.Key="Common.Refresh" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Border
+                                x:Name="ManagedStorageEmptyState"
+                                Padding="16,18">
+                                <TextBlock
+                                    Style="{StaticResource SettingDescriptionTextStyle}"
+                                    svc:Localized.Key="Settings.ManagedStorage.Empty" />
+                            </Border>
+
+                            <StackPanel x:Name="ManagedStorageFolderList" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

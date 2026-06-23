@@ -15,21 +15,21 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.0.6
+当前版本：1.0.7
 
-- [DeskBox_Setup_1.0.6_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.6/DeskBox_Setup_1.0.6_x64.exe)
+- [DeskBox_Setup_1.0.7_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.7/DeskBox_Setup_1.0.7_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
-## 1.0.6 更新
+## 1.0.7 更新
 
-- 新增随记功能格子：可本地保存文本、链接、截图和最近复制内容，功能可关闭。
-- 优化随记使用流程：记录、固定、最近三个视图，支持悬停操作、当前视图搜索、拖出内容和保存到文件格子。
-- 优化上传友好入口：补充收纳路径入口、快速访问固定、映射文件夹快捷方式和托盘打开收纳目录。
-- 优化拖拽与剪贴板行为：文件拖拽优先保持文件格式，文本单独处理，并避免 DeskBox 自己写入剪贴板的内容污染最近记录。
-- 优化窗口层级、格子刷新、新手引导缩放、自定义图标、文件后缀显示、迁移反馈和随记小窗口弹窗布局。
+- 优化托盘和全局快捷键行为，让文件格子和随记统一置顶、隐藏和恢复。
+- 优化全屏应用与快捷键处理，格子被外部应用遮挡时可再次 F7 直接置顶，并增加快捷键钩子兜底。
+- 优化格子动画，改为线性节奏、更短默认时长，并按整组位置计算滑出屏幕距离。
+- 优化随记布局、悬浮按钮、Tab 切换、单击复制、双击打开、图片预览和长文本内联编辑。
+- 新增孤立收纳文件夹管理，并增强重名保护、异常恢复、映射文件夹改名同步、图标刷新和文件名显示。
 
-完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.0.6.md](docs/releases/v1.0.6.md) 中的中英文发布文案。
+完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.0.7.md](docs/releases/v1.0.7.md) 中的中英文发布文案。
 
 ## 为什么做这个产品
 
@@ -117,7 +117,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.0.6_x64.exe
+Output\DeskBox_Setup_1.0.7_x64.exe
 ```
 
 ## 项目结构

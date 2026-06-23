@@ -40,8 +40,9 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private const int MinWidth = (int)SettingsService.MinWidgetWidth;
     private const int MinHeight = (int)SettingsService.MinWidgetHeight;
-    private const int WidgetShowAnimationMs = 260;
-    private const double WidgetSlideOffsetX = 36.0;
+    private const int WidgetShowAnimationMs = 240;
+    private const double MinWidgetSlideOffset = 1.0;
+    private const double OffscreenSlidePadding = 16.0;
     private const float WidgetAnimationRestingOpacity = 1.0f;
     private const float WidgetAnimationSoftOpacity = 0.0f;
     private const float WidgetAnimationRestingScale = 1.0f;
@@ -56,6 +57,11 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private const int InlineCopyToastMs = 900;
     private const int StatusToastDefaultMs = 1400;
     private const int StatusToastUndoMs = 4200;
+    private static readonly string QuickCaptureTextPreviewDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "DeskBox",
+        "QuickCapture",
+        "Preview");
 
     private readonly SettingsService _settingsService;
     private readonly LocalizationService _localizationService;
@@ -82,7 +88,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private bool _isNativeBackdropSuppressedForTrayReveal;
     private bool _isTrayWindowOpacityApplied;
     private long _trayAnimationGeneration;
+    private double? _trayAnimationOffsetOverrideX;
+    private double? _trayAnimationOffsetOverrideY;
     private bool _isApplyingTrayAnimationBounds;
+    private QuickCaptureItemViewModel? _editingItem;
     private long _backdropRefreshGeneration;
     private long _statusToastGeneration;
     private long _inlineCopyToastGeneration;
@@ -91,6 +100,12 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     public QuickCaptureWidgetViewModel ViewModel { get; }
 
     public IntPtr WindowHandle => _hWnd;
+
+    public Windows.Foundation.Rect AnimationBounds => new(
+        ViewModel.Config.X,
+        ViewModel.Config.Y,
+        Math.Max(MinWidgetSlideOffset, ViewModel.Config.Width),
+        Math.Max(MinWidgetSlideOffset, ViewModel.Config.Height));
 
     private bool _isVisibleOnDesktop;
     public new bool Visible
@@ -154,6 +169,12 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         QueueBackdropRefresh();
         PushToBottom();
+    }
+
+    public void SetTrayAnimationOffsetOverride(double? offsetX, double? offsetY)
+    {
+        _trayAnimationOffsetOverrideX = offsetX;
+        _trayAnimationOffsetOverrideY = offsetY;
     }
 
     public void ShowPreparedRaisedFromTray(bool persistVisibility = true)
@@ -231,6 +252,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _trayAnimationGeneration++;
         LogTrayWindow($"CompleteShowWithoutAnimation gen={_trayAnimationGeneration}");
         StopTrayVisualAnimation();
+        SetTrayAnimationOffsetOverride(null, null);
         RestoreNativeBackdropAfterTrayReveal();
         RestoreTrayVisualState();
         RestoreTrayWindowPosition();
@@ -462,6 +484,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         ToolTipService.SetToolTip(CloseSearchButton, closeSearchText);
         ToolTipService.SetToolTip(MoreButton, moreText);
         ToolTipService.SetToolTip(CloseButton, closeText);
+        ToolTipService.SetToolTip(EditCloseButton, _localizationService.T("Common.Cancel"));
         AutomationProperties.SetName(InputTextBox, _localizationService.T("QuickCapture.InputPlaceholder"));
         AutomationProperties.SetName(AddInputButton, addInputText);
         AutomationProperties.SetName(SearchButton, searchText);
@@ -469,6 +492,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         AutomationProperties.SetName(CloseSearchButton, closeSearchText);
         AutomationProperties.SetName(MoreButton, moreText);
         AutomationProperties.SetName(CloseButton, closeText);
+        AutomationProperties.SetName(EditCloseButton, _localizationService.T("Common.Cancel"));
+        EditTitleText.Text = _localizationService.T("QuickCapture.Edit");
+        EditCancelButton.Content = _localizationService.T("Common.Cancel");
+        EditSaveButton.Content = _localizationService.T("Common.Save");
     }
 
     private void OnLanguageChanged()
@@ -653,16 +680,29 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             return;
         }
 
+        await OpenItemInDefaultAppAsync(item);
+    }
+
+    private async Task OpenItemInDefaultAppAsync(QuickCaptureItemViewModel item)
+    {
         if (item.Type == QuickCaptureItemType.Image)
         {
             await OpenImageInDefaultViewerAsync(item);
             return;
         }
 
-        if (!item.IsRecent)
+        if (item.Type == QuickCaptureItemType.Link &&
+            Uri.TryCreate(item.Url ?? item.Body, UriKind.Absolute, out var uri))
         {
-            await EditItemAsync(item);
+            if (!await Launcher.LaunchUriAsync(uri))
+            {
+                ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+            }
+
+            return;
         }
+
+        await OpenTextInDefaultEditorAsync(item);
     }
 
     private async Task OpenImageInDefaultViewerAsync(QuickCaptureItemViewModel item)
@@ -688,6 +728,63 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             App.Log($"[QuickCaptureWidget] Failed to open image preview: {ex}");
             ShowStatusToast(_localizationService.T("QuickCapture.OpenImageFailed"));
         }
+    }
+
+    private async Task OpenTextInDefaultEditorAsync(QuickCaptureItemViewModel item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Body))
+        {
+            ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(QuickCaptureTextPreviewDirectory);
+            string fileName = BuildQuickCapturePreviewFileName(item);
+            string previewPath = Path.Combine(QuickCaptureTextPreviewDirectory, fileName);
+            await File.WriteAllTextAsync(previewPath, item.Body);
+
+            var file = await StorageFile.GetFileFromPathAsync(previewPath);
+            if (!await Launcher.LaunchFileAsync(file))
+            {
+                ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCaptureWidget] Failed to open text preview: {ex}");
+            ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+        }
+    }
+
+    private static string BuildQuickCapturePreviewFileName(QuickCaptureItemViewModel item)
+    {
+        string stem = item.Body
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault() ?? "Quick Capture";
+        stem = SanitizeQuickCapturePreviewFileName(stem);
+        if (string.IsNullOrWhiteSpace(stem))
+        {
+            stem = "Quick Capture";
+        }
+
+        if (stem.Length > 42)
+        {
+            stem = stem[..42].Trim();
+        }
+
+        return $"{stem}-{item.Id[..Math.Min(8, item.Id.Length)]}.txt";
+    }
+
+    private static string SanitizeQuickCapturePreviewFileName(string fileName)
+    {
+        foreach (char invalidChar in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(invalidChar, ' ');
+        }
+
+        return string.Join(" ", fileName.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Trim();
     }
 
     private async void ItemsListView_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -1304,42 +1401,73 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             : _localizationService.T("QuickCapture.SavedToFileWidget"));
     }
 
-    private async Task EditItemAsync(QuickCaptureItemViewModel item)
+    private Task EditItemAsync(QuickCaptureItemViewModel item)
     {
-        if (RootGrid.XamlRoot is null)
+        if (item.Type == QuickCaptureItemType.Image)
         {
+            return Task.CompletedTask;
+        }
+
+        _editingItem = item;
+        EditTextBox.Text = item.Body;
+        EditOverlay.Visibility = Visibility.Visible;
+        EditTextBox.Focus(FocusState.Programmatic);
+        EditTextBox.Select(EditTextBox.Text.Length, 0);
+        return Task.CompletedTask;
+    }
+
+    private async void EditSaveButton_Click(object sender, RoutedEventArgs e)
+    {
+        await SaveInlineEditAsync();
+    }
+
+    private void EditCancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        CloseInlineEdit();
+    }
+
+    private async void EditTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            CloseInlineEdit();
+            e.Handled = true;
             return;
         }
 
-        double dialogWidth = GetQuickCaptureDialogWidth();
-        double contentWidth = Math.Max(120, dialogWidth - 32);
-        var textBox = new TextBox
+        if (e.Key == Windows.System.VirtualKey.Enter &&
+            Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
         {
-            Text = item.Body,
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            Width = contentWidth,
-            MinWidth = 0,
-            MinHeight = 104,
-            MaxHeight = 220,
-            Padding = new Thickness(8, 6, 8, 6)
-        };
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = RootGrid.XamlRoot,
-            Title = _localizationService.T("QuickCapture.Edit"),
-            PrimaryButtonText = _localizationService.T("Common.Ok"),
-            CloseButtonText = _localizationService.T("Common.Cancel"),
-            DefaultButton = ContentDialogButton.Primary,
-            Content = textBox
-        };
-        ApplyQuickCaptureDialogSizing(dialog, dialogWidth);
-
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-        {
-            await ViewModel.EditItemAsync(item, textBox.Text);
+            await SaveInlineEditAsync();
+            e.Handled = true;
         }
+    }
+
+    private async Task SaveInlineEditAsync()
+    {
+        if (_editingItem is not { } item)
+        {
+            CloseInlineEdit();
+            return;
+        }
+
+        string body = EditTextBox.Text;
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            ShowStatusToast(_localizationService.T("QuickCapture.EmptyEdit"));
+            return;
+        }
+
+        await ViewModel.EditItemAsync(item, body);
+        CloseInlineEdit();
+    }
+
+    private void CloseInlineEdit()
+    {
+        _editingItem = null;
+        EditOverlay.Visibility = Visibility.Collapsed;
+        EditTextBox.Text = string.Empty;
+        RootGrid.Focus(FocusState.Programmatic);
     }
 
     private async Task ConfirmClearDataAsync()
@@ -2365,6 +2493,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         TitleIcon.Foreground = new SolidColorBrush(iconForeground);
         EmptyStateIcon.Foreground = new SolidColorBrush(secondaryForeground);
         ApplySearchVisualStyle(isDark, accentColor);
+        ApplyEditOverlayStyle(isDark, accentColor);
         ApplyTabSelectionIndicatorStyle(isDark, accentColor);
         ApplyItemActionButtonStyleToVisibleItems(isDark, accentColor);
         ApplyTabButtonStyle(RecordsTabButton, ViewModel.IsRecordsView, isDark, accentColor);
@@ -2412,6 +2541,51 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         SearchTextBox.Background = new SolidColorBrush(WithAlpha(background, isDark ? (byte)0xE8 : (byte)0xF6));
         SearchTextBox.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0xCC : (byte)0xAA));
+    }
+
+    private void ApplyEditOverlayStyle(bool isDark, Windows.UI.Color accentColor)
+    {
+        var overlayBackground = BuildAccentSurfaceColor(
+            isDark,
+            accentColor,
+            isDark
+                ? ColorHelper.FromArgb(0xFF, 0x1F, 0x23, 0x29)
+                : ColorHelper.FromArgb(0xFF, 0xFB, 0xFD, 0xFF),
+            accentMix: isDark ? 0.20 : 0.10,
+            overlayMix: isDark ? 0.06 : 0.02);
+        var inputBackground = BuildAccentSurfaceColor(
+            isDark,
+            accentColor,
+            isDark
+                ? ColorHelper.FromArgb(0xFF, 0x16, 0x19, 0x1E)
+                : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
+            accentMix: isDark ? 0.10 : 0.04,
+            overlayMix: isDark ? 0.03 : 0.0);
+
+        EditOverlay.Background = new SolidColorBrush(WithAlpha(overlayBackground, isDark ? (byte)0xFA : (byte)0xFE));
+        EditOverlay.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0xB8 : (byte)0x92));
+        EditOverlay.BorderThickness = new Thickness(1.2);
+        EditOverlay.Translation = new Vector3(0, 0, 16);
+
+        EditTextBox.Background = new SolidColorBrush(WithAlpha(inputBackground, isDark ? (byte)0xFF : (byte)0xFE));
+        EditTextBox.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x7E : (byte)0x66));
+        EditTextBox.Foreground = GetBrushResourceOrFallback(
+            "TextFillColorPrimaryBrush",
+            isDark ? Colors.White : Colors.Black);
+
+        var buttonBackground = new SolidColorBrush(WithAlpha(
+            BuildAccentSurfaceColor(
+                isDark,
+                accentColor,
+                isDark ? ColorHelper.FromArgb(0xFF, 0x27, 0x2B, 0x32) : ColorHelper.FromArgb(0xFF, 0xF7, 0xFA, 0xFF),
+                accentMix: isDark ? 0.24 : 0.16,
+                overlayMix: isDark ? 0.04 : 0.02),
+            0xFF));
+        var buttonBorder = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x92 : (byte)0x76));
+        EditCancelButton.Background = buttonBackground;
+        EditCancelButton.BorderBrush = buttonBorder;
+        EditSaveButton.Background = buttonBackground;
+        EditSaveButton.BorderBrush = buttonBorder;
     }
 
     private void ApplyItemActionButtonStyleToVisibleItems(bool isDark, Windows.UI.Color accentColor)
@@ -2939,7 +3113,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             $"windowOffset=({fromOffsetX:F0},{fromOffsetY:F0})->({toOffsetX:F0},{toOffsetY:F0}) " +
             $"windowOpacity={fromOpacity:F2}->{toOpacity:F2}");
         StopTrayVisualAnimation();
-        PrepareTrayVisualState(fromOffsetX, fromOffsetY, fromOpacity, WidgetAnimationRestingScale);
+        PrepareTrayVisualState(fromOffsetX, fromOffsetY, fromOpacity, fromScale);
 
         if (durationMs <= 1)
         {
@@ -3090,6 +3264,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         ApplyTrayWindowOffset(finalOffsetX, finalOffsetY);
         ApplyTrayWindowOpacity(finalOpacity);
         ApplyTrayVisualScale(finalScale);
+        SetTrayAnimationOffsetOverride(null, null);
         LogTrayWindow($"AnimateCompleted mode={(isShowing ? "show" : "hide")} gen={animationGeneration}");
         if (isShowing)
         {
@@ -3152,10 +3327,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private static double EaseTrayWindowAnimation(double progress, bool isShowing)
     {
-        progress = Math.Clamp(progress, 0.0, 1.0);
-        return isShowing
-            ? Math.Sin(progress * Math.PI / 2.0)
-            : 1.0 - Math.Cos(progress * Math.PI / 2.0);
+        return Math.Clamp(progress, 0.0, 1.0);
     }
 
     private void SuppressNativeBackdropForTrayReveal()
@@ -3201,18 +3373,47 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     {
         string effect = _settingsService.Settings.WidgetAnimationEffect;
         int durationMs = GetWidgetAnimationDurationMs(_settingsService.Settings.WidgetAnimationSpeed);
+        var slideOffsets = GetOffscreenSlideOffsets();
 
         return effect switch
         {
             SettingsService.WidgetAnimationEffectNone => new WidgetAnimationProfile(0, 0, 0, 0, 1, 1, 1, 1, 1, false),
             SettingsService.WidgetAnimationEffectFade => new WidgetAnimationProfile(0, 0, 0, 0, 0, 0, 1, 1, durationMs, true),
-            SettingsService.WidgetAnimationEffectSlideLeft => new WidgetAnimationProfile(-WidgetSlideOffsetX, 0, -WidgetSlideOffsetX, 0, 1, 1, 1, 1, durationMs, true),
-            SettingsService.WidgetAnimationEffectSlideUp => new WidgetAnimationProfile(0, -WidgetSlideOffsetX, 0, -WidgetSlideOffsetX, 1, 1, 1, 1, durationMs, true),
-            SettingsService.WidgetAnimationEffectSlideDown => new WidgetAnimationProfile(0, WidgetSlideOffsetX, 0, WidgetSlideOffsetX, 1, 1, 1, 1, durationMs, true),
+            SettingsService.WidgetAnimationEffectSlideLeft => new WidgetAnimationProfile(-slideOffsets.Left, 0, -slideOffsets.Left, 0, 1, 1, 1, 1, durationMs, true),
+            SettingsService.WidgetAnimationEffectSlideUp => new WidgetAnimationProfile(0, -slideOffsets.Up, 0, -slideOffsets.Up, 1, 1, 1, 1, durationMs, true),
+            SettingsService.WidgetAnimationEffectSlideDown => new WidgetAnimationProfile(0, slideOffsets.Down, 0, slideOffsets.Down, 1, 1, 1, 1, durationMs, true),
             SettingsService.WidgetAnimationEffectScaleFade => new WidgetAnimationProfile(0, 0, 0, 0, WidgetAnimationSoftOpacity, WidgetAnimationSoftOpacity, WidgetAnimationSoftScale, WidgetAnimationSoftScale, durationMs, true),
-            SettingsService.WidgetAnimationEffectSlideRight => new WidgetAnimationProfile(WidgetSlideOffsetX, 0, WidgetSlideOffsetX, 0, 1, 1, 1, 1, durationMs, true),
-            _ => new WidgetAnimationProfile(WidgetSlideOffsetX, 0, WidgetSlideOffsetX, 0, WidgetAnimationSoftOpacity, WidgetAnimationSoftOpacity, WidgetAnimationSoftScale, WidgetAnimationSoftScale, durationMs, true)
+            SettingsService.WidgetAnimationEffectSlideRight => new WidgetAnimationProfile(slideOffsets.Right, 0, slideOffsets.Right, 0, 1, 1, 1, 1, durationMs, true),
+            _ => new WidgetAnimationProfile(slideOffsets.Right, 0, slideOffsets.Right, 0, 1, 1, 1, 1, durationMs, true)
         };
+    }
+
+    private (double Left, double Right, double Up, double Down) GetOffscreenSlideOffsets()
+    {
+        if (_trayAnimationOffsetOverrideX.HasValue ||
+            _trayAnimationOffsetOverrideY.HasValue)
+        {
+            double horizontal = Math.Abs(_trayAnimationOffsetOverrideX.GetValueOrDefault());
+            double vertical = Math.Abs(_trayAnimationOffsetOverrideY.GetValueOrDefault());
+            return (
+                horizontal > 0 ? horizontal : MinWidgetSlideOffset,
+                horizontal > 0 ? horizontal : MinWidgetSlideOffset,
+                vertical > 0 ? vertical : MinWidgetSlideOffset,
+                vertical > 0 ? vertical : MinWidgetSlideOffset);
+        }
+
+        var windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
+        var workArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
+        double x = ViewModel.Config.X;
+        double y = ViewModel.Config.Y;
+        double width = Math.Max(MinWidgetSlideOffset, ViewModel.Config.Width);
+        double height = Math.Max(MinWidgetSlideOffset, ViewModel.Config.Height);
+
+        double left = Math.Max(MinWidgetSlideOffset, (x + width) - workArea.X + OffscreenSlidePadding);
+        double right = Math.Max(MinWidgetSlideOffset, (workArea.X + workArea.Width) - x + OffscreenSlidePadding);
+        double up = Math.Max(MinWidgetSlideOffset, (y + height) - workArea.Y + OffscreenSlidePadding);
+        double down = Math.Max(MinWidgetSlideOffset, (workArea.Y + workArea.Height) - y + OffscreenSlidePadding);
+        return (left, right, up, down);
     }
 
     private static int GetWidgetAnimationDurationMs(string speed)

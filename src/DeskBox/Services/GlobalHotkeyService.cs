@@ -20,10 +20,13 @@ public sealed class GlobalHotkeyService : IDisposable
     private readonly LocalizationService _localizationService;
     private readonly Func<Task> _invokeAsync;
     private readonly Win32Helper.SubclassProc _subclassProc;
+    private readonly Win32Helper.LowLevelKeyboardProc _keyboardHookProc;
     private IntPtr _windowHandle;
+    private IntPtr _keyboardHookHandle;
     private bool _isSubclassInstalled;
     private bool _isRegistered;
     private bool _isInvoking;
+    private DateTime _lastHookInvocationUtc = DateTime.MinValue;
 
     public GlobalHotkeyService(
         SettingsService settingsService,
@@ -34,6 +37,7 @@ public sealed class GlobalHotkeyService : IDisposable
         _localizationService = localizationService;
         _invokeAsync = invokeAsync;
         _subclassProc = WindowSubclassProc;
+        _keyboardHookProc = KeyboardHookProc;
     }
 
     public event Action? RegistrationChanged;
@@ -70,6 +74,7 @@ public sealed class GlobalHotkeyService : IDisposable
 
         _isSubclassInstalled = false;
         _windowHandle = IntPtr.Zero;
+        UninstallKeyboardHook();
     }
 
     public void RefreshRegistration()
@@ -79,6 +84,7 @@ public sealed class GlobalHotkeyService : IDisposable
 
         if (_windowHandle == IntPtr.Zero || !_settingsService.Settings.GlobalHotkeyEnabled)
         {
+            UninstallKeyboardHook();
             NotifyRegistrationChanged();
             return;
         }
@@ -86,18 +92,22 @@ public sealed class GlobalHotkeyService : IDisposable
         var gesture = CurrentGesture;
         if (!IsValidGesture(gesture))
         {
+            UninstallKeyboardHook();
             LastError = _localizationService.T("Settings.GlobalHotkey.Status.Invalid");
             NotifyRegistrationChanged();
             return;
         }
 
+        InstallKeyboardHook();
         if (Register(_windowHandle, MainHotkeyId, gesture))
         {
             _isRegistered = true;
+            App.Log($"[GlobalHotkey] Registered gesture={CurrentGestureText} hwnd=0x{_windowHandle.ToInt64():X}");
             NotifyRegistrationChanged();
             return;
         }
 
+        App.Log($"[GlobalHotkey] RegisterHotKey failed gesture={CurrentGestureText} error={Marshal.GetLastWin32Error()}; hookFallback=active");
         LastError = _localizationService.T("Settings.GlobalHotkey.Status.Conflict");
         NotifyRegistrationChanged();
     }
@@ -152,6 +162,39 @@ public sealed class GlobalHotkeyService : IDisposable
     public void Dispose()
     {
         Detach();
+    }
+
+    private void InstallKeyboardHook()
+    {
+        if (_keyboardHookHandle != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _keyboardHookHandle = Win32Helper.SetWindowsHookEx(
+            Win32Helper.WH_KEYBOARD_LL,
+            _keyboardHookProc,
+            Win32Helper.GetModuleHandle(null),
+            0);
+        if (_keyboardHookHandle == IntPtr.Zero)
+        {
+            App.Log($"[GlobalHotkey] Failed to install low-level keyboard hook error={Marshal.GetLastWin32Error()}");
+            return;
+        }
+
+        App.Log("[GlobalHotkey] Low-level keyboard hook installed");
+    }
+
+    private void UninstallKeyboardHook()
+    {
+        if (_keyboardHookHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        Win32Helper.UnhookWindowsHookEx(_keyboardHookHandle);
+        _keyboardHookHandle = IntPtr.Zero;
+        App.Log("[GlobalHotkey] Low-level keyboard hook removed");
     }
 
     public static GlobalHotkeyGesture NormalizeGesture(int modifiers, int virtualKey)
@@ -226,7 +269,7 @@ public sealed class GlobalHotkeyService : IDisposable
         {
             App.UiDispatcherQueue.TryEnqueue(() =>
             {
-                _ = InvokeHotkeyAsync();
+                _ = InvokeHotkeyAsync("registered");
             });
             return IntPtr.Zero;
         }
@@ -234,7 +277,37 @@ public sealed class GlobalHotkeyService : IDisposable
         return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
     }
 
-    private async Task InvokeHotkeyAsync()
+    private IntPtr KeyboardHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode < 0 ||
+            !_settingsService.Settings.GlobalHotkeyEnabled ||
+            (wParam != Win32Helper.WM_KEYDOWN && wParam != Win32Helper.WM_SYSKEYDOWN))
+        {
+            return Win32Helper.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
+        }
+
+        var data = Marshal.PtrToStructure<Win32Helper.KBDLLHOOKSTRUCT>(lParam);
+        var gesture = CurrentGesture;
+        if (data.vkCode != (uint)gesture.VirtualKey ||
+            !AreCurrentModifiersPressed(gesture.Modifiers))
+        {
+            return Win32Helper.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
+        }
+
+        if ((DateTime.UtcNow - _lastHookInvocationUtc) < TimeSpan.FromMilliseconds(240))
+        {
+            return (IntPtr)1;
+        }
+
+        _lastHookInvocationUtc = DateTime.UtcNow;
+        App.UiDispatcherQueue.TryEnqueue(() =>
+        {
+            _ = InvokeHotkeyAsync("hook");
+        });
+        return (IntPtr)1;
+    }
+
+    private async Task InvokeHotkeyAsync(string source)
     {
         if (_isInvoking)
         {
@@ -243,7 +316,7 @@ public sealed class GlobalHotkeyService : IDisposable
         }
 
         _isInvoking = true;
-        App.Log($"[GlobalHotkey] Triggered gesture={CurrentGestureText}");
+        App.Log($"[GlobalHotkey] Triggered source={source} gesture={CurrentGestureText}");
         try
         {
             await _invokeAsync();
@@ -263,6 +336,7 @@ public sealed class GlobalHotkeyService : IDisposable
         if (_isRegistered && _windowHandle != IntPtr.Zero)
         {
             Win32Helper.UnregisterHotKey(_windowHandle, MainHotkeyId);
+            App.Log($"[GlobalHotkey] Unregistered gesture={CurrentGestureText}");
         }
 
         _isRegistered = false;
@@ -313,6 +387,23 @@ public sealed class GlobalHotkeyService : IDisposable
         }
 
         return value;
+    }
+
+    private static bool AreCurrentModifiersPressed(HotkeyModifierKeys modifiers)
+    {
+        bool ctrl = Win32Helper.IsKeyDown((int)VirtualKey.Control) ||
+                    Win32Helper.IsKeyDown((int)VirtualKey.LeftControl) ||
+                    Win32Helper.IsKeyDown((int)VirtualKey.RightControl);
+        bool alt = Win32Helper.IsKeyDown((int)VirtualKey.Menu) ||
+                   Win32Helper.IsKeyDown((int)VirtualKey.LeftMenu) ||
+                   Win32Helper.IsKeyDown((int)VirtualKey.RightMenu);
+        bool shift = Win32Helper.IsKeyDown((int)VirtualKey.Shift) ||
+                     Win32Helper.IsKeyDown((int)VirtualKey.LeftShift) ||
+                     Win32Helper.IsKeyDown((int)VirtualKey.RightShift);
+
+        return ctrl == modifiers.HasFlag(HotkeyModifierKeys.Control) &&
+               alt == modifiers.HasFlag(HotkeyModifierKeys.Alt) &&
+               shift == modifiers.HasFlag(HotkeyModifierKeys.Shift);
     }
 
     private static bool IsAllowedPrimaryKey(int virtualKey)

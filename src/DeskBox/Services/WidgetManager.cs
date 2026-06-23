@@ -33,7 +33,9 @@ internal interface IDesktopWidgetWindow
 {
     IntPtr WindowHandle { get; }
     bool Visible { get; }
+    Windows.Foundation.Rect AnimationBounds { get; }
     void ApplyAppearancePreview();
+    void SetTrayAnimationOffsetOverride(double? offsetX, double? offsetY);
     void PrepareTrayShowAnimation();
     void ShowPreparedAtDesktopLayer(bool persistVisibility = true);
     void ShowPreparedRaisedFromTray(bool persistVisibility = true);
@@ -67,7 +69,10 @@ public sealed class WidgetManager
     private readonly HashSet<string> _deletedWidgetIds = [];
     private readonly List<WidgetWindow> _retiredWindows = [];
     private readonly SemaphoreSlim _widgetRenameGate = new(1, 1);
+    private const double OffscreenAnimationPadding = 16.0;
     private DispatcherQueueTimer? _trayLayerRestoreTimer;
+    private readonly Win32Helper.LowLevelMouseProc _mouseHookProc;
+    private IntPtr _mouseHookHandle;
     private bool _widgetsRaisedFromTray;
     private bool _isTogglingWidgetsDesktopLayer;
     private bool _isApplyingAppearancePreview;
@@ -80,10 +85,41 @@ public sealed class WidgetManager
     public IReadOnlyDictionary<string, (QuickCaptureWidgetWindow Window, QuickCaptureWidgetViewModel ViewModel)> QuickCaptureWidgets => _quickCaptureWidgets;
 
     public bool WidgetsRaisedFromTray => _widgetsRaisedFromTray;
+    public bool HasVisibleWidgets => _widgets.Values.Any(entry => entry.Window.Visible) ||
+                                     _quickCaptureWidgets.Values.Any(entry => entry.Window.Visible);
 
     public event Action<WidgetWindow>? WidgetCreated;
     public event Action<string>? WidgetRemoved;
     public event Action<bool>? TrayLayerStateChanged;
+
+    public bool ShouldHideWidgetsForTrayToggle()
+    {
+        if (_widgetsRaisedFromTray)
+        {
+            App.LogVerbose("[TrayBatch] ToggleDecision=hide reason=raised-session");
+            return true;
+        }
+
+        if (!HasVisibleWidgets)
+        {
+            App.LogVerbose("[TrayBatch] ToggleDecision=raise reason=no-visible-windows");
+            return false;
+        }
+
+        IntPtr foregroundWindow = Win32Helper.GetForegroundWindow();
+        if (IsDeskBoxForegroundWindow(foregroundWindow) ||
+            IsDesktopShellWindow(foregroundWindow) ||
+            IsTaskbarWindow(foregroundWindow))
+        {
+            App.LogVerbose(
+                $"[TrayBatch] ToggleDecision=hide reason=foreground-local hwnd=0x{foregroundWindow.ToInt64():X}");
+            return true;
+        }
+
+        App.LogVerbose(
+            $"[TrayBatch] ToggleDecision=raise reason=visible-covered-by-external hwnd=0x{foregroundWindow.ToInt64():X}");
+        return false;
+    }
 
     public WidgetManager(
         SettingsService settingsService,
@@ -140,6 +176,7 @@ public sealed class WidgetManager
         _themeService = themeService;
         _quickCaptureService = quickCaptureService;
         _localizationService = localizationService ?? new LocalizationService(settingsService);
+        _mouseHookProc = TrayLayerMouseHookProc;
         _desktopPathProvider = desktopPathProvider;
         _recycleManagedFolderDeletes = recycleManagedFolderDeletes;
         _lastQuickCaptureEnabled = _settingsService.Settings.QuickCaptureEnabled;
@@ -504,7 +541,7 @@ public sealed class WidgetManager
             {
                 try
                 {
-                    var window = await PrepareWidgetForBatchShowAsync(widget);
+                    var window = await PrepareWidgetForBatchShowAsync(widget, showRaisedWhileInitializing: true);
                     if (window is null)
                     {
                         continue;
@@ -519,12 +556,25 @@ public sealed class WidgetManager
             }
 
             App.LogVerbose($"[TrayBatch] Raise prepared={windowsToRaise.Count}/{candidates.Count}");
+            var windowsToAnimate = windowsToRaise
+                .Where(window => !window.Visible)
+                .ToList();
+            PrepareTrayShowAnimations(windowsToAnimate);
+
             var shownWindows = new List<IDesktopWidgetWindow>();
             foreach (var window in windowsToRaise)
             {
                 try
                 {
-                    window.ShowPreparedRaisedFromTray(persistVisibility: false);
+                    if (window.Visible)
+                    {
+                        window.EnsureRaisedFromTrayTopMost();
+                    }
+                    else
+                    {
+                        window.ShowPreparedRaisedFromTray(persistVisibility: false);
+                    }
+
                     shownWindows.Add(window);
                 }
                 catch (Exception ex)
@@ -533,9 +583,9 @@ public sealed class WidgetManager
                 }
             }
 
-            _suppressTrayLayerRestoreUntilUtc = DateTime.UtcNow.AddMilliseconds(500);
-            PlayPreparedTrayShowAnimations(shownWindows);
-            ActivateLastRaisedWindow(shownWindows);
+            _ = Win32Helper.HasMouseButtonActivity();
+            _suppressTrayLayerRestoreUntilUtc = DateTime.UtcNow.AddMilliseconds(160);
+            PlayPreparedTrayShowAnimations(windowsToAnimate);
             SetWidgetsRaisedFromTray(shownWindows.Count > 0);
             QueueTrayRaiseTopMostConfirmation(shownWindows);
             StartTrayLayerRestoreMonitor(shownWindows.Count > 0);
@@ -573,7 +623,7 @@ public sealed class WidgetManager
             {
                 try
                 {
-                    var window = await PrepareWidgetForBatchShowAsync(widget);
+                    var window = await PrepareWidgetForBatchShowAsync(widget, showRaisedWhileInitializing: true);
                     if (window is null)
                     {
                         continue;
@@ -588,11 +638,22 @@ public sealed class WidgetManager
             }
 
             App.LogVerbose($"[TrayBatch] SetAllVisible preparedShow={windowsToShow.Count}/{candidates.Count}");
+            var windowsToAnimate = windowsToShow
+                .Where(window => !window.Visible)
+                .ToList();
+            PrepareTrayShowAnimations(windowsToAnimate);
+
             var shownWindows = new List<IDesktopWidgetWindow>();
             foreach (var window in windowsToShow)
             {
                 try
                 {
+                    if (window.Visible)
+                    {
+                        shownWindows.Add(window);
+                        continue;
+                    }
+
                     window.ShowPreparedAtDesktopLayer(persistVisibility: false);
                     shownWindows.Add(window);
                 }
@@ -602,7 +663,7 @@ public sealed class WidgetManager
                 }
             }
 
-            PlayPreparedTrayShowAnimations(shownWindows);
+            PlayPreparedTrayShowAnimations(windowsToAnimate);
             SaveBatchVisibilityState();
             App.LogVerbose($"[TrayBatch] SetAllVisible completed visible=true prepared={windowsToShow.Count} shown={shownWindows.Count}");
             return;
@@ -612,7 +673,9 @@ public sealed class WidgetManager
             .Select(entry => entry.Window)
             .Cast<IDesktopWidgetWindow>()
             .Concat(_quickCaptureWidgets.Values.Select(entry => (IDesktopWidgetWindow)entry.Window))
+            .Where(window => window.Visible)
             .ToList();
+        ApplyTrayAnimationGroupOffset(hideCandidates);
         var windowsToHide = new List<IDesktopWidgetWindow>();
         foreach (var window in hideCandidates)
         {
@@ -815,7 +878,10 @@ public sealed class WidgetManager
             if (_quickCaptureWidgets.TryGetValue(config.Id, out var existingQuickCapture))
             {
                 App.LogVerbose($"[TrayBatch] Prepare useLoaded widget={FormatWidget(config)} hwnd=0x{existingQuickCapture.Window.WindowHandle.ToInt64():X}");
-                existingQuickCapture.Window.PrepareTrayShowAnimation();
+                if (!existingQuickCapture.Window.Visible)
+                {
+                    existingQuickCapture.Window.PrepareTrayShowAnimation();
+                }
                 return existingQuickCapture.Window;
             }
 
@@ -836,7 +902,10 @@ public sealed class WidgetManager
         if (_widgets.TryGetValue(config.Id, out var existing))
         {
             App.LogVerbose($"[TrayBatch] Prepare useLoaded widget={FormatWidget(config)} hwnd=0x{existing.Window.WindowHandle.ToInt64():X}");
-            existing.Window.PrepareTrayShowAnimation();
+            if (!existing.Window.Visible)
+            {
+                existing.Window.PrepareTrayShowAnimation();
+            }
             return existing.Window;
         }
 
@@ -850,6 +919,7 @@ public sealed class WidgetManager
 
     private void PlayPreparedTrayShowAnimations(IReadOnlyList<IDesktopWidgetWindow> windows)
     {
+        ApplyTrayAnimationGroupOffset(windows);
         foreach (var window in windows)
         {
             try
@@ -863,8 +933,25 @@ public sealed class WidgetManager
         }
     }
 
+    private void PrepareTrayShowAnimations(IReadOnlyList<IDesktopWidgetWindow> windows)
+    {
+        ApplyTrayAnimationGroupOffset(windows);
+        foreach (var window in windows)
+        {
+            try
+            {
+                window.PrepareTrayShowAnimation();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Failed to prepare widget show animation hwnd=0x{window.WindowHandle.ToInt64():X}: {ex}");
+            }
+        }
+    }
+
     private void PlayPreparedTrayHideAnimations(IReadOnlyList<IDesktopWidgetWindow> windows)
     {
+        ApplyTrayAnimationGroupOffset(windows);
         foreach (var window in windows)
         {
             try
@@ -876,6 +963,85 @@ public sealed class WidgetManager
                 App.Log($"[WidgetManager] Failed to play widget hide animation hwnd=0x{window.WindowHandle.ToInt64():X}: {ex}");
             }
         }
+    }
+
+    private void ApplyTrayAnimationGroupOffset(IReadOnlyList<IDesktopWidgetWindow> windows)
+    {
+        if (windows.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var window in windows)
+        {
+            window.SetTrayAnimationOffsetOverride(null, null);
+        }
+
+        string effect = _settingsService.Settings.WidgetAnimationEffect;
+        if (string.Equals(effect, SettingsService.WidgetAnimationEffectNone, StringComparison.Ordinal) ||
+            string.Equals(effect, SettingsService.WidgetAnimationEffectFade, StringComparison.Ordinal) ||
+            string.Equals(effect, SettingsService.WidgetAnimationEffectScaleFade, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        foreach (var group in windows.GroupBy(GetAnimationWorkAreaKey))
+        {
+            var groupWindows = group.ToList();
+            if (groupWindows.Count == 0)
+            {
+                continue;
+            }
+
+            var workArea = GetAnimationWorkArea(groupWindows[0]);
+            double groupLeft = groupWindows.Min(window => window.AnimationBounds.Left);
+            double groupTop = groupWindows.Min(window => window.AnimationBounds.Top);
+            double groupRight = groupWindows.Max(window => window.AnimationBounds.Right);
+            double groupBottom = groupWindows.Max(window => window.AnimationBounds.Bottom);
+
+            double offsetX = 0;
+            double offsetY = 0;
+            switch (effect)
+            {
+                case SettingsService.WidgetAnimationEffectSlideLeft:
+                    offsetX = -(groupRight - workArea.X + OffscreenAnimationPadding);
+                    break;
+
+                case SettingsService.WidgetAnimationEffectSlideUp:
+                    offsetY = -(groupBottom - workArea.Y + OffscreenAnimationPadding);
+                    break;
+
+                case SettingsService.WidgetAnimationEffectSlideDown:
+                    offsetY = workArea.Y + workArea.Height - groupTop + OffscreenAnimationPadding;
+                    break;
+
+                case SettingsService.WidgetAnimationEffectSlideRight:
+                case SettingsService.WidgetAnimationEffectSlideFade:
+                default:
+                    offsetX = workArea.X + workArea.Width - groupLeft + OffscreenAnimationPadding;
+                    break;
+            }
+
+            foreach (var window in groupWindows)
+            {
+                window.SetTrayAnimationOffsetOverride(offsetX, offsetY);
+            }
+        }
+    }
+
+    private static string GetAnimationWorkAreaKey(IDesktopWidgetWindow window)
+    {
+        var workArea = GetAnimationWorkArea(window);
+        return $"{workArea.X}:{workArea.Y}:{workArea.Width}:{workArea.Height}";
+    }
+
+    private static Windows.Graphics.RectInt32 GetAnimationWorkArea(IDesktopWidgetWindow window)
+    {
+        var point = new Windows.Graphics.PointInt32(
+            (int)Math.Round(window.AnimationBounds.Left),
+            (int)Math.Round(window.AnimationBounds.Top));
+        var displayArea = DisplayArea.GetFromPoint(point, DisplayAreaFallback.Primary);
+        return displayArea.WorkArea;
     }
 
     private static void ActivateLastRaisedWindow(IReadOnlyList<IDesktopWidgetWindow> windows)
@@ -904,8 +1070,10 @@ public sealed class WidgetManager
 
         long generation = ++_trayRaiseBatchGeneration;
         ConfirmTrayRaiseTopMost(windows, generation);
+        QueueTrayRaiseTopMostConfirmation(windows, generation, TimeSpan.FromMilliseconds(40));
         QueueTrayRaiseTopMostConfirmation(windows, generation, TimeSpan.FromMilliseconds(140));
         QueueTrayRaiseTopMostConfirmation(windows, generation, TimeSpan.FromMilliseconds(320));
+        QueueTrayRaiseTopMostConfirmation(windows, generation, TimeSpan.FromMilliseconds(640));
     }
 
     private void QueueTrayRaiseTopMostConfirmation(
@@ -1088,11 +1256,7 @@ public sealed class WidgetManager
             return true;
         }
 
-        _ = Win32Helper.HasMouseButtonActivity();
-        _suppressTrayLayerRestoreUntilUtc = DateTime.UtcNow.AddMilliseconds(160);
         StartTrayLayerRestoreMonitor(hasRaisedWidgets: true);
-        QueueRequestedLayerRestoreCheck(reason, TimeSpan.FromMilliseconds(180));
-        QueueRequestedLayerRestoreCheck(reason, TimeSpan.FromMilliseconds(420));
         App.LogVerbose($"[TrayBatch] RestoreRequest queued reason={reason}");
         return true;
     }
@@ -1198,11 +1362,12 @@ public sealed class WidgetManager
 
         _trayLayerRestoreTimer ??= App.UiDispatcherQueue.CreateTimer();
         _trayLayerRestoreTimer.Stop();
-        _trayLayerRestoreTimer.Interval = TimeSpan.FromMilliseconds(140);
+        _trayLayerRestoreTimer.Interval = TimeSpan.FromMilliseconds(40);
         _trayLayerRestoreTimer.Tick -= TrayLayerRestoreTimer_Tick;
         _trayLayerRestoreTimer.Tick += TrayLayerRestoreTimer_Tick;
         _trayLayerRestoreTimer.Start();
-        App.LogVerbose("[TrayBatch] RestoreMonitor started intervalMs=140");
+        InstallTrayLayerMouseHook();
+        App.LogVerbose("[TrayBatch] RestoreMonitor started intervalMs=40");
     }
 
     private void StopTrayLayerRestoreMonitor()
@@ -1214,7 +1379,78 @@ public sealed class WidgetManager
 
         _trayLayerRestoreTimer.Stop();
         _trayLayerRestoreTimer.Tick -= TrayLayerRestoreTimer_Tick;
+        UninstallTrayLayerMouseHook();
         App.LogVerbose("[TrayBatch] RestoreMonitor stopped");
+    }
+
+    private void InstallTrayLayerMouseHook()
+    {
+        if (_mouseHookHandle != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _mouseHookHandle = Win32Helper.SetWindowsMouseHookEx(
+            Win32Helper.WH_MOUSE_LL,
+            _mouseHookProc,
+            Win32Helper.GetModuleHandle(null),
+            0);
+        if (_mouseHookHandle == IntPtr.Zero)
+        {
+            App.Log($"[TrayBatch] RestoreMouseHook install failed error={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+            return;
+        }
+
+        App.LogVerbose("[TrayBatch] RestoreMouseHook installed");
+    }
+
+    private void UninstallTrayLayerMouseHook()
+    {
+        if (_mouseHookHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        Win32Helper.UnhookWindowsHookEx(_mouseHookHandle);
+        _mouseHookHandle = IntPtr.Zero;
+        App.LogVerbose("[TrayBatch] RestoreMouseHook removed");
+    }
+
+    private IntPtr TrayLayerMouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && IsMouseDownMessage(wParam))
+        {
+            var data = System.Runtime.InteropServices.Marshal.PtrToStructure<Win32Helper.MSLLHOOKSTRUCT>(lParam);
+            App.UiDispatcherQueue.TryEnqueue(() => RestoreRaisedWidgetsForExternalMouseDown(data.pt));
+        }
+
+        return Win32Helper.CallNextHookEx(_mouseHookHandle, nCode, wParam, lParam);
+    }
+
+    private static bool IsMouseDownMessage(IntPtr message)
+    {
+        int value = message.ToInt32();
+        return value is Win32Helper.WM_LBUTTONDOWN or
+               Win32Helper.WM_RBUTTONDOWN or
+               Win32Helper.WM_MBUTTONDOWN or
+               Win32Helper.WM_XBUTTONDOWN;
+    }
+
+    private void RestoreRaisedWidgetsForExternalMouseDown(Win32Helper.POINT cursor)
+    {
+        if (!_widgetsRaisedFromTray || _isTogglingWidgetsDesktopLayer)
+        {
+            return;
+        }
+
+        if (IsPointerOverDeskBoxWindow(cursor) || IsPointerOverTaskbar(cursor))
+        {
+            App.LogVerbose($"[TrayBatch] RestoreMouseHook kept cursor={FormatPoint(cursor)}");
+            return;
+        }
+
+        App.LogVerbose($"[TrayBatch] RestoreMouseHook restoring cursor={FormatPoint(cursor)}");
+        RestoreRaisedWidgetsToDesktopLayer(force: true);
     }
 
     private void TrayLayerRestoreTimer_Tick(DispatcherQueueTimer sender, object args)
@@ -1225,31 +1461,13 @@ public sealed class WidgetManager
             return;
         }
 
-        Win32Helper.POINT? cursor = TryGetCursorPosition();
         if (_isTogglingWidgetsDesktopLayer ||
             DateTime.UtcNow < _suppressTrayLayerRestoreUntilUtc)
         {
             return;
         }
 
-        if (!Win32Helper.HasMouseButtonActivity())
-        {
-            return;
-        }
-
-        if (IsForegroundDeskBoxWindow())
-        {
-            return;
-        }
-
-        if (IsPointerOverDeskBoxWindow(cursor) ||
-            IsPointerOverTaskbar(cursor))
-        {
-            return;
-        }
-
-        App.LogVerbose($"[TrayBatch] RestoreMonitor restoring reason=pointer-left cursor={FormatPoint(cursor)}");
-        RestoreRaisedWidgetsToDesktopLayer();
+        InstallTrayLayerMouseHook();
     }
 
     private static bool IsPointerOverDeskBoxWindow(Win32Helper.POINT? cursor)
@@ -1266,6 +1484,11 @@ public sealed class WidgetManager
     private static bool IsForegroundDeskBoxWindow()
     {
         IntPtr foregroundWindow = Win32Helper.GetForegroundWindow();
+        return IsDeskBoxForegroundWindow(foregroundWindow);
+    }
+
+    private static bool IsDeskBoxForegroundWindow(IntPtr foregroundWindow)
+    {
         return foregroundWindow != IntPtr.Zero &&
                App.Current.IsDeskBoxWindow(foregroundWindow);
     }
@@ -1300,6 +1523,45 @@ public sealed class WidgetManager
 
     private static bool IsTaskbarWindow(IntPtr hWnd)
     {
+        return WindowOrAncestorHasClass(
+            hWnd,
+            value => string.Equals(value, "Shell_TrayWnd", StringComparison.Ordinal) ||
+                     string.Equals(value, "Shell_SecondaryTrayWnd", StringComparison.Ordinal) ||
+                     string.Equals(value, "NotifyIconOverflowWindow", StringComparison.Ordinal));
+    }
+
+    private static bool IsDesktopShellWindow(IntPtr hWnd)
+    {
+        return WindowOrAncestorHasClass(
+            hWnd,
+            value => string.Equals(value, "Progman", StringComparison.Ordinal) ||
+                     string.Equals(value, "WorkerW", StringComparison.Ordinal));
+    }
+
+    private static bool WindowOrAncestorHasClass(IntPtr hWnd, Func<string, bool> predicate)
+    {
+        if (hWnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr currentWindow = hWnd;
+        while (currentWindow != IntPtr.Zero)
+        {
+            if (WindowHasClass(currentWindow, predicate))
+            {
+                return true;
+            }
+
+            currentWindow = Win32Helper.GetParent(currentWindow);
+        }
+
+        IntPtr rootWindow = Win32Helper.GetAncestor(hWnd, Win32Helper.GA_ROOT);
+        return WindowHasClass(rootWindow, predicate);
+    }
+
+    private static bool WindowHasClass(IntPtr hWnd, Func<string, bool> predicate)
+    {
         if (hWnd == IntPtr.Zero)
         {
             return false;
@@ -1307,15 +1569,7 @@ public sealed class WidgetManager
 
         var className = new System.Text.StringBuilder(256);
         int length = Win32Helper.GetClassName(hWnd, className, className.Capacity);
-        if (length <= 0)
-        {
-            return false;
-        }
-
-        string value = className.ToString();
-        return string.Equals(value, "Shell_TrayWnd", StringComparison.Ordinal) ||
-               string.Equals(value, "Shell_SecondaryTrayWnd", StringComparison.Ordinal) ||
-               string.Equals(value, "NotifyIconOverflowWindow", StringComparison.Ordinal);
+        return length > 0 && predicate(className.ToString());
     }
 
     private static Win32Helper.POINT? TryGetCursorPosition()
@@ -1433,6 +1687,7 @@ public sealed class WidgetManager
     /// </summary>
     public void CloseAll()
     {
+        StopTrayLayerRestoreMonitor();
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _settingsService.AppearancePreviewChanged -= ApplyAppearancePreview;
         _themeService.AppearanceChanged -= ApplyAppearancePreview;

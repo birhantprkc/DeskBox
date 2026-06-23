@@ -138,6 +138,11 @@ public static partial class Win32Helper
     [LibraryImport("user32.dll")]
     private static partial short GetAsyncKeyState(int vKey);
 
+    public static bool IsKeyDown(int virtualKey)
+    {
+        return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+    }
+
     public static bool HasMouseButtonActivity()
     {
         return HasAsyncKeyActivity(0x01) ||
@@ -149,12 +154,72 @@ public static partial class Win32Helper
 
     private static bool HasAsyncKeyActivity(int virtualKey)
     {
-        return (GetAsyncKeyState(virtualKey) & 0x8001) != 0;
+        return IsKeyDown(virtualKey);
     }
 
     // ────────────────────────────────────────────────────────────────
     //  Shell operations
     // ────────────────────────────────────────────────────────────────
+
+    public const int WH_KEYBOARD_LL = 13;
+    public const int WH_MOUSE_LL = 14;
+    public const int WM_KEYDOWN = 0x0100;
+    public const int WM_SYSKEYDOWN = 0x0104;
+    public const int WM_LBUTTONDOWN = 0x0201;
+    public const int WM_RBUTTONDOWN = 0x0204;
+    public const int WM_MBUTTONDOWN = 0x0207;
+    public const int WM_XBUTTONDOWN = 0x020B;
+
+    public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+    public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KBDLLHOOKSTRUCT
+    {
+        public uint vkCode;
+        public uint scanCode;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "SetWindowsHookExW")]
+    public static partial IntPtr SetWindowsHookEx(
+        int idHook,
+        LowLevelKeyboardProc lpfn,
+        IntPtr hmod,
+        uint dwThreadId);
+
+    [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "SetWindowsHookExW")]
+    public static partial IntPtr SetWindowsMouseHookEx(
+        int idHook,
+        LowLevelMouseProc lpfn,
+        IntPtr hmod,
+        uint dwThreadId);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [LibraryImport("user32.dll")]
+    public static partial IntPtr CallNextHookEx(
+        IntPtr hhk,
+        int nCode,
+        IntPtr wParam,
+        IntPtr lParam);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial IntPtr GetModuleHandle(string? lpModuleName);
 
     [LibraryImport("shell32.dll", EntryPoint = "ShellExecuteW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr ShellExecute(

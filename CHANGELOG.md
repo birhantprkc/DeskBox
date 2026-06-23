@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.7 - 2026-06-23
+
+### English
+
+- Improved tray and global-hotkey behavior so file widgets and Quick Capture are raised, hidden, and restored as one group.
+- Added a light WidgetManager restore path that keeps DeskBox widgets together after menu interactions and restores the group only after the user moves back to another app.
+- Improved full-screen app behavior: F7 can raise widgets again when they are visible but covered, and a keyboard-hook fallback prevents apps such as Axure from consuming the configured hotkey first.
+- Improved widget show/hide animation with linear timing, shorter default duration, and group-aware off-screen slide distances so adjacent widgets move out consistently.
+- Improved Quick Capture layout, hover actions, tab switching, copy/open behavior, image previews, and inline editing for long text.
+- Added system-open behavior for Quick Capture items: single click copies with feedback, double click opens text, links, or images in the user's default app.
+- Added orphan managed-storage folder management so removed widget folders can be restored, opened, moved back to Desktop, or deleted from Settings.
+- Improved managed and mapped widget safety with duplicate-name guards, folder recovery handling, mapped-folder rename sync, icon refresh stability, and file-name display fixes.
+- Improved performance and responsiveness around directory refresh, clipboard capture, tab switching, list rendering, and temporary topmost confirmation.
+
+### 中文
+
+- 优化托盘和全局快捷键行为，让文件格子和随记按同一组逻辑统一置顶、隐藏和恢复。
+- 新增轻量级 WidgetManager 层级恢复入口，菜单交互后不再由单个窗口自行置底，而是由管理器统一判断整组层级。
+- 优化全屏应用场景：格子可见但被外部应用遮挡时，F7 会重新置顶；同时增加快捷键钩子兜底，避免 Axure 等应用先消费快捷键。
+- 优化格子显示/隐藏动画，改为线性节奏、更短默认时长，并按整组相对屏幕位置计算滑出距离，减少遮挡和割裂感。
+- 优化随记布局、悬浮按钮、Tab 切换、复制/打开行为、图片预览和长文本内联编辑体验。
+- 随记支持单击复制并提示成功，双击按系统默认应用打开文本、链接或图片，不再用内部编辑弹框作为双击入口。
+- 新增孤立收纳文件夹管理页，已移除格子留下的收纳目录可在设置中恢复、打开、移回桌面或删除。
+- 增强收纳格子和映射格子的稳定性，包括重名保护、异常文件夹恢复、映射文件夹改名同步、图标刷新稳定性和文件名显示修复。
+- 优化目录刷新、剪贴板记录、Tab 切换、列表渲染和临时置顶确认等性能与响应细节。
+
 ## 1.0.6 - 2026-06-21
 
 ### English

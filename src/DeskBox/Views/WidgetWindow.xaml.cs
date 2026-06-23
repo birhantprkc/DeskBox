@@ -55,10 +55,11 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private const int MinWidth = (int)SettingsService.MinWidgetWidth;
     private const int MinHeight = (int)SettingsService.MinWidgetHeight;
-    internal const int WidgetShowAnimationMs = 260;
-    internal const int WidgetHideAnimationMs = 260;
+    internal const int WidgetShowAnimationMs = 240;
+    internal const int WidgetHideAnimationMs = 240;
     private const int ItemTransitionRestoreDelayMs = 240;
-    internal const double WidgetSlideOffsetX = 36.0;
+    private const double MinWidgetSlideOffset = 1.0;
+    private const double OffscreenSlidePadding = 16.0;
     private const float WidgetAnimationRestingOpacity = 1.0f;
     private const float WidgetAnimationSoftOpacity = 0.0f;
     private const float WidgetAnimationRestingScale = 1.0f;
@@ -124,6 +125,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private bool _isNativeBackdropSuppressedForTrayReveal;
     private bool _isTrayWindowOpacityApplied;
     private long _trayAnimationGeneration;
+    private double? _trayAnimationOffsetOverrideX;
+    private double? _trayAnimationOffsetOverrideY;
     private bool _isApplyingTrayAnimationBounds;
     private long _backdropRefreshGeneration;
     private bool _areItemTransitionsSuppressed;
@@ -133,6 +136,12 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     public WidgetViewModel ViewModel { get; }
 
     public IntPtr WindowHandle => _hWnd;
+
+    public Windows.Foundation.Rect AnimationBounds => new(
+        ViewModel.Config.X,
+        ViewModel.Config.Y,
+        Math.Max(MinWidgetSlideOffset, ViewModel.Config.Width),
+        Math.Max(MinWidgetSlideOffset, ViewModel.Config.Height));
 
     private bool _isVisibleOnDesktop;
     public new bool Visible
@@ -338,6 +347,12 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         PushToBottom();
     }
 
+    public void SetTrayAnimationOffsetOverride(double? offsetX, double? offsetY)
+    {
+        _trayAnimationOffsetOverrideX = offsetX;
+        _trayAnimationOffsetOverrideY = offsetY;
+    }
+
     public void RaiseTemporarilyFromTray()
     {
         PrepareTrayShowAnimation();
@@ -433,6 +448,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         var animationGeneration = ++_trayAnimationGeneration;
         LogTrayWindow($"CompleteShowWithoutAnimation gen={animationGeneration}");
         StopTrayVisualAnimation();
+        SetTrayAnimationOffsetOverride(null, null);
         RestoreNativeBackdropAfterTrayReveal();
         RestoreTrayVisualState();
         RestoreTrayWindowPosition();
@@ -638,7 +654,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             $"windowOffset=({fromOffsetX:F0},{fromOffsetY:F0})->({toOffsetX:F0},{toOffsetY:F0}) " +
             $"windowOpacity={fromOpacity:F2}->{toOpacity:F2}");
         StopTrayVisualAnimation();
-        PrepareTrayVisualState(fromOffsetX, fromOffsetY, fromOpacity, WidgetAnimationRestingScale);
+        PrepareTrayVisualState(fromOffsetX, fromOffsetY, fromOpacity, fromScale);
 
         if (durationMs <= 1)
         {
@@ -790,6 +806,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         ApplyTrayWindowOffset(finalOffsetX, finalOffsetY);
         ApplyTrayWindowOpacity(finalOpacity);
         ApplyTrayVisualScale(finalScale);
+        SetTrayAnimationOffsetOverride(null, null);
         LogTrayWindow($"AnimateCompleted mode={(isShowing ? "show" : "hide")} gen={animationGeneration}");
         if (isShowing)
         {
@@ -852,10 +869,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private static double EaseTrayWindowAnimation(double progress, bool isShowing)
     {
-        progress = Math.Clamp(progress, 0.0, 1.0);
-        return isShowing
-            ? Math.Sin(progress * Math.PI / 2.0)
-            : 1.0 - Math.Cos(progress * Math.PI / 2.0);
+        return Math.Clamp(progress, 0.0, 1.0);
     }
 
     private void SuppressNativeBackdropForTrayReveal()
@@ -901,6 +915,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     {
         string effect = _settingsService.Settings.WidgetAnimationEffect;
         int durationMs = GetWidgetAnimationDurationMs(_settingsService.Settings.WidgetAnimationSpeed);
+        var slideOffsets = GetOffscreenSlideOffsets();
 
         return effect switch
         {
@@ -927,9 +942,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 durationMs,
                 true),
             SettingsService.WidgetAnimationEffectSlideLeft => new WidgetAnimationProfile(
-                -WidgetSlideOffsetX,
+                -slideOffsets.Left,
                 0,
-                -WidgetSlideOffsetX,
+                -slideOffsets.Left,
                 0,
                 WidgetAnimationRestingOpacity,
                 WidgetAnimationRestingOpacity,
@@ -939,9 +954,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 true),
             SettingsService.WidgetAnimationEffectSlideUp => new WidgetAnimationProfile(
                 0,
-                -WidgetSlideOffsetX,
+                -slideOffsets.Up,
                 0,
-                -WidgetSlideOffsetX,
+                -slideOffsets.Up,
                 WidgetAnimationRestingOpacity,
                 WidgetAnimationRestingOpacity,
                 WidgetAnimationRestingScale,
@@ -950,9 +965,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 true),
             SettingsService.WidgetAnimationEffectSlideDown => new WidgetAnimationProfile(
                 0,
-                WidgetSlideOffsetX,
+                slideOffsets.Down,
                 0,
-                WidgetSlideOffsetX,
+                slideOffsets.Down,
                 WidgetAnimationRestingOpacity,
                 WidgetAnimationRestingOpacity,
                 WidgetAnimationRestingScale,
@@ -971,9 +986,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 durationMs,
                 true),
             SettingsService.WidgetAnimationEffectSlideRight => new WidgetAnimationProfile(
-                WidgetSlideOffsetX,
+                slideOffsets.Right,
                 0,
-                WidgetSlideOffsetX,
+                slideOffsets.Right,
                 0,
                 WidgetAnimationRestingOpacity,
                 WidgetAnimationRestingOpacity,
@@ -982,17 +997,44 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 durationMs,
                 true),
             _ => new WidgetAnimationProfile(
-                WidgetSlideOffsetX,
+                slideOffsets.Right,
                 0,
-                WidgetSlideOffsetX,
+                slideOffsets.Right,
                 0,
-                WidgetAnimationSoftOpacity,
-                WidgetAnimationSoftOpacity,
-                WidgetAnimationSoftScale,
-                WidgetAnimationSoftScale,
+                WidgetAnimationRestingOpacity,
+                WidgetAnimationRestingOpacity,
+                WidgetAnimationRestingScale,
+                WidgetAnimationRestingScale,
                 durationMs,
                 true)
         };
+    }
+
+    private (double Left, double Right, double Up, double Down) GetOffscreenSlideOffsets()
+    {
+        if (_trayAnimationOffsetOverrideX.HasValue ||
+            _trayAnimationOffsetOverrideY.HasValue)
+        {
+            double horizontal = Math.Abs(_trayAnimationOffsetOverrideX.GetValueOrDefault());
+            double vertical = Math.Abs(_trayAnimationOffsetOverrideY.GetValueOrDefault());
+            return (
+                horizontal > 0 ? horizontal : MinWidgetSlideOffset,
+                horizontal > 0 ? horizontal : MinWidgetSlideOffset,
+                vertical > 0 ? vertical : MinWidgetSlideOffset,
+                vertical > 0 ? vertical : MinWidgetSlideOffset);
+        }
+
+        var workArea = DisplayArea.GetFromWindowId(_windowId, DisplayAreaFallback.Primary).WorkArea;
+        double x = ViewModel.Config.X;
+        double y = ViewModel.Config.Y;
+        double width = Math.Max(MinWidgetSlideOffset, ViewModel.Config.Width);
+        double height = Math.Max(MinWidgetSlideOffset, ViewModel.Config.Height);
+
+        double left = Math.Max(MinWidgetSlideOffset, (x + width) - workArea.X + OffscreenSlidePadding);
+        double right = Math.Max(MinWidgetSlideOffset, (workArea.X + workArea.Width) - x + OffscreenSlidePadding);
+        double up = Math.Max(MinWidgetSlideOffset, (y + height) - workArea.Y + OffscreenSlidePadding);
+        double down = Math.Max(MinWidgetSlideOffset, (workArea.Y + workArea.Height) - y + OffscreenSlidePadding);
+        return (left, right, up, down);
     }
 
     private static int GetWidgetAnimationDurationMs(string speed)

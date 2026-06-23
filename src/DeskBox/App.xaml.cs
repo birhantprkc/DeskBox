@@ -764,7 +764,7 @@ public partial class App : Application
             return;
         }
 
-        if (WidgetManager.WidgetsRaisedFromTray)
+        if (WidgetManager.ShouldHideWidgetsForTrayToggle())
         {
             await WidgetManager.SetAllWidgetsVisibleAsync(false);
             UpdateTrayLayerStateText(raised: false);

@@ -15,21 +15,21 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.0.6
+Current release: 1.0.7
 
-- [DeskBox_Setup_1.0.6_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.6/DeskBox_Setup_1.0.6_x64.exe)
+- [DeskBox_Setup_1.0.7_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.7/DeskBox_Setup_1.0.7_x64.exe)
 
 The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.0.6
+## What's New In 1.0.7
 
-- Added Quick Capture, an optional feature widget for saving text, links, screenshots, and recent clipboard content locally.
-- Added a clearer Quick Capture workflow with Records, Pinned, and Recent views, hover actions, scoped search, drag-out support, and save-to-file-widget actions.
-- Improved upload workflows with managed storage access, Quick Access pinning, mapped-folder shortcuts, and an "open storage folder" tray entry.
-- Improved drag/drop and clipboard behavior so files stay files, text stays text, and DeskBox's own clipboard writes do not pollute Recent items.
-- Improved window layering, widget refresh, onboarding scaling, custom icons, filename extension display, migration feedback, and compact Quick Capture dialogs.
+- Improved tray and global-hotkey behavior so file widgets and Quick Capture raise, hide, and restore as one group.
+- Improved full-screen app and hotkey handling, including covered-widget re-raise behavior and a keyboard-hook fallback for apps that consume F7.
+- Improved widget animation with linear timing, shorter default duration, and group-aware off-screen slide distances.
+- Improved Quick Capture layout, hover actions, tab switching, click-to-copy, double-click open, image previews, and long-text inline editing.
+- Added orphan managed-storage folder management and strengthened duplicate-name, folder recovery, mapped-folder rename, icon refresh, and filename display handling.
 
-See the full [changelog](CHANGELOG.md). GitHub Release copy is available in [docs/releases/v1.0.6.md](docs/releases/v1.0.6.md).
+See the full [changelog](CHANGELOG.md). GitHub Release copy is available in [docs/releases/v1.0.7.md](docs/releases/v1.0.7.md).
 
 ## Why DeskBox Exists
 
@@ -119,7 +119,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.0.6_x64.exe
+Output\DeskBox_Setup_1.0.7_x64.exe
 ```
 
 ## Project Structure
