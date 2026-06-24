@@ -227,6 +227,9 @@
             <StackPanel
                 x:Name="EmptyState"
                 AllowDrop="True"
+                DragLeave="RootGrid_DragLeave"
+                DragOver="RootGrid_DragOver"
+                Drop="RootGrid_Drop"
                 MaxWidth="220"
                 HorizontalAlignment="Center"
                 Spacing="10"

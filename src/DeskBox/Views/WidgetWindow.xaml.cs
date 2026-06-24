@@ -90,6 +90,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private string[] _cutClipboardPaths = [];
     private string[] _activeDragSourcePaths = [];
     private bool _activeDragHasStorageItems;
+    private string? _lastRootDragDiagnosticSignature;
+    private string? _lastFolderDragDiagnosticSignature;
     private Border? _folderDropTarget;
     private bool _surfaceDragCompletionHandled;
     private int _lastSelectionAnchorIndex = -1;
@@ -2103,18 +2105,21 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void RootGrid_DragOver(object sender, DragEventArgs e)
     {
+        e.Handled = true;
         ClearFolderDropTarget();
 
         if (_isMigrationBusy)
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
+            LogDropDiagnostic("RootDragOverBusy", e.DataView, e.AcceptedOperation, movesIntoFolder: false);
             return;
         }
 
         if (!HasPathDropData(e.DataView))
         {
             e.AcceptedOperation = DataPackageOperation.None;
+            LogDropDiagnostic("RootDragOverNoPathData", e.DataView, e.AcceptedOperation, movesIntoFolder: false);
             return;
         }
 
@@ -2127,11 +2132,13 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
             e.DragUIOverride.Caption = _localizationService.T("Widget.DragCaption.CurrentWidget");
+            LogDropDiagnostic("RootDragOverCurrentWidget", e.DataView, e.AcceptedOperation, movesIntoFolder: true);
             return;
         }
 
         bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
         e.AcceptedOperation = NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder);
+        LogDropDiagnostic("RootDragOver", e.DataView, e.AcceptedOperation, movesIntoFolder);
         if (e.AcceptedOperation == DataPackageOperation.None)
         {
             e.DragUIOverride.IsGlyphVisible = false;
@@ -2155,6 +2162,13 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private DataPackageOperation NormalizePathDropOperation(DataPackageOperation requestedOperation, bool movesIntoFolder)
     {
+        if (requestedOperation == DataPackageOperation.None)
+        {
+            return movesIntoFolder
+                ? GetManagedDropOperation()
+                : DataPackageOperation.Link;
+        }
+
         var operation = GetAcceptedDropOperation(requestedOperation, movesIntoFolder);
         if (operation != DataPackageOperation.None ||
             !movesIntoFolder ||
@@ -2192,12 +2206,16 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void RootGrid_DragLeave(object sender, DragEventArgs e)
     {
+        e.Handled = true;
         ClearFolderDropTarget();
+        _lastRootDragDiagnosticSignature = null;
     }
 
     private async void RootGrid_Drop(object sender, DragEventArgs e)
     {
+        e.Handled = true;
         ClearFolderDropTarget();
+        _lastRootDragDiagnosticSignature = null;
 
         if (_isMigrationBusy)
         {
@@ -2700,6 +2718,12 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return;
         }
 
+        if (e.OriginalSource is DependencyObject source &&
+            HasAncestorOfType<TextBox>(source))
+        {
+            return;
+        }
+
         bool ctrlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
         bool shiftPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift);
         var listView = GetActiveItemsView();
@@ -3186,16 +3210,23 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         if (dataView.Contains(StandardDataFormats.StorageItems))
         {
-            var items = await dataView.GetStorageItemsAsync();
-            sourcePaths = items
-                .Select(item => item.Path)
-                .Where(path => !string.IsNullOrWhiteSpace(path))
-                .Select(Path.GetFullPath)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            if (sourcePaths.Length > 0)
+            try
             {
-                return sourcePaths;
+                var items = await dataView.GetStorageItemsAsync();
+                sourcePaths = items
+                    .Select(item => item.Path)
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Select(Path.GetFullPath)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                if (sourcePaths.Length > 0)
+                {
+                    return sourcePaths;
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[DropDiagnostic] GetStorageItemsAsync failed: {ex.Message}");
             }
         }
 
@@ -3212,6 +3243,46 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             .Where(path => File.Exists(path) || Directory.Exists(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private void LogDropDiagnostic(
+        string stage,
+        DataPackageView dataView,
+        DataPackageOperation acceptedOperation,
+        bool movesIntoFolder)
+    {
+        string signature = $"{stage}|{dataView.RequestedOperation}|{acceptedOperation}|{movesIntoFolder}|{FormatDataPackageFormats(dataView.AvailableFormats)}";
+        if (stage.StartsWith("Folder", StringComparison.Ordinal))
+        {
+            if (string.Equals(_lastFolderDragDiagnosticSignature, signature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastFolderDragDiagnosticSignature = signature;
+        }
+        else
+        {
+            if (string.Equals(_lastRootDragDiagnosticSignature, signature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastRootDragDiagnosticSignature = signature;
+        }
+
+        App.Log(
+            $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage={stage} " +
+            $"mapped={!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath)} managed={ViewModel.FollowsDefaultStoragePath} " +
+            $"requested={dataView.RequestedOperation} accepted={acceptedOperation} " +
+            $"formats={FormatDataPackageFormats(dataView.AvailableFormats)}");
+    }
+
+    private static string FormatDataPackageFormats(IReadOnlyList<string> formats)
+    {
+        return formats.Count == 0
+            ? "<none>"
+            : string.Join(",", formats.OrderBy(format => format, StringComparer.Ordinal));
     }
 
     private void RootGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -3426,6 +3497,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         }
 
         e.AcceptedOperation = NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder: true);
+        LogDropDiagnostic("FolderDragOver", e.DataView, e.AcceptedOperation, movesIntoFolder: true);
         if (e.AcceptedOperation == DataPackageOperation.None)
         {
             e.DragUIOverride.IsGlyphVisible = false;
@@ -3448,6 +3520,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         {
             ClearFolderDropTarget();
         }
+
+        _lastFolderDragDiagnosticSignature = null;
     }
 
     private async void WidgetItemSurface_Drop(object sender, DragEventArgs e)
@@ -3656,12 +3730,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void StartRename()
     {
-        ElevateForInteraction();
         PrepareRenameEditor();
         TitleText.Visibility = Visibility.Collapsed;
         TitleEditBox.Visibility = Visibility.Visible;
-        TitleEditBox.SelectAll();
-        TitleEditBox.Focus(FocusState.Programmatic);
+        FocusTextInputEditor(TitleEditBox, selectAll: true);
     }
 
     private void PrepareRenameEditor()
@@ -4411,11 +4483,35 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         _itemRenameTarget = item;
         _itemRenameTextBox!.Text = item.Name;
-        _itemRenameTextBox.SelectAll();
         ElevateForInteraction();
         _itemRenameFlyout!.ShowAt(target);
-        _itemRenameTextBox.Focus(FocusState.Programmatic);
+        FocusTextInputEditor(_itemRenameTextBox, selectAll: true);
         await Task.CompletedTask;
+    }
+
+    private void FocusTextInputEditor(TextBox textBox, bool selectAll)
+    {
+        HoldTemporaryTopMost();
+        _appWindow.Show();
+        base.Activate();
+        Win32Helper.SetForegroundWindow(_hWnd);
+        FocusTextInputEditorCore(textBox, selectAll);
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            base.Activate();
+            Win32Helper.SetForegroundWindow(_hWnd);
+            FocusTextInputEditorCore(textBox, selectAll);
+        });
+    }
+
+    private static void FocusTextInputEditorCore(TextBox textBox, bool selectAll)
+    {
+        textBox.Focus(FocusState.Programmatic);
+        if (selectAll)
+        {
+            textBox.SelectAll();
+        }
     }
 
     private void EnsureItemRenameFlyout()

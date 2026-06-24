@@ -10,6 +10,7 @@ using H.NotifyIcon.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Security.Principal;
 using DrawingPoint = System.Drawing.Point;
 using WinRT.Interop;
 
@@ -104,6 +105,21 @@ public partial class App : Application
         InitializeComponent();
         OrganizerService = new OrganizerService(SettingsService, FileService);
         UnhandledException += OnUnhandledException;
+        Log($"Process integrity elevated={IsRunningElevated()} pid={Environment.ProcessId}");
+    }
+
+    private static bool IsRunningElevated()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var principal = new WindowsPrincipal(identity);
+            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public bool IsDeskBoxWindow(IntPtr hwnd)

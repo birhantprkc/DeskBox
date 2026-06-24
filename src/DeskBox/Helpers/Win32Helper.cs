@@ -65,6 +65,10 @@ public static partial class Win32Helper
     public static partial IntPtr GetForegroundWindow();
 
     [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetForegroundWindow(IntPtr hWnd);
+
+    [LibraryImport("user32.dll")]
     public static partial IntPtr WindowFromPoint(POINT point);
 
     [LibraryImport("user32.dll")]

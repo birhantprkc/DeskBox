@@ -15,6 +15,13 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
 {
     private const int IncrementalRefreshBatchThreshold = 24;
     private const int IconHydrationBatchSize = 8;
+    private const int IconHydrationRetryCount = 3;
+    private static readonly TimeSpan[] s_iconHydrationRetryDelays =
+    [
+        TimeSpan.FromMilliseconds(450),
+        TimeSpan.FromMilliseconds(1200),
+        TimeSpan.FromMilliseconds(2600)
+    ];
     private const int FolderCountHydrationBatchSize = 8;
     private const int FolderCountHydrationYieldMs = 24;
 
@@ -1048,7 +1055,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private void StartItemHydration()
     {
         int generation = Interlocked.Increment(ref _itemHydrationGeneration);
-        _ = HydrateIconsAsync(generation);
+        _ = HydrateIconsWithRetryAsync(generation);
         _ = HydrateFolderItemCountsAsync(generation);
     }
 
@@ -1064,7 +1071,24 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task HydrateIconsAsync(int generation)
+    private async Task HydrateIconsWithRetryAsync(int generation)
+    {
+        await HydrateIconsAsync(generation, clearCacheBeforeLoad: false);
+
+        for (int retry = 0; retry < IconHydrationRetryCount; retry++)
+        {
+            if (generation != Volatile.Read(ref _itemHydrationGeneration) ||
+                !Items.Any(item => item.Icon is null))
+            {
+                return;
+            }
+
+            await Task.Delay(s_iconHydrationRetryDelays[Math.Min(retry, s_iconHydrationRetryDelays.Length - 1)]);
+            await HydrateIconsAsync(generation, clearCacheBeforeLoad: true);
+        }
+    }
+
+    private async Task HydrateIconsAsync(int generation, bool clearCacheBeforeLoad)
     {
         var items = Items
             .Where(item => item.Icon is null)
@@ -1081,12 +1105,17 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
                 .Skip(start)
                 .Take(IconHydrationBatchSize)
                 .Where(item => Items.Contains(item) && !string.IsNullOrWhiteSpace(item.Path))
-                .Select(async item => (Item: item, Icon: await _fileService.GetIconAsync(item.Path, _hideShortcutArrowOverlay)))
+                .Select(item => HydrateIconAsync(item, generation, clearCacheBeforeLoad))
                 .ToArray();
             var results = await Task.WhenAll(batch);
 
             foreach (var (item, icon) in results)
             {
+                if (item is null)
+                {
+                    continue;
+                }
+
                 if (generation != Volatile.Read(ref _itemHydrationGeneration) ||
                     !Items.Contains(item))
                 {
@@ -1097,6 +1126,34 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             }
 
             await Task.Yield();
+        }
+    }
+
+    private async Task<(WidgetItem? Item, Microsoft.UI.Xaml.Media.Imaging.BitmapImage? Icon)> HydrateIconAsync(
+        WidgetItem item,
+        int generation,
+        bool clearCacheBeforeLoad)
+    {
+        string path = item.Path;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            if (clearCacheBeforeLoad)
+            {
+                _fileService.ClearIconCache(path, _hideShortcutArrowOverlay);
+            }
+
+            var icon = await _fileService.GetIconAsync(path, _hideShortcutArrowOverlay);
+            return (item, icon);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[IconHydration] Failed to load icon for '{path}' in widget '{Name}' ({Config.Id}): {ex.Message}");
+            return (item, null);
         }
     }
 
