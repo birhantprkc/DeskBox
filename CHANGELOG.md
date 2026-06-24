@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.8 - 2026-06-24
+
+### English
+
+- Improved Windows 11 23H2 drag/drop compatibility by launching DeskBox after install as the original user instead of inheriting the installer elevation level.
+- Improved Explorer drag/drop handling for file widgets by accepting link-style requested operations when the widget can safely resolve them into the configured managed action.
+- Improved drag hover captions so managed storage widgets show "managed widget" and mapped-folder widgets show "mapped folder" as distinct targets.
+- Improved Quick Capture copy feedback by replacing per-row copy bubbles with a stable bottom-centered toast.
+- Improved Quick Capture clipboard writes with short automatic retries when Windows temporarily locks the clipboard, reducing first-click copy failures.
+- Tightened Quick Capture title button sizing and hover action styling so More, Delete, and item actions match the regular widget controls more closely.
+- Fixed Quick Capture click-to-copy feedback, copy failure messaging, and several post-1.0.7 polish issues around mapped widgets and drag prompts.
+
+### 中文
+
+- 优化 Windows 11 23H2 拖拽兼容性，安装完成后启动 DeskBox 时不再继承安装器管理员层级，而是回到原始用户权限。
+- 优化资源管理器拖拽处理，文件格子可兼容部分 link-style 拖拽操作，并按设置中的收纳动作安全处理。
+- 优化拖拽悬浮提示，收纳格子显示“收纳组件”，映射文件夹显示“映射文件夹”，目标更清楚。
+- 优化随记复制反馈，移除每行内部气泡，统一改为底部居中的稳定 toast。
+- 优化随记剪贴板写入，在 Windows 剪贴板被短暂占用时自动短间隔重试，减少第一次单击复制失败。
+- 调整随记右上角按钮和记录悬浮按钮尺寸/样式，让更多、删除和记录操作更接近普通格子控件。
+- 修复 1.0.7 后发现的随记单击复制反馈、复制失败提示、映射格子拖拽提示等细节问题。
+
 ## 1.0.7 - 2026-06-23
 
 ### English

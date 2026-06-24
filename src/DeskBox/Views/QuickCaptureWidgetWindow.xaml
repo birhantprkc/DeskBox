@@ -344,9 +344,7 @@
                     Background="Transparent"
                     DoubleTapped="ItemsListView_DoubleTapped"
                     HorizontalContentAlignment="Stretch"
-                    IsItemClickEnabled="True"
                     ItemsSource="{Binding Items}"
-                    ItemClick="ItemsListView_ItemClick"
                     KeyDown="ItemsListView_KeyDown"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                     ScrollViewer.HorizontalScrollMode="Disabled"
@@ -394,7 +392,8 @@
                                 DragStarting="QuickCaptureItem_DragStarting"
                                 PointerEntered="QuickCaptureItem_PointerEntered"
                                 PointerExited="QuickCaptureItem_PointerExited"
-                                RightTapped="QuickCaptureItem_RightTapped">
+                                RightTapped="QuickCaptureItem_RightTapped"
+                                Tapped="QuickCaptureItem_Tapped">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -511,24 +510,6 @@
                                         </Button>
                                     </StackPanel>
                                 </Grid>
-                                <Border
-                                    x:Name="InlineCopyToast"
-                                    Grid.Column="1"
-                                    Margin="0,0,6,0"
-                                    Padding="8,4"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Top"
-                                    Background="{ThemeResource SystemControlAcrylicElementBrush}"
-                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="6"
-                                    IsHitTestVisible="False"
-                                    Opacity="0">
-                                    <TextBlock
-                                        x:Name="InlineCopyToastText"
-                                        FontSize="{Binding SecondaryTextSize}"
-                                        TextTrimming="CharacterEllipsis" />
-                                </Border>
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>
@@ -539,6 +520,7 @@
         <Border
             x:Name="StatusToast"
             Grid.Row="1"
+            Canvas.ZIndex="10"
             Margin="12,0,12,12"
             Padding="10,6"
             HorizontalAlignment="Center"

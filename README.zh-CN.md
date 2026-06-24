@@ -15,21 +15,21 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.0.7
+当前版本：1.0.8
 
-- [DeskBox_Setup_1.0.7_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.7/DeskBox_Setup_1.0.7_x64.exe)
+- [DeskBox_Setup_1.0.8_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.8/DeskBox_Setup_1.0.8_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
-## 1.0.7 更新
+## 1.0.8 更新
 
-- 优化托盘和全局快捷键行为，让文件格子和随记统一置顶、隐藏和恢复。
-- 优化全屏应用与快捷键处理，格子被外部应用遮挡时可再次 F7 直接置顶，并增加快捷键钩子兜底。
-- 优化格子动画，改为线性节奏、更短默认时长，并按整组位置计算滑出屏幕距离。
-- 优化随记布局、悬浮按钮、Tab 切换、单击复制、双击打开、图片预览和长文本内联编辑。
-- 新增孤立收纳文件夹管理，并增强重名保护、异常恢复、映射文件夹改名同步、图标刷新和文件名显示。
+- 优化 Windows 11 23H2 下的拖拽兼容性，安装后启动不再继承管理员层级，并兼容更多资源管理器拖拽格式。
+- 优化拖拽悬浮提示，收纳格子和映射文件夹会显示更准确的目标文案。
+- 优化随记复制反馈，改为底部居中提示，并在 Windows 剪贴板短暂占用时自动重试。
+- 调整随记右上角按钮和悬浮操作按钮尺寸/样式，让它们更接近普通格子的控件风格。
+- 修复 1.0.7 后发现的随记单击复制、复制提示、映射格子拖拽提示等细节问题。
 
-完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.0.7.md](docs/releases/v1.0.7.md) 中的中英文发布文案。
+完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.0.8.md](docs/releases/v1.0.8.md) 中的中英文发布文案。
 
 ## 为什么做这个产品
 
@@ -117,7 +117,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.0.7_x64.exe
+Output\DeskBox_Setup_1.0.8_x64.exe
 ```
 
 ## 项目结构

@@ -2131,7 +2131,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         }
 
         bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
-        e.AcceptedOperation = GetAcceptedDropOperation(e.DataView.RequestedOperation, movesIntoFolder);
+        e.AcceptedOperation = NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder);
         if (e.AcceptedOperation == DataPackageOperation.None)
         {
             e.DragUIOverride.IsGlyphVisible = false;
@@ -2141,11 +2141,53 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         e.DragUIOverride.IsGlyphVisible = true;
         e.DragUIOverride.Caption = movesIntoFolder
             ? _localizationService.Format(
-                "Widget.DragCaption.Managed",
-                e.AcceptedOperation == DataPackageOperation.Copy
-                    ? _localizationService.T("Common.Copy")
-                    : _localizationService.T("Common.Move"))
+                GetRootFolderDropCaptionKey(),
+                GetAcceptedOperationCaption(e.AcceptedOperation))
             : _localizationService.T("Widget.DragCaption.Reference");
+    }
+
+    private string GetRootFolderDropCaptionKey()
+    {
+        return ViewModel.FollowsDefaultStoragePath
+            ? "Widget.DragCaption.Managed"
+            : "Widget.DragCaption.Mapped";
+    }
+
+    private DataPackageOperation NormalizePathDropOperation(DataPackageOperation requestedOperation, bool movesIntoFolder)
+    {
+        var operation = GetAcceptedDropOperation(requestedOperation, movesIntoFolder);
+        if (operation != DataPackageOperation.None ||
+            !movesIntoFolder ||
+            !SupportsOperation(requestedOperation, DataPackageOperation.Link))
+        {
+            return operation;
+        }
+
+        return DataPackageOperation.Link;
+    }
+
+    private string GetAcceptedOperationCaption(DataPackageOperation acceptedOperation)
+    {
+        return ShouldMoveForAcceptedOperation(acceptedOperation)
+            ? _localizationService.T("Common.Move")
+            : _localizationService.T("Common.Copy");
+    }
+
+    private bool ShouldMoveForAcceptedOperation(DataPackageOperation acceptedOperation)
+    {
+        return acceptedOperation switch
+        {
+            DataPackageOperation.Copy => false,
+            DataPackageOperation.Move => true,
+            DataPackageOperation.Link => !string.Equals(
+                _settingsService.Settings.ManagedDropAction,
+                SettingsService.ManagedDropActionCopy,
+                StringComparison.OrdinalIgnoreCase),
+            _ => !string.Equals(
+                _settingsService.Settings.ManagedDropAction,
+                SettingsService.ManagedDropActionCopy,
+                StringComparison.OrdinalIgnoreCase)
+        };
     }
 
     private void RootGrid_DragLeave(object sender, DragEventArgs e)
@@ -2175,7 +2217,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
         var acceptedOperation = e.AcceptedOperation == DataPackageOperation.None
-            ? GetAcceptedDropOperation(e.DataView.RequestedOperation, movesIntoFolder)
+            ? NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder)
             : e.AcceptedOperation;
         if (acceptedOperation == DataPackageOperation.None)
         {
@@ -2183,7 +2225,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         }
 
         bool? moveWhenMapped = movesIntoFolder
-            ? acceptedOperation != DataPackageOperation.Copy
+            ? ShouldMoveForAcceptedOperation(acceptedOperation)
             : null;
 
         string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
@@ -3383,7 +3425,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return;
         }
 
-        e.AcceptedOperation = GetAcceptedDropOperation(e.DataView.RequestedOperation, movesIntoFolder: true);
+        e.AcceptedOperation = NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder: true);
         if (e.AcceptedOperation == DataPackageOperation.None)
         {
             e.DragUIOverride.IsGlyphVisible = false;
@@ -3394,9 +3436,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         SetFolderDropTarget(border);
         e.DragUIOverride.IsGlyphVisible = true;
         e.DragUIOverride.Caption = _localizationService.Format(
-            e.AcceptedOperation == DataPackageOperation.Copy
-                ? "Widget.CopyToFolder"
-                : "Widget.MoveToFolder",
+            ShouldMoveForAcceptedOperation(e.AcceptedOperation)
+                ? "Widget.MoveToFolder"
+                : "Widget.CopyToFolder",
             targetFolder.Name);
     }
 
@@ -3446,14 +3488,14 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             }
 
             var acceptedOperation = e.AcceptedOperation == DataPackageOperation.None
-                ? GetAcceptedDropOperation(e.DataView.RequestedOperation, movesIntoFolder: true)
+                ? NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder: true)
                 : e.AcceptedOperation;
             if (acceptedOperation == DataPackageOperation.None)
             {
                 return;
             }
 
-            bool move = acceptedOperation != DataPackageOperation.Copy;
+            bool move = ShouldMoveForAcceptedOperation(acceptedOperation);
             var results = await App.Current.FileService.TransferItemsWithResultAsync(sourcePaths, targetFolder.Path, move);
             if (results.Count == 0)
             {

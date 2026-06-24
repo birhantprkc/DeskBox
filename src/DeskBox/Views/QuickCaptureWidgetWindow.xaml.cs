@@ -54,7 +54,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private const double QuickCaptureDialogMaxWidth = 360.0;
     private const double QuickCaptureDialogMinButtonWidth = 76.0;
     private const double QuickCaptureDialogMaxButtonWidth = 112.0;
-    private const int InlineCopyToastMs = 900;
+    private const int CopyToastMs = 900;
     private const int StatusToastDefaultMs = 1400;
     private const int StatusToastUndoMs = 4200;
     private static readonly string QuickCaptureTextPreviewDirectory = Path.Combine(
@@ -94,7 +94,6 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private QuickCaptureItemViewModel? _editingItem;
     private long _backdropRefreshGeneration;
     private long _statusToastGeneration;
-    private long _inlineCopyToastGeneration;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;
 
     public QuickCaptureWidgetViewModel ViewModel { get; }
@@ -664,15 +663,6 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         }
     }
 
-    private async void ItemsListView_ItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (e.ClickedItem is QuickCaptureItemViewModel item)
-        {
-            await ViewModel.CopyItemAsync(item);
-            ShowCopyToast(item);
-        }
-    }
-
     private async void ItemsListView_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not QuickCaptureItemViewModel item)
@@ -804,8 +794,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         if (e.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space)
         {
             e.Handled = true;
-            await ViewModel.CopyItemAsync(item);
-            ShowCopyToast(item);
+            await CopyItemWithFeedbackAsync(item);
         }
     }
 
@@ -836,6 +825,33 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         var flyout = CreateItemFlyout(item);
         flyout.ShowAt((FrameworkElement)sender, e.GetPosition((FrameworkElement)sender));
+    }
+
+    private async void QuickCaptureItem_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not QuickCaptureItemViewModel item ||
+            e.OriginalSource is not DependencyObject source ||
+            IsItemActionSource(source))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await CopyItemWithFeedbackAsync(item);
+    }
+
+    private async Task CopyItemWithFeedbackAsync(QuickCaptureItemViewModel item)
+    {
+        try
+        {
+            await ViewModel.CopyItemAsync(item);
+            ShowCopyToast();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCapture] Failed to copy item {item.Id}: {ex}");
+            ShowStatusToast(_localizationService.T("QuickCapture.CopyFailed"));
+        }
     }
 
     private async void QuickCaptureItem_DragStarting(UIElement sender, DragStartingEventArgs args)
@@ -1240,8 +1256,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         };
         copyItem.Click += async (_, _) =>
         {
-            await ViewModel.CopyItemAsync(item);
-            ShowCopyToast(item);
+            await CopyItemWithFeedbackAsync(item);
         };
         flyout.Items.Add(copyItem);
         if (CreateSaveToLastFileWidgetItem(item) is { } saveToLastItem)
@@ -1656,6 +1671,24 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         return false;
     }
 
+    private static bool IsItemActionSource(DependencyObject source)
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is Button ||
+                current is MenuFlyoutItem ||
+                (current is FrameworkElement { Name: "ItemActionHost" }))
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
     private static bool HasAncestorOfType<T>(DependencyObject source) where T : DependencyObject
     {
         var current = source;
@@ -1775,18 +1808,9 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         RightActionButtons.Opacity = 0;
     }
 
-    private void ShowCopyToast(QuickCaptureItemViewModel? item = null)
+    private void ShowCopyToast()
     {
-        string copiedText = _localizationService.T("QuickCapture.Copied");
-        if (item is not null &&
-            ItemsListView.ContainerFromItem(item) is DependencyObject container &&
-            FindVisualChild<Border>(container, "InlineCopyToast") is { } inlineToast)
-        {
-            ShowInlineCopyToast(inlineToast, copiedText);
-            return;
-        }
-
-        ShowStatusToast(copiedText);
+        ShowStatusToast(_localizationService.T("QuickCapture.Copied"), durationMs: CopyToastMs);
     }
 
     private void ShowStatusToast(string text, string? actionText = null, int durationMs = StatusToastDefaultMs)
@@ -1798,6 +1822,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         }
 
         long generation = ++_statusToastGeneration;
+        StatusToast.MaxWidth = Math.Max(120, _appWindow.Size.Width - 24);
         StatusToastText.Text = text;
         StatusToastActionButton.Content = actionText;
         StatusToastActionButton.Visibility = string.IsNullOrWhiteSpace(actionText)
@@ -1833,44 +1858,6 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             StatusToast.IsHitTestVisible = false;
             StatusToastActionButton.Visibility = Visibility.Collapsed;
             _pendingDeletedItemSnapshot = null;
-        }
-    }
-
-    private void ShowInlineCopyToast(Border inlineToast, string text)
-    {
-        if (FindVisualChild<TextBlock>(inlineToast, "InlineCopyToastText") is { } textBlock)
-        {
-            textBlock.Text = text;
-        }
-
-        long generation = ++_inlineCopyToastGeneration;
-        inlineToast.Opacity = 1;
-        StartSubtleOffsetAnimation(inlineToast, fromX: 0, toX: 0, fromY: -4, toY: 0, durationMs: 120);
-        _ = HideInlineCopyToastAfterDelayAsync(inlineToast, generation);
-    }
-
-    private async Task HideInlineCopyToastAfterDelayAsync(Border inlineToast, long generation)
-    {
-        await Task.Delay(InlineCopyToastMs);
-        if (generation != _inlineCopyToastGeneration)
-        {
-            return;
-        }
-
-        if (!DispatcherQueue.HasThreadAccess)
-        {
-            DispatcherQueue.TryEnqueue(() => HideInlineCopyToastIfCurrent(inlineToast, generation));
-            return;
-        }
-
-        HideInlineCopyToastIfCurrent(inlineToast, generation);
-    }
-
-    private void HideInlineCopyToastIfCurrent(Border inlineToast, long generation)
-    {
-        if (generation == _inlineCopyToastGeneration)
-        {
-            inlineToast.Opacity = 0;
         }
     }
 
@@ -2509,7 +2496,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         double titleTextSize = ViewModel.TitleTextSize;
         TitleText.FontSize = titleTextSize;
 
-        double btnSize = Math.Clamp(titleIconSize + 14, 24, 34);
+        const double btnSize = 28;
         MoreButton.Width = btnSize;
         MoreButton.Height = btnSize;
         MoreButton.MinWidth = btnSize;
@@ -2517,7 +2504,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         CloseButton.Height = btnSize;
         CloseButton.MinWidth = btnSize;
 
-        double btnIconSize = Math.Clamp(titleIconSize - 3, 10, 15);
+        const double btnIconSize = 11;
         MoreButtonIcon.FontSize = btnIconSize;
         CloseButtonIcon.FontSize = btnIconSize;
 

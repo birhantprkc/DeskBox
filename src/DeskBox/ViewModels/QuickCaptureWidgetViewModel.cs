@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -11,6 +12,8 @@ namespace DeskBox.ViewModels;
 public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDisposable
 {
     private const int SearchRefreshDebounceMs = 150;
+    private const int ClipboardCannotOpenHResult = unchecked((int)0x800401D0);
+    private static readonly int[] s_clipboardRetryDelaysMs = [40, 90, 160, 260];
 
     private readonly QuickCaptureService _quickCaptureService;
     private readonly SettingsService _settingsService;
@@ -320,6 +323,38 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public async Task CopyItemAsync(QuickCaptureItemViewModel item)
     {
+        await WriteItemToClipboardWithRetryAsync(item);
+        if (item.Type != QuickCaptureItemType.Image)
+        {
+            _quickCaptureService.MarkClipboardTextWrittenByDeskBox(item.Body);
+        }
+    }
+
+    private async Task WriteItemToClipboardWithRetryAsync(QuickCaptureItemViewModel item)
+    {
+        Exception? lastException = null;
+        for (int attempt = 0; attempt <= s_clipboardRetryDelaysMs.Length; attempt++)
+        {
+            try
+            {
+                await WriteItemToClipboardOnceAsync(item);
+                return;
+            }
+            catch (COMException ex) when (IsRetryableClipboardException(ex) && attempt < s_clipboardRetryDelaysMs.Length)
+            {
+                lastException = ex;
+                await Task.Delay(s_clipboardRetryDelaysMs[attempt]);
+            }
+        }
+
+        if (lastException is not null)
+        {
+            throw lastException;
+        }
+    }
+
+    private static async Task WriteItemToClipboardOnceAsync(QuickCaptureItemViewModel item)
+    {
         var dataPackage = new DataPackage();
         if (item.Type == QuickCaptureItemType.Image &&
             !string.IsNullOrWhiteSpace(item.ImagePath) &&
@@ -337,12 +372,11 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
         Clipboard.SetContent(dataPackage);
         Clipboard.Flush();
-        if (item.Type != QuickCaptureItemType.Image)
-        {
-            _quickCaptureService.MarkClipboardTextWrittenByDeskBox(item.Body);
-        }
+    }
 
-        await Task.CompletedTask;
+    private static bool IsRetryableClipboardException(COMException ex)
+    {
+        return ex.HResult == ClipboardCannotOpenHResult;
     }
 
     public async Task EditItemAsync(QuickCaptureItemViewModel item, string body)

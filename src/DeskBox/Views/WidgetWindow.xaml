@@ -214,7 +214,7 @@
             Margin="14,0,14,0"
             VerticalAlignment="Bottom" />
 
-        <Grid Grid.Row="1" Padding="12,10,4,12">
+        <Grid Grid.Row="1" Padding="12,10,4,12" AllowDrop="True">
             <ProgressRing
                 x:Name="LoadingRing"
                 Width="24"
@@ -226,6 +226,7 @@
 
             <StackPanel
                 x:Name="EmptyState"
+                AllowDrop="True"
                 MaxWidth="220"
                 HorizontalAlignment="Center"
                 Spacing="10"
