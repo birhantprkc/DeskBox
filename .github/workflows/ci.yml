@@ -29,7 +29,7 @@ jobs:
 
       - name: Test
         timeout-minutes: 10
-        run: dotnet test .\tests\DeskBox.Tests\DeskBox.Tests.csproj --configuration Release --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 --blame-hang --blame-hang-timeout 5m --logger "trx;LogFileName=test-results.trx" -v:minimal
+        run: dotnet test .\tests\DeskBox.Tests\DeskBox.Tests.csproj --configuration Release --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:WindowsAppSdkBootstrapInitialize=false --blame-hang --blame-hang-timeout 5m --logger "trx;LogFileName=test-results.trx" -v:minimal
 
       - name: Upload test results
         if: always()
