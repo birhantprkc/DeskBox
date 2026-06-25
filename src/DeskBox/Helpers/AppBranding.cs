@@ -16,9 +16,16 @@ public static class AppBranding
 
     public static Uri LogoSvgUri { get; } = new(LogoSvgUriString);
 
-    public static Icon? CreateTrayIcon(bool useDarkVariant)
+    public static Icon? CreateTrayIcon(string style, bool isDarkTheme)
     {
-        string trayIconPath = useDarkVariant ? TrayIconDarkPath : TrayIconLightPath;
+        string trayIconPath = style switch
+        {
+            "Colorful" => LogoIconPath,
+            "Black" => TrayIconDarkPath,
+            "White" => TrayIconLightPath,
+            _ => isDarkTheme ? TrayIconDarkPath : TrayIconLightPath
+        };
+
         if (!File.Exists(trayIconPath))
         {
             return null;

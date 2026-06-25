@@ -7,7 +7,7 @@
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](#构建)
 
-DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量桌面格子帮你收纳文件、映射文件夹，并通过托盘或全局快捷键快速显示、隐藏、临时置顶这些格子。它不会替换 Windows 桌面，只是在原生桌面之上补一层更好整理的能力。
+DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量桌面格子帮你收纳文件、映射文件夹，并通过托盘或全局快捷键快速显示、隐藏、临时置顶这些格子。DeskBox 不会替换 Windows 桌面，只是在原生桌面之上补一层更好整理和访问文件的能力。
 
 ![DeskBox 产品封面](docs/images/brand/product-cover-1280x720.png)
 
@@ -15,40 +15,39 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.0.8
+当前版本：1.0.9
 
-- [DeskBox_Setup_1.0.8_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.8/DeskBox_Setup_1.0.8_x64.exe)
+- [DeskBox_Setup_1.0.9_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.9/DeskBox_Setup_1.0.9_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
-## 1.0.8 更新
+## 1.0.9 更新
 
-- 优化 Windows 11 23H2 下的拖拽兼容性，安装后启动不再继承管理员层级，并兼容更多资源管理器拖拽格式。
-- 优化拖拽悬浮提示，收纳格子和映射文件夹会显示更准确的目标文案。
-- 优化随记复制反馈，改为底部居中提示，并在 Windows 剪贴板短暂占用时自动重试。
-- 调整随记右上角按钮和悬浮操作按钮尺寸/样式，让它们更接近普通格子的控件风格。
-- 修复 1.0.7 后发现的随记单击复制、复制提示、映射格子拖拽提示等细节问题。
+- 重构设置页面结构，更接近 Windows 设置体验，并统一使用原生 ComboBox、NumberBox、带“开 / 关”文字的开关和钻入式设置项。
+- 新增格子内排序方式：名称、大小、项目类型、修改日期，并支持同一排序项升序 / 降序切换。
+- 优化格子右键菜单，将标题栏的格子管理操作和内容区的文件操作拆分得更清晰。
+- 优化随记 Tab、按钮、复制反馈和层级行为，让随记与普通格子在 F7 / 托盘唤起时更一致。
+- 增强拖拽兼容、空格子拖放、收纳 / 映射拖拽提示、层级恢复、图标加载重试和文件重命名中文输入法支持。
+- 精简新用户引导文案和设置选项，更贴近 Windows 风格。
 
-完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.0.8.md](docs/releases/v1.0.8.md) 中的中英文发布文案。
+完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.0.9.md](docs/releases/v1.0.9.md) 中的中英文发布文案。
 
 ## 为什么做这个产品
 
-很多桌面整理工具会接管桌面：替换原本的交互，重建一套文件入口，甚至让桌面变成另一个完整的管理容器。DeskBox 不想走这条路。它的目标是保留 Windows 原生桌面，只在文件整理这件事上补一层更轻的能力。
-
-所以 DeskBox 选择了“移动式整理”的思路：桌面仍然是桌面，文件仍然是普通文件，格子只是帮你把文件移动、复制或映射到合适的位置。它不会试图成为新的桌面 Shell，也不会强迫你改变 Windows 原本的使用方式。
+很多桌面整理工具会接管桌面：替换原本的交互，重建一套文件入口，甚至让桌面变成另一个完整容器。DeskBox 选择更轻的方式：Windows 桌面仍然是 Windows 桌面，文件仍然是普通文件，格子只是帮你把文件移动、复制或映射到更合适的位置。
 
 ## 功能
 
-- **收纳组件**：创建真实文件夹支撑的桌面格子，用于整理文件。
+- **收纳格子**：创建真实文件夹支撑的桌面格子，用于整理文件。
 - **文件夹映射**：把已有文件夹展示为桌面格子，不改变原文件位置。
 - **随记**：用可选的本地功能格子保存常用文本、链接、截图和最近复制内容。
-- **拖入后移动或复制**：可设置拖入收纳组件后的默认处理方式。
-- **托盘管理**：新建组件、映射文件夹、显示或隐藏全部组件、临时置顶、打开收纳目录、打开设置、开机自启和退出。
-- **全局快捷键**：在设置中开启后，可用快捷键快速显示、隐藏或唤起格子。
+- **拖入后移动或复制**：可设置拖入收纳格子后的默认处理方式。
+- **托盘管理**：新建格子、映射文件夹、显示或隐藏全部格子、临时置顶、打开收纳目录、打开设置、开机自启和退出。
+- **全局快捷键**：可用快捷键快速显示、隐藏或唤起格子。
 - **原生文件操作**：拖入、拖出、粘贴、剪切、重命名、删除、打开、在资源管理器中显示和键盘快捷键。
-- **外观调节**：支持主题、透明度、DWM 圆角、图标大小、文字大小、间距、文件名宽度和列表详情。
-- **收纳目录维护**：支持默认收纳路径调整、快速访问固定、孤立目录清理和安全确认。
-- **新用户引导**：首次启动时解释核心概念并配置关键默认项，也可以在设置中重新打开。
+- **外观调节**：支持主题、透明度、DWM 圆角、图标大小、文字大小、间距、文件名宽度、列表详情和动画效果。
+- **收纳目录维护**：调整默认收纳路径、固定到快速访问、恢复孤立收纳文件夹，并在影响用户文件前确认操作。
+- **新用户引导**：首次启动时说明核心概念和关键默认项，也可以在设置中重新打开。
 
 ## 截图
 
@@ -60,9 +59,9 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 ### 设置
 
-![DeskBox 设置常规页](docs/images/screenshots/zh-cn/settings-general.png)
+![DeskBox 常规设置](docs/images/screenshots/zh-cn/settings-general.png)
 
-![DeskBox 文件与收纳设置](docs/images/screenshots/zh-cn/settings-storage.png)
+![DeskBox 收纳设置](docs/images/screenshots/zh-cn/settings-storage.png)
 
 ### 新用户引导
 
@@ -86,9 +85,9 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 ## 安装和卸载
 
-安装器基于 Inno Setup 构建。覆盖安装会保留现有应用设置、组件配置和收纳目录内容。
+安装器基于 Inno Setup 构建，默认安装到当前用户目录。覆盖安装会保留现有应用设置、格子配置和收纳目录内容；旧版如果安装在 Program Files，安装器会自动迁移，避免 DeskBox 以管理员权限运行后影响资源管理器拖拽。
 
-开机自启会静默启动到托盘。如果 DeskBox 已经运行，登录时再次启动的实例会直接退出，不会弹出设置页。
+开机自启会静默启动到托盘。如果 DeskBox 已经运行，登录时再次启动的实例会直接退出，不会弹出设置页面。
 
 卸载时安装器会先停止正在运行的 DeskBox。收纳目录中的用户文件不会被静默删除；当清理可能影响用户文件时，会先提示确认。
 
@@ -117,7 +116,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.0.8_x64.exe
+Output\DeskBox_Setup_1.0.9_x64.exe
 ```
 
 ## 项目结构
@@ -133,7 +132,7 @@ docs\releases               GitHub Releases 发布文案
 
 ## 数据位置
 
-- 应用设置保存于 `%LocalAppData%\DeskBox\data`。
+- 应用设置保存在 `%LocalAppData%\DeskBox\data`。
 - 默认收纳路径为 `%UserProfile%\DeskBox`。
 - `bin`、`obj`、`Output`、`artifacts` 和 `TestResults` 等生成目录已被 Git 忽略。
 
@@ -143,7 +142,7 @@ DeskBox 仍处于早期公开版本。如果你遇到文件拖拽、运行时依
 
 ## 作者
 
-- 开发者：朱天雨
+- 开发者：Tianyu Zhu
 - 开源仓库：<https://github.com/Tianyu199509/DeskBox>
 
 ## 开源协议

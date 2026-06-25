@@ -72,7 +72,7 @@ public sealed partial class SettingsWindow : Window
         SettingsRoot.Loaded += (_, _) =>
         {
             CollectResponsiveRows(SettingsRoot);
-            ViewModel.RefreshQuickAccessState();
+            _ = ViewModel.RefreshQuickAccessStateAsync();
             ViewModel.RefreshGlobalHotkeyState();
             _ = ViewModel.RefreshQuickCaptureImageCacheInfoAsync();
             RefreshGlobalHotkeyControls();
@@ -164,6 +164,17 @@ public sealed partial class SettingsWindow : Window
                 Win32Helper.SetWindowTopMost(_hWnd);
             }
         });
+
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(5000);
+            if (_keepTopMostUntilDeactivate)
+            {
+                _keepTopMostUntilDeactivate = false;
+                Win32Helper.ClearWindowTopMost(_hWnd);
+                App.Log("[SettingsWindow] Topmost auto-cleared after 5s timeout");
+            }
+        });
     }
 
     private void SettingsWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -176,6 +187,11 @@ public sealed partial class SettingsWindow : Window
 
         _keepTopMostUntilDeactivate = false;
         Win32Helper.ClearWindowTopMost(_hWnd);
+
+        if (App.Current.WidgetManager is { } widgetManager)
+        {
+            widgetManager.RequestRestoreRaisedWidgetsToDesktopLayer("settings-deactivated");
+        }
     }
 
     private void SettingsNavigationView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -329,6 +345,9 @@ public sealed partial class SettingsWindow : Window
             case "ManagedDropAction":
                 ViewModel.SelectedManagedDropAction = ViewModel.AvailableManagedDropActions[combo.SelectedIndex];
                 break;
+            case "TrayIconStyle":
+                ViewModel.SelectedTrayIconStyle = ViewModel.AvailableTrayIconStyles[combo.SelectedIndex];
+                break;
         }
     }
 
@@ -416,18 +435,30 @@ public sealed partial class SettingsWindow : Window
 
     private void OnLanguageChanged()
     {
-        ApplyLocalizedText();
+        App.Current.RefreshSettingsWindow();
     }
 
     private void ApplyLocalizedText()
     {
         Title = _localizationService.T("Settings.WindowTitle");
         Localized.RefreshAll(_localizationService);
+        ApplyLocalizedToggleSwitchContent();
         ViewModel.RefreshGlobalHotkeyState();
         RefreshGlobalHotkeyControls();
         if (string.Equals(_currentSettingsSection, "ManagedStorage", StringComparison.Ordinal))
         {
             RefreshManagedStorageFolderList();
+        }
+    }
+
+    private void ApplyLocalizedToggleSwitchContent()
+    {
+        string onText = _localizationService.T("Settings.Toggle.On");
+        string offText = _localizationService.T("Settings.Toggle.Off");
+        foreach (var toggle in FindDescendants<ToggleSwitch>(SettingsRoot))
+        {
+            toggle.OnContent = onText;
+            toggle.OffContent = offText;
         }
     }
 
@@ -830,51 +861,82 @@ public sealed partial class SettingsWindow : Window
 
     private async void PinManagedStorageToQuickAccessButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.CanInvokeQuickAccessAction)
+        {
+            return;
+        }
+
         string path = ViewModel.ManagedStorageRootPath;
         bool shouldUnpin = ViewModel.ShouldUnpinManagedStorageFromQuickAccess;
-        string? error;
-        bool succeeded;
-        if (shouldUnpin)
-        {
-            succeeded = ExplorerQuickAccessHelper.TryUnpinFolderFromQuickAccess(path, out error);
-        }
-        else
-        {
-            succeeded = ExplorerQuickAccessHelper.TryPinFolderToQuickAccess(path, out error);
-        }
 
-        ViewModel.RefreshQuickAccessState();
-
-        if (succeeded)
+        ViewModel.SetQuickAccessBusy(true);
+        try
         {
-            await Task.Delay(350);
-            ViewModel.RefreshQuickAccessState();
-            return;
-        }
+            QuickAccessOperationResult result = shouldUnpin
+                ? await ExplorerQuickAccessHelper.TryUnpinFolderFromQuickAccessAsync(path)
+                : await ExplorerQuickAccessHelper.TryPinFolderToQuickAccessAsync(path);
 
-        if (SettingsRoot.XamlRoot is null)
-        {
-            return;
-        }
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = SettingsRoot.XamlRoot,
-            Title = shouldUnpin
-                ? _localizationService.T("Settings.Dialog.UnpinQuickAccessFailedTitle")
-                : _localizationService.T("Settings.Dialog.PinQuickAccessFailedTitle"),
-            CloseButtonText = _localizationService.T("Common.Ok"),
-            DefaultButton = ContentDialogButton.Close,
-            Content = new TextBlock
+            if (result.Succeeded)
             {
-                Text = shouldUnpin
-                    ? _localizationService.Format("Settings.Dialog.UnpinQuickAccessFailedBody", error ?? string.Empty)
-                    : _localizationService.Format("Settings.Dialog.PinQuickAccessFailedBody", error ?? string.Empty),
-                TextWrapping = TextWrapping.Wrap
+                ViewModel.SetQuickAccessPinState(shouldUnpin ? QuickAccessPinState.NotPinned : QuickAccessPinState.Pinned);
+                await Task.Delay(500);
+                await ViewModel.RefreshQuickAccessStateAsync();
+                return;
             }
-        };
 
-        await dialog.ShowAsync();
+            if (SettingsRoot.XamlRoot is null)
+            {
+                return;
+            }
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = SettingsRoot.XamlRoot,
+                Title = shouldUnpin
+                    ? _localizationService.T("Settings.Dialog.UnpinQuickAccessFailedTitle")
+                    : _localizationService.T("Settings.Dialog.PinQuickAccessFailedTitle"),
+                CloseButtonText = _localizationService.T("Common.Ok"),
+                DefaultButton = ContentDialogButton.Close,
+                Content = new TextBlock
+                {
+                    Text = shouldUnpin
+                        ? _localizationService.Format("Settings.Dialog.UnpinQuickAccessFailedBody", result.Error ?? string.Empty)
+                        : _localizationService.Format("Settings.Dialog.PinQuickAccessFailedBody", result.Error ?? string.Empty),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SettingsWindow] Failed to update Quick Access pin state: {ex}");
+            if (SettingsRoot.XamlRoot is not null)
+            {
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = SettingsRoot.XamlRoot,
+                    Title = shouldUnpin
+                        ? _localizationService.T("Settings.Dialog.UnpinQuickAccessFailedTitle")
+                        : _localizationService.T("Settings.Dialog.PinQuickAccessFailedTitle"),
+                    CloseButtonText = _localizationService.T("Common.Ok"),
+                    DefaultButton = ContentDialogButton.Close,
+                    Content = new TextBlock
+                    {
+                        Text = shouldUnpin
+                            ? _localizationService.Format("Settings.Dialog.UnpinQuickAccessFailedBody", ex.Message)
+                            : _localizationService.Format("Settings.Dialog.PinQuickAccessFailedBody", ex.Message),
+                        TextWrapping = TextWrapping.Wrap
+                    }
+                };
+
+                await dialog.ShowAsync();
+            }
+        }
+        finally
+        {
+            ViewModel.SetQuickAccessBusy(false);
+        }
     }
 
     private void OpenRepositoryButton_Click(object sender, RoutedEventArgs e)
@@ -982,20 +1044,7 @@ public sealed partial class SettingsWindow : Window
             return;
         }
 
-        if (!App.Current.SettingsService.Settings.HasConfirmedQuickCaptureClipboardNotice)
-        {
-            bool confirmed = await QuickCaptureClipboardActivationHelper.EnableAsync(SettingsRoot.XamlRoot, _localizationService);
-            if (!confirmed)
-            {
-                SetQuickCaptureClipboardToggle(false);
-                return;
-            }
-        }
-        else
-        {
-            await QuickCaptureClipboardActivationHelper.EnableAsync(SettingsRoot.XamlRoot, _localizationService);
-        }
-
+        await QuickCaptureClipboardActivationHelper.EnableAsync(SettingsRoot.XamlRoot, _localizationService);
         ViewModel.QuickCaptureClipboardEnabled = App.Current.SettingsService.Settings.QuickCaptureClipboardEnabled;
         ViewModel.QuickCaptureEnabled = App.Current.SettingsService.Settings.QuickCaptureEnabled;
         App.Current.QuickCaptureClipboardService?.Refresh();

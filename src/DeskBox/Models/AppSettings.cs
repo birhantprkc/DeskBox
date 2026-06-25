@@ -11,6 +11,11 @@ public class AppSettings
     public string Theme { get; set; } = "System";
 
     /// <summary>
+    /// Tray icon style. Valid values: <c>"System"</c>, <c>"Colorful"</c>, <c>"Black"</c>, <c>"White"</c>.
+    /// </summary>
+    public string TrayIconStyle { get; set; } = "System";
+
+    /// <summary>
     /// Display language. Valid values: <c>"System"</c>, <c>"zh-CN"</c>, <c>"en-US"</c>.
     /// </summary>
     public string Language { get; set; } = "System";
@@ -39,9 +44,6 @@ public class AppSettings
 
     /// <summary>Maximum number of recent clipboard text/link entries kept by Quick Capture.</summary>
     public int QuickCaptureRecentLimit { get; set; } = 30;
-
-    /// <summary>Whether the user has accepted the local clipboard capture notice.</summary>
-    public bool HasConfirmedQuickCaptureClipboardNotice { get; set; }
 
     /// <summary>Last file widget used as the target for saving Quick Capture content.</summary>
     public string LastQuickCaptureFileWidgetId { get; set; } = string.Empty;
@@ -92,6 +94,11 @@ public class AppSettings
     /// Whether shortcut icons should hide the arrow overlay inside DeskBox.
     /// </summary>
     public bool HideShortcutArrowOverlay { get; set; } = true;
+
+    /// <summary>
+    /// Whether to show action buttons on widget hover.
+    /// </summary>
+    public bool ShowHoverButtons { get; set; } = true;
 
     /// <summary>
     /// Whether list view should show secondary file details under item names.

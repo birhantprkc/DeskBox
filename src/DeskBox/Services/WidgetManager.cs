@@ -88,6 +88,12 @@ public sealed class WidgetManager
     public bool HasVisibleWidgets => _widgets.Values.Any(entry => entry.Window.Visible) ||
                                      _quickCaptureWidgets.Values.Any(entry => entry.Window.Visible);
 
+    public bool IsWidgetWindow(IntPtr hwnd)
+    {
+        return _widgets.Values.Any(w => w.Window.WindowHandle == hwnd) ||
+               _quickCaptureWidgets.Values.Any(w => w.Window.WindowHandle == hwnd);
+    }
+
     public event Action<WidgetWindow>? WidgetCreated;
     public event Action<string>? WidgetRemoved;
     public event Action<bool>? TrayLayerStateChanged;
@@ -980,7 +986,8 @@ public sealed class WidgetManager
         string effect = _settingsService.Settings.WidgetAnimationEffect;
         if (string.Equals(effect, SettingsService.WidgetAnimationEffectNone, StringComparison.Ordinal) ||
             string.Equals(effect, SettingsService.WidgetAnimationEffectFade, StringComparison.Ordinal) ||
-            string.Equals(effect, SettingsService.WidgetAnimationEffectScaleFade, StringComparison.Ordinal))
+            string.Equals(effect, SettingsService.WidgetAnimationEffectScaleFade, StringComparison.Ordinal) ||
+            string.Equals(effect, SettingsService.WidgetAnimationEffectZoom, StringComparison.Ordinal))
         {
             return;
         }
@@ -1004,19 +1011,24 @@ public sealed class WidgetManager
             switch (effect)
             {
                 case SettingsService.WidgetAnimationEffectSlideLeft:
+                case SettingsService.WidgetAnimationEffectSlideLeftFade:
                     offsetX = -(groupRight - workArea.X + OffscreenAnimationPadding);
                     break;
 
                 case SettingsService.WidgetAnimationEffectSlideUp:
+                case SettingsService.WidgetAnimationEffectSlideUpFade:
                     offsetY = -(groupBottom - workArea.Y + OffscreenAnimationPadding);
                     break;
 
                 case SettingsService.WidgetAnimationEffectSlideDown:
+                case SettingsService.WidgetAnimationEffectSlideDownFade:
                     offsetY = workArea.Y + workArea.Height - groupTop + OffscreenAnimationPadding;
                     break;
 
                 case SettingsService.WidgetAnimationEffectSlideRight:
                 case SettingsService.WidgetAnimationEffectSlideFade:
+                case SettingsService.WidgetAnimationEffectSlideRightFade:
+                case SettingsService.WidgetAnimationEffectScaleSlide:
                 default:
                     offsetX = workArea.X + workArea.Width - groupLeft + OffscreenAnimationPadding;
                     break;
@@ -1282,11 +1294,14 @@ public sealed class WidgetManager
         }
 
         Win32Helper.POINT? cursor = TryGetCursorPosition();
-        if (IsForegroundDeskBoxWindow() ||
-            IsPointerOverDeskBoxWindow(cursor) ||
-            IsPointerOverTaskbar(cursor))
+        IntPtr foreground = Win32Helper.GetForegroundWindow();
+        bool foregroundIsWidget = IsWidgetWindow(foreground);
+        bool pointerOverWidget = cursor.HasValue && IsWidgetWindow(Win32Helper.WindowFromPoint(cursor.Value));
+        bool pointerOverTaskbar = IsPointerOverTaskbar(cursor);
+
+        if (foregroundIsWidget || pointerOverWidget || pointerOverTaskbar)
         {
-            App.LogVerbose($"[TrayBatch] RestoreRequest kept reason={reason} cursor={FormatPoint(cursor)}");
+            App.LogVerbose($"[TrayBatch] RestoreRequest kept reason={reason} fgWidget={foregroundIsWidget} ptrWidget={pointerOverWidget} ptrTaskbar={pointerOverTaskbar}");
             return;
         }
 
@@ -1443,14 +1458,47 @@ public sealed class WidgetManager
             return;
         }
 
-        if (IsPointerOverDeskBoxWindow(cursor) || IsPointerOverTaskbar(cursor))
+        IntPtr targetWindow = Win32Helper.WindowFromPoint(cursor);
+        bool overWidget = IsWidgetWindow(targetWindow);
+        bool overTaskbar = IsPointerOverTaskbar(cursor);
+
+        if (overTaskbar)
         {
-            App.LogVerbose($"[TrayBatch] RestoreMouseHook kept cursor={FormatPoint(cursor)}");
+            App.LogVerbose($"[TrayBatch] RestoreMouseHook kept taskbar");
             return;
         }
 
-        App.LogVerbose($"[TrayBatch] RestoreMouseHook restoring cursor={FormatPoint(cursor)}");
+        if (overWidget)
+        {
+            App.LogVerbose($"[TrayBatch] RestoreMouseHook restoring-except hwnd=0x{targetWindow.ToInt64():X}");
+            RestoreRaisedWidgetsToDesktopLayerExcept(targetWindow);
+            return;
+        }
+
+        App.LogVerbose($"[TrayBatch] RestoreMouseHook restoring-all hwnd=0x{targetWindow.ToInt64():X}");
         RestoreRaisedWidgetsToDesktopLayer(force: true);
+    }
+
+    private void RestoreRaisedWidgetsToDesktopLayerExcept(IntPtr skipHwnd)
+    {
+        if (!_widgetsRaisedFromTray || _isTogglingWidgetsDesktopLayer)
+        {
+            return;
+        }
+
+        foreach (var (_, (window, _)) in _widgets.ToList())
+        {
+            if (window.WindowHandle == skipHwnd) continue;
+            try { window.ForceRestoreDesktopLayerFromManager(); }
+            catch (Exception ex) { App.Log($"[WidgetManager] Failed to restore file widget: {ex}"); }
+        }
+
+        foreach (var (_, (window, _)) in _quickCaptureWidgets.ToList())
+        {
+            if (window.WindowHandle == skipHwnd) continue;
+            try { window.ForceRestoreDesktopLayerFromManager(); }
+            catch (Exception ex) { App.Log($"[WidgetManager] Failed to restore quick capture: {ex}"); }
+        }
     }
 
     private void TrayLayerRestoreTimer_Tick(DispatcherQueueTimer sender, object args)

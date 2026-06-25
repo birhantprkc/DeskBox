@@ -72,13 +72,8 @@ begin
   ShouldInstallDotNetRuntime := not IsDotNet8RuntimeInstalled;
   ShouldInstallWindowsAppRuntime := not IsWindowsAppRuntime21Installed;
 
-  Log('DeskBox 依赖检测：.NET 8 Runtime 缺失=' + IntToStr(Integer(ShouldInstallDotNetRuntime)));
-  Log('DeskBox 依赖检测：Windows App Runtime 2.1 缺失=' + IntToStr(Integer(ShouldInstallWindowsAppRuntime)));
-end;
-
-function QuoteForDisplay(Value: string): string;
-begin
-  Result := '"' + Value + '"';
+  Log('DeskBox dependency check: dotnet8Missing=' + IntToStr(Integer(ShouldInstallDotNetRuntime)));
+  Log('DeskBox dependency check: windowsAppRuntimeMissing=' + IntToStr(Integer(ShouldInstallWindowsAppRuntime)));
 end;
 
 function DownloadDependencyWithProgress(
@@ -101,12 +96,12 @@ begin
   except
     if DependencyDownloadPage.AbortedByUser then
     begin
-      ErrorMessage := '下载已取消。';
+      ErrorMessage := 'Download was cancelled.';
       Exit;
     end;
 
     ErrorMessage := GetExceptionMessage;
-    Log(DisplayName + ' 主下载失败：' + ErrorMessage);
+    Log(DisplayName + ' primary download failed: ' + ErrorMessage);
   end;
 
   DependencyDownloadPage.Clear;
@@ -117,15 +112,15 @@ begin
     Result := True;
   except
     if DependencyDownloadPage.AbortedByUser then
-      ErrorMessage := '下载已取消。'
+      ErrorMessage := 'Download was cancelled.'
     else
       ErrorMessage :=
-        DisplayName + ' 下载失败。' + #13#10 +
-        '主下载地址：' + Url + #13#10 +
-        '备用下载地址：' + FallbackUrl + #13#10 +
-        '错误：' + GetExceptionMessage;
+        DisplayName + ' download failed.' + #13#10 +
+        'Primary URL: ' + Url + #13#10 +
+        'Fallback URL: ' + FallbackUrl + #13#10 +
+        'Error: ' + GetExceptionMessage;
 
-    Log(DisplayName + ' 备用下载失败：' + ErrorMessage);
+    Log(DisplayName + ' fallback download failed: ' + ErrorMessage);
   end;
 end;
 
@@ -142,7 +137,7 @@ begin
   try
     if ShouldInstallDotNetRuntime then
     begin
-      DependencyDownloadPage.Msg1Label.Caption := '正在下载 .NET 8 Runtime x64...';
+      DependencyDownloadPage.Msg1Label.Caption := 'Downloading .NET 8 Runtime x64...';
       if not DownloadDependencyWithProgress(
         '.NET 8 Runtime x64',
         DotNetRuntimeUrl,
@@ -158,7 +153,7 @@ begin
 
     if ShouldInstallWindowsAppRuntime then
     begin
-      DependencyDownloadPage.Msg1Label.Caption := '正在下载 Windows App Runtime 2.1 x64...';
+      DependencyDownloadPage.Msg1Label.Caption := 'Downloading Windows App Runtime 2.1 x64...';
       if not DownloadDependencyWithProgress(
         'Windows App Runtime 2.1 x64',
         WindowsAppRuntimeUrl,
@@ -192,12 +187,12 @@ begin
 
   DependencyInstallPage.SetProgress(Step - 1, StepCount);
   DependencyInstallPage.SetText(
-    '正在安装 ' + DisplayName + '...',
-    '安装程序可能需要几分钟，请不要关闭窗口。');
+    'Installing ' + DisplayName + '...',
+    'This may take a few minutes. Please do not close this window.');
 
-  if not Exec(InstallerPath, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  if not ShellExec('runas', InstallerPath, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    SuppressibleMsgBox(DisplayName + ' 安装程序无法启动。请确认安装器已用管理员权限运行后重试。', mbCriticalError, MB_OK, IDOK);
+    SuppressibleMsgBox(DisplayName + ' installer could not be started with administrator permission. Please allow the Windows prompt and try again.', mbCriticalError, MB_OK, IDOK);
     Exit;
   end;
 
@@ -211,8 +206,8 @@ begin
   if ResultCode <> 0 then
   begin
     SuppressibleMsgBox(
-      DisplayName + ' 安装失败，退出代码：' + IntToStr(ResultCode) + '。' + #13#10 +
-      '请确认系统支持该运行时，或手动安装依赖后重新运行 DeskBox 安装程序。',
+      DisplayName + ' installation failed. Exit code: ' + IntToStr(ResultCode) + '.' + #13#10 +
+      'Please confirm this Windows version is supported, or install the dependency manually and run DeskBox setup again.',
       mbCriticalError,
       MB_OK,
       IDOK);
@@ -281,9 +276,9 @@ end;
 
 procedure InitializeWizard;
 begin
-  DependencyDownloadPage := CreateDownloadPage('准备 DeskBox 运行环境', '正在下载缺失的运行时依赖。', nil);
+  DependencyDownloadPage := CreateDownloadPage('Preparing DeskBox runtime', 'Downloading missing runtime dependencies.', nil);
   DependencyDownloadPage.ShowBaseNameInsteadOfUrl := True;
-  DependencyInstallPage := CreateOutputProgressPage('准备 DeskBox 运行环境', '正在安装缺失的运行时依赖。');
+  DependencyInstallPage := CreateOutputProgressPage('Preparing DeskBox runtime', 'Installing missing runtime dependencies.');
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -314,7 +309,7 @@ begin
 
   if NeedsRestart then
   begin
-    SuppressibleMsgBox('运行时依赖安装完成，但需要重启电脑。重启后请重新运行 DeskBox 安装程序。', mbInformation, MB_OK, IDOK);
+    SuppressibleMsgBox('Runtime dependencies were installed, but Windows needs to restart. Restart your PC, then run DeskBox setup again.', mbInformation, MB_OK, IDOK);
     Result := False;
   end;
 end;

@@ -125,6 +125,11 @@
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
 
+            <x:Double x:Key="ToggleSwitchOuterBorderStrokeThickness">0.25</x:Double>
+            <x:Double x:Key="ToggleSwitchThemeMinWidth">72</x:Double>
+            <x:Double x:Key="ToggleSwitchPreContentMargin">0</x:Double>
+            <x:Double x:Key="ToggleSwitchPostContentMargin">0</x:Double>
+
             <Style x:Key="SettingToggleSwitchStyle" TargetType="ToggleSwitch">
                 <Setter Property="Width" Value="44" />
                 <Setter Property="MinWidth" Value="44" />
@@ -133,6 +138,18 @@
                 <Setter Property="Margin" Value="0" />
                 <Setter Property="OffContent" Value="" />
                 <Setter Property="OnContent" Value="" />
+            </Style>
+
+            <Style x:Key="DrillDownRowStyle" TargetType="Button">
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Padding" Value="16,14" />
+                <Setter Property="MinHeight" Value="66" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="VerticalAlignment" Value="Stretch" />
             </Style>
 
             <Style x:Key="AccentSwatchButtonStyle" TargetType="Button">
@@ -216,18 +233,18 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
+                    Tag="Advanced"
+                    svc:Localized.Key="Settings.Nav.Advanced">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE74E;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
                     x:Name="FeatureWidgetsNavItem"
                     Tag="FeatureWidgets"
                     svc:Localized.Key="Settings.Nav.FeatureWidgets">
                     <NavigationViewItem.Icon>
                         <SymbolIcon Symbol="Favorite" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
-                    Tag="Advanced"
-                    svc:Localized.Key="Settings.Nav.Advanced">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE74E;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
@@ -281,9 +298,31 @@
                                     VerticalAlignment="Center"
                                     MinWidth="176"
                                     ItemsSource="{Binding AvailableThemeDisplayNames}"
-                                    SelectedItem="{Binding SelectedThemeText, Mode=OneWay}"
+                                    SelectedIndex="{Binding SelectedThemeIndex, Mode=OneWay}"
                                     SelectionChanged="SettingsComboBox_SelectionChanged"
                                     Tag="Theme" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.TrayIcon.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.TrayIcon.Description" />
+                                </StackPanel>
+                                <ComboBox
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    MinWidth="176"
+                                    ItemsSource="{Binding AvailableTrayIconStyleDisplayNames}"
+                                    SelectedIndex="{Binding SelectedTrayIconStyleIndex, Mode=OneWay}"
+                                    SelectionChanged="SettingsComboBox_SelectionChanged"
+                                    Tag="TrayIconStyle" />
                             </Grid>
 
                             <Grid Style="{StaticResource SettingRowStyle}">
@@ -403,7 +442,7 @@
                                     VerticalAlignment="Center"
                                     MinWidth="176"
                                     ItemsSource="{Binding AvailableWidgetCornerPreferenceDisplayNames}"
-                                    SelectedItem="{Binding SelectedWidgetCornerPreferenceText, Mode=OneWay}"
+                                    SelectedIndex="{Binding SelectedWidgetCornerPreferenceIndex, Mode=OneWay}"
                                     SelectionChanged="SettingsComboBox_SelectionChanged"
                                     Tag="WidgetCorner" />
                             </Grid>
@@ -411,26 +450,27 @@
                     </Border>
 
                     <Border Style="{StaticResource SettingsGroupStyle}">
-                        <Grid Style="{StaticResource SettingRowStyle}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Appearance.DetailTitle" />
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Appearance.DetailDescription" />
-                            </StackPanel>
-                            <Button
-                                Grid.Column="1"
-                                Click="OpenAppearanceDetailButton_Click"
-                                Style="{StaticResource IconActionButtonStyle}"
-                                svc:Localized.ToolTipKey="Common.Configure">
+                        <Button
+                            Style="{StaticResource DrillDownRowStyle}"
+                            Click="OpenAppearanceDetailButton_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Appearance.DetailTitle" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Appearance.DetailDescription" />
+                                </StackPanel>
                                 <FontIcon
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
                                     FontSize="12"
                                     FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                    Glyph="&#xE974;" />
-                            </Button>
-                        </Grid>
+                                    Glyph="&#xE974;"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Button>
                     </Border>
                 </StackPanel>
 
@@ -724,6 +764,23 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.ShowHoverButtons.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ShowHoverButtons.Description" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    Grid.Column="1"
+                                    IsOn="{Binding ShowHoverButtons, Mode=TwoWay}"
+                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.HideShortcutArrow.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.HideShortcutArrow.Description" />
                                 </StackPanel>
@@ -815,7 +872,7 @@
                                     VerticalAlignment="Center"
                                     MinWidth="176"
                                     ItemsSource="{Binding AvailableWidgetAnimationEffectDisplayNames}"
-                                    SelectedItem="{Binding SelectedWidgetAnimationEffectText, Mode=OneWay}"
+                                    SelectedIndex="{Binding SelectedWidgetAnimationEffectIndex, Mode=OneWay}"
                                     SelectionChanged="SettingsComboBox_SelectionChanged"
                                     Tag="WidgetAnimationEffect" />
                             </Grid>
@@ -837,7 +894,7 @@
                                     VerticalAlignment="Center"
                                     MinWidth="176"
                                     ItemsSource="{Binding AvailableWidgetAnimationSpeedDisplayNames}"
-                                    SelectedItem="{Binding SelectedWidgetAnimationSpeedText, Mode=OneWay}"
+                                    SelectedIndex="{Binding SelectedWidgetAnimationSpeedIndex, Mode=OneWay}"
                                     SelectionChanged="SettingsComboBox_SelectionChanged"
                                     Tag="WidgetAnimationSpeed" />
                             </Grid>
@@ -924,7 +981,7 @@
                                     VerticalAlignment="Center"
                                     MinWidth="176"
                                     ItemsSource="{Binding AvailableManagedDropActionDisplayNames}"
-                                    SelectedItem="{Binding SelectedManagedDropActionText, Mode=OneWay}"
+                                    SelectedIndex="{Binding SelectedManagedDropActionIndex, Mode=OneWay}"
                                     SelectionChanged="SettingsComboBox_SelectionChanged"
                                     Tag="ManagedDropAction" />
                             </Grid>
@@ -962,6 +1019,7 @@
                                     <Button
                                         x:Name="PinQuickAccessButton"
                                         Click="PinManagedStorageToQuickAccessButton_Click"
+                                        IsEnabled="{Binding CanInvokeQuickAccessAction}"
                                         Style="{StaticResource ActionButtonStyle}"
                                         ToolTipService.ToolTip="{Binding PinQuickAccessToolTipText}">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -1050,43 +1108,41 @@
                     Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.FeatureWidgets" />
                     <Border Style="{StaticResource SettingsGroupStyle}">
-                        <StackPanel>
-                            <Grid Style="{StaticResource SettingRowStyle}">
+                        <Grid MinHeight="66">
+                            <Button
+                                Padding="0"
+                                Style="{StaticResource DrillDownRowStyle}"
+                                Click="OpenQuickCaptureSettingsButton_Click" />
+                            <Grid
+                                Padding="16,12"
+                                ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                <StackPanel
+                                    Grid.Column="0"
+                                    IsHitTestVisible="False"
+                                    Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.Description" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding QuickCaptureStatusText}" />
                                 </StackPanel>
-                                <Grid
+                                <ToggleSwitch
                                     Grid.Column="1"
-                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding QuickCaptureEnabled, Mode=TwoWay}"
+                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                <FontIcon
+                                    Grid.Column="2"
+                                    IsHitTestVisible="False"
                                     VerticalAlignment="Center"
-                                    ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <ToggleSwitch
-                                        Grid.Column="0"
-                                        IsOn="{Binding QuickCaptureEnabled, Mode=TwoWay}"
-                                        Style="{StaticResource SettingToggleSwitchStyle}" />
-                                    <Button
-                                        Grid.Column="1"
-                                        Click="OpenQuickCaptureSettingsButton_Click"
-                                        Style="{StaticResource IconActionButtonStyle}"
-                                        svc:Localized.ToolTipKey="Settings.QuickCapture.ConfigureTooltip">
-                                        <FontIcon
-                                            FontSize="12"
-                                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                            Glyph="&#xE974;" />
-                                    </Button>
-                                </Grid>
+                                    FontSize="12"
+                                    FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                    Glyph="&#xE974;"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </Grid>
-                        </StackPanel>
+                        </Grid>
                     </Border>
                 </StackPanel>
 
@@ -1249,7 +1305,7 @@
                                     VerticalAlignment="Center"
                                     MinWidth="176"
                                     ItemsSource="{Binding AvailableLanguageDisplayNames}"
-                                    SelectedItem="{Binding SelectedLanguageText, Mode=OneWay}"
+                                    SelectedIndex="{Binding SelectedLanguageIndex, Mode=OneWay}"
                                     SelectionChanged="SettingsComboBox_SelectionChanged"
                                     Tag="Language" />
                             </Grid>
@@ -1451,10 +1507,30 @@
                                     </StackPanel>
                                 </Button>
                             </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.About.WechatTitle" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.About.WechatDescription" />
+                                </StackPanel>
+                                <Image
+                                    Grid.Column="1"
+                                    Source="ms-appx:///Assets/wechat-qrcode.jpg"
+                                    Width="100"
+                                    Height="100"
+                                    Stretch="Uniform"
+                                    VerticalAlignment="Center" />
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>
-                    </StackPanel>
+                </StackPanel>
                 </ScrollViewer>
             </Grid>
         </NavigationView>

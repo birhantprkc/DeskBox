@@ -28,6 +28,12 @@ public sealed class SettingsService
     public const string WidgetAnimationEffectSlideDown = "SlideDown";
     public const string WidgetAnimationEffectScaleFade = "ScaleFade";
     public const string WidgetAnimationEffectSlideFade = "SlideFade";
+    public const string WidgetAnimationEffectZoom = "Zoom";
+    public const string WidgetAnimationEffectSlideUpFade = "SlideUpFade";
+    public const string WidgetAnimationEffectSlideDownFade = "SlideDownFade";
+    public const string WidgetAnimationEffectSlideLeftFade = "SlideLeftFade";
+    public const string WidgetAnimationEffectSlideRightFade = "SlideRightFade";
+    public const string WidgetAnimationEffectScaleSlide = "ScaleSlide";
     public const string WidgetAnimationSpeedVeryFast = "VeryFast";
     public const string WidgetAnimationSpeedFast = "Fast";
     public const string WidgetAnimationSpeedStandard = "Standard";
@@ -323,7 +329,13 @@ public sealed class SettingsService
             WidgetAnimationEffectSlideUp or
             WidgetAnimationEffectSlideDown or
             WidgetAnimationEffectScaleFade or
-            WidgetAnimationEffectSlideFade))
+            WidgetAnimationEffectSlideFade or
+            WidgetAnimationEffectZoom or
+            WidgetAnimationEffectSlideUpFade or
+            WidgetAnimationEffectSlideDownFade or
+            WidgetAnimationEffectSlideLeftFade or
+            WidgetAnimationEffectSlideRightFade or
+            WidgetAnimationEffectScaleSlide))
         {
             settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
             changed = true;

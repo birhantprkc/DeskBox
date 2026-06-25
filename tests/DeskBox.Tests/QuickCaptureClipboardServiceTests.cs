@@ -226,7 +226,6 @@ public sealed class QuickCaptureClipboardServiceTests : IDisposable
         settingsService.Settings.QuickCaptureEnabled = true;
         settingsService.Settings.QuickCaptureClipboardEnabled = true;
         settingsService.Settings.QuickCaptureImageClipboardEnabled = true;
-        settingsService.Settings.HasConfirmedQuickCaptureClipboardNotice = true;
     }
 
     public void Dispose()

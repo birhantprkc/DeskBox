@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.9 - 2026-06-25
+
+### English
+
+- Reworked Settings into a cleaner Windows-style structure with fewer top-level categories, native ComboBox/NumberBox controls, toggle on/off labels, drill-in rows, and a clearer Quick Capture settings entry.
+- Added widget item sorting by name, size, item type, and date modified, with per-widget persistence and repeat-click ascending/descending behavior.
+- Improved widget menus by separating title-bar widget management from content-area file actions, including view switching, sorting, paste, refresh, and mapped-folder actions.
+- Improved Quick Capture tabs, title buttons, hover actions, copy feedback, and shared show/restore behavior with regular widgets.
+- Improved drag/drop compatibility, empty-widget drop handling, managed-vs-mapped drag captions, z-order restoration, icon hydration retries, and Chinese IME support during file/folder rename.
+- Changed the installer to current-user installation by default and added automatic migration from older Program Files administrator installs to reduce Explorer drag/drop permission conflicts.
+- Added clearer guidance for Explorer drag/drop failures: DeskBox should not be run as administrator, because Windows can block file drops from non-elevated Explorer windows into elevated DeskBox windows.
+- Refined first-run onboarding with shorter Windows-style copy and simpler setup choices.
+
+### 中文
+
+- 重构设置页面结构，减少顶层分类，并统一使用原生 ComboBox、NumberBox、带“开 / 关”文字的开关、钻入式设置项和更清晰的随记设置入口。
+- 新增格子内排序方式：名称、大小、项目类型、修改日期，并支持按格子保存排序状态和重复点击切换升序 / 降序。
+- 优化格子菜单，将标题栏的格子管理操作和内容区的文件操作拆分得更清晰，包括视图切换、排序、粘贴、刷新和映射文件夹操作。
+- 优化随记 Tab、标题栏按钮、悬浮按钮、复制反馈，以及与普通格子一致的显示 / 恢复层级行为。
+- 增强拖拽兼容、空格子拖放、收纳 / 映射拖拽提示、层级恢复、图标加载重试和文件 / 文件夹重命名时的中文输入法支持。
+- 补充拖拽异常排查说明：DeskBox 日常使用不应以管理员权限运行，否则 Windows 可能会阻止普通权限资源管理器向 DeskBox 拖入文件。
+- 精简新用户引导文案和设置选项，更贴近 Windows 风格。
+
 ## 1.0.8 - 2026-06-24
 
 ### English

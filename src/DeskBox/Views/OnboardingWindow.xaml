@@ -32,7 +32,7 @@
             VerticalScrollMode="Auto">
             <Grid
                 x:Name="MainContentGrid"
-                Opacity="0"
+                Opacity="1"
                 ColumnSpacing="40">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
@@ -54,7 +54,7 @@
                         Width="36"
                         Height="36"
                         HorizontalAlignment="Left"
-                        Opacity="0">
+                        Opacity="1">
                         <Grid.Clip>
                             <RectangleGeometry Rect="0,0,36,36" />
                         </Grid.Clip>
@@ -153,7 +153,7 @@
         <Grid
             x:Name="FooterNav"
             Grid.Row="2"
-            Opacity="0"
+            Opacity="1"
             Margin="0,32,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -222,7 +222,8 @@
                         FontSize="32"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                        TextAlignment="Center" />
+                        TextAlignment="Center"
+                        svc:Localized.Key="Onboarding.Intro.Title" />
                     <TextBlock
                         x:Name="IntroBodyText"
                         Width="420"
@@ -230,7 +231,8 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         LineHeight="24"
                         TextAlignment="Center"
-                        TextWrapping="WrapWholeWords" />
+                        TextWrapping="WrapWholeWords"
+                        svc:Localized.Key="Onboarding.Intro.Body" />
                 </StackPanel>
             </StackPanel>
         </Grid>

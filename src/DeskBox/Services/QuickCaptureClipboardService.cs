@@ -79,28 +79,20 @@ public sealed class QuickCaptureClipboardService : IDisposable
 
     private bool ShouldCaptureClipboard()
     {
-        var settings = _settingsService.Settings;
-        return settings.QuickCaptureEnabled &&
-               settings.QuickCaptureClipboardEnabled &&
-               settings.HasConfirmedQuickCaptureClipboardNotice;
+        return _settingsService.Settings.QuickCaptureEnabled &&
+               _settingsService.Settings.QuickCaptureClipboardEnabled;
     }
 
     private string BuildDisabledReason()
     {
-        var settings = _settingsService.Settings;
-        if (!settings.QuickCaptureEnabled)
+        if (!_settingsService.Settings.QuickCaptureEnabled)
         {
             return "disabled:quick-capture-off";
         }
 
-        if (!settings.QuickCaptureClipboardEnabled)
+        if (!_settingsService.Settings.QuickCaptureClipboardEnabled)
         {
             return "disabled:clipboard-off";
-        }
-
-        if (!settings.HasConfirmedQuickCaptureClipboardNotice)
-        {
-            return "disabled:notice-unconfirmed";
         }
 
         return "disabled:unknown";

@@ -237,8 +237,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
                 return _localizationService.T("QuickCapture.RecentStatus.FeatureOff");
             }
 
-            if (!settings.QuickCaptureClipboardEnabled ||
-                !settings.HasConfirmedQuickCaptureClipboardNotice)
+            if (!settings.QuickCaptureClipboardEnabled)
             {
                 return _localizationService.T("QuickCapture.RecentStatus.Off");
             }
@@ -776,10 +775,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     private bool IsRecentCaptureEnabled()
     {
-        var settings = _settingsService.Settings;
-        return settings.QuickCaptureEnabled &&
-               settings.QuickCaptureClipboardEnabled &&
-               settings.HasConfirmedQuickCaptureClipboardNotice;
+        return _settingsService.Settings.QuickCaptureClipboardEnabled;
     }
 
     private bool MatchesSearch(QuickCaptureItem item, string searchText)

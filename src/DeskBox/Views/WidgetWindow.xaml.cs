@@ -104,10 +104,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private List<SelectionHitTestItem> _selectionHitTestItems = [];
     private Dictionary<WidgetItem, Border> _selectionSurfaceByItem = [];
     private bool _isSynchronizingSelection;
-    private Flyout? _itemRenameFlyout;
     private MenuFlyout? _itemDeleteConfirmFlyout;
     private Flyout? _messageFlyout;
-    private TextBox? _itemRenameTextBox;
     private WidgetItem? _itemRenameTarget;
     private MenuFlyout? _deleteWidgetFlyout;
     private FrameworkElement? _lastMoreFlyoutTarget;
@@ -116,6 +114,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private bool _isInlineFlyoutOpen;
     private bool _isCommittingTitleRename;
     private bool _isCommittingItemRename;
+    private bool _isCancellingTitleRename;
+    private bool _isCancellingItemRename;
     private DateTime _lastTitleBarClickTimeUtc;
     private Win32Helper.POINT _lastTitleBarClickPoint;
     private bool _hasPendingTitleBarClick;
@@ -1659,11 +1659,11 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 isDark,
                 accentColor,
                 isDark
-                    ? ColorHelper.FromArgb(0xFF, 0x2A, 0x2D, 0x33)
-                    : ColorHelper.FromArgb(0xFF, 0xFB, 0xFB, 0xFC),
-                accentMix: isDark ? 0.20 : 0.12,
-                overlayMix: isDark ? 0.12 : 0.18),
-            isDark ? (byte)0x3A : (byte)0x44);
+                    ? ColorHelper.FromArgb(0xFF, 0x25, 0x28, 0x2F)
+                    : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
+                accentMix: isDark ? 0.24 : 0.12,
+                overlayMix: isDark ? 0.04 : 0.02),
+            isDark ? (byte)0x6A : (byte)0x86);
 
         var pressedBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -2218,53 +2218,68 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         ClearFolderDropTarget();
         _lastRootDragDiagnosticSignature = null;
 
-        if (_isMigrationBusy)
+        var deferral = e.GetDeferral();
+        try
         {
-            return;
-        }
+            if (_isMigrationBusy)
+            {
+                return;
+            }
 
-        if (!HasPathDropData(e.DataView))
+            if (!HasPathDropData(e.DataView))
+            {
+                LogDropDiagnostic("RootDropNoPathData", e.DataView, e.AcceptedOperation, movesIntoFolder: false);
+                return;
+            }
+
+            bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
+            LogDropDiagnostic("RootDrop", e.DataView, e.AcceptedOperation, movesIntoFolder);
+
+            var paths = await GetDropPathsAsync(e.DataView);
+            if (paths.Length == 0)
+            {
+                App.Log(
+                    $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage=RootDropNoPaths " +
+                    $"mapped={movesIntoFolder} requested={e.DataView.RequestedOperation} accepted={e.AcceptedOperation} " +
+                    $"formats={FormatDataPackageFormats(e.DataView.AvailableFormats)}");
+                return;
+            }
+
+            var acceptedOperation = e.AcceptedOperation == DataPackageOperation.None
+                ? NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder)
+                : e.AcceptedOperation;
+            if (acceptedOperation == DataPackageOperation.None)
+            {
+                return;
+            }
+
+            bool? moveWhenMapped = movesIntoFolder
+                ? ShouldMoveForAcceptedOperation(acceptedOperation)
+                : null;
+
+            string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
+            if (movesIntoFolder &&
+                string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal) &&
+                moveWhenMapped == true)
+            {
+                return;
+            }
+
+            await ViewModel.ImportPathsAsync(paths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
+
+            if (moveWhenMapped == true)
+            {
+                await SyncMoveSourceAsync(
+                    TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId"),
+                    TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths"));
+            }
+
+            ClearCutState();
+        }
+        finally
         {
-            return;
+            deferral.Complete();
         }
-
-        var paths = await GetDropPathsAsync(e.DataView);
-        if (paths.Length == 0)
-        {
-            return;
-        }
-
-        bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
-        var acceptedOperation = e.AcceptedOperation == DataPackageOperation.None
-            ? NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder)
-            : e.AcceptedOperation;
-        if (acceptedOperation == DataPackageOperation.None)
-        {
-            return;
-        }
-
-        bool? moveWhenMapped = movesIntoFolder
-            ? ShouldMoveForAcceptedOperation(acceptedOperation)
-            : null;
-
-        string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
-        if (movesIntoFolder &&
-            string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal) &&
-            moveWhenMapped == true)
-        {
-            return;
-        }
-
-        await ViewModel.ImportPathsAsync(paths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
-
-        if (moveWhenMapped == true)
-        {
-            await SyncMoveSourceAsync(
-                TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId"),
-                TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths"));
-        }
-
-        ClearCutState();
     }
 
     private void ItemsView_ItemClick(object sender, ItemClickEventArgs e)
@@ -3236,6 +3251,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                     .Select(Path.GetFullPath)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
+                App.Log(
+                    $"[DropDiagnostic] GetStorageItemsAsync count={items.Count} pathCount={sourcePaths.Length} " +
+                    $"formats={FormatDataPackageFormats(dataView.AvailableFormats)}");
                 if (sourcePaths.Length > 0)
                 {
                     return sourcePaths;
@@ -3244,6 +3262,12 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             catch (Exception ex)
             {
                 App.Log($"[DropDiagnostic] GetStorageItemsAsync failed: {ex.Message}");
+            }
+
+            sourcePaths = await TryGetLegacyFormatPathsAsync(dataView);
+            if (sourcePaths.Length > 0)
+            {
+                return sourcePaths;
             }
         }
 
@@ -3260,6 +3284,79 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             .Where(path => File.Exists(path) || Directory.Exists(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static async Task<string[]> TryGetLegacyFormatPathsAsync(DataPackageView dataView)
+    {
+        var paths = new List<string>();
+        foreach (string format in dataView.AvailableFormats)
+        {
+            if (!MayContainLegacyPathText(format))
+            {
+                continue;
+            }
+
+            try
+            {
+                object? data = await dataView.GetDataAsync(format);
+                AppendCandidatePaths(paths, data);
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[DropDiagnostic] Legacy format read failed format='{format}': {ex.Message}");
+            }
+        }
+
+        return paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .Where(path => File.Exists(path) || Directory.Exists(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool MayContainLegacyPathText(string format)
+    {
+        return format.Contains("FileName", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileDrop", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileNameW", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileNameMap", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AppendCandidatePaths(List<string> paths, object? data)
+    {
+        switch (data)
+        {
+            case null:
+                return;
+            case string text:
+                AppendCandidatePathText(paths, text);
+                return;
+            case IEnumerable<string> strings:
+                foreach (string value in strings)
+                {
+                    AppendCandidatePathText(paths, value);
+                }
+
+                return;
+        }
+
+        App.Log($"[DropDiagnostic] Legacy format returned unsupported type: {data.GetType().FullName}");
+    }
+
+    private static void AppendCandidatePathText(List<string> paths, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        foreach (string candidate in text.Split(
+                     ["\0", "\r\n", "\n"],
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            paths.Add(candidate);
+        }
     }
 
     private void LogDropDiagnostic(
@@ -3292,6 +3389,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage={stage} " +
             $"mapped={!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath)} managed={ViewModel.FollowsDefaultStoragePath} " +
             $"requested={dataView.RequestedOperation} accepted={acceptedOperation} " +
+            $"containsStorage={dataView.Contains(StandardDataFormats.StorageItems)} containsText={dataView.Contains(StandardDataFormats.Text)} " +
+            $"fallback={HasFallbackFileFormats(dataView)} " +
             $"formats={FormatDataPackageFormats(dataView.AvailableFormats)}");
     }
 
@@ -3500,6 +3599,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
             ClearFolderDropTarget();
+            LogDropDiagnostic("FolderDragOverNoPathData", e.DataView, e.AcceptedOperation, movesIntoFolder: true);
             return;
         }
 
@@ -3560,15 +3660,22 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         if (!HasPathDropData(e.DataView))
         {
+            LogDropDiagnostic("FolderDropNoPathData", e.DataView, e.AcceptedOperation, movesIntoFolder: true);
             return;
         }
 
         var deferral = e.GetDeferral();
         try
         {
+            LogDropDiagnostic("FolderDrop", e.DataView, e.AcceptedOperation, movesIntoFolder: true);
+
             var sourcePaths = await GetDropPathsAsync(e.DataView);
             if (sourcePaths.Length == 0)
             {
+                App.Log(
+                    $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage=FolderDropNoPaths " +
+                    $"requested={e.DataView.RequestedOperation} accepted={e.AcceptedOperation} " +
+                    $"target='{targetFolder.Path}' formats={FormatDataPackageFormats(e.DataView.AvailableFormats)}");
                 return;
             }
 
@@ -3747,6 +3854,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void StartRename()
     {
+        _isCancellingTitleRename = false;
         PrepareRenameEditor();
         TitleText.Visibility = Visibility.Collapsed;
         TitleEditBox.Visibility = Visibility.Visible;
@@ -3798,6 +3906,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void CancelRename()
     {
+        _isCancellingTitleRename = true;
         TitleEditBox.Visibility = Visibility.Collapsed;
         TitleText.Visibility = Visibility.Visible;
         ReleaseInteractionLayer("file-title-rename-canceled");
@@ -3805,6 +3914,12 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private async void TitleEditBox_LostFocus(object sender, RoutedEventArgs e)
     {
+        if (_isCancellingTitleRename)
+        {
+            _isCancellingTitleRename = false;
+            return;
+        }
+
         await CommitRenameAsync();
     }
 
@@ -4029,6 +4144,34 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         };
         listView.Click += SetListView_Click;
         flyout.Items.Add(listView);
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var sortSubItem = new MenuFlyoutSubItem
+        {
+            Text = _localizationService.T("Widget.SortBy"),
+            Icon = new FontIcon { Glyph = "\uE8CB" }
+        };
+
+        var sortName = new ToggleMenuFlyoutItem { Text = _localizationService.T("Widget.Sort.Name") };
+        var sortSize = new ToggleMenuFlyoutItem { Text = _localizationService.T("Widget.Sort.Size") };
+        var sortType = new ToggleMenuFlyoutItem { Text = _localizationService.T("Widget.Sort.Type") };
+        var sortDate = new ToggleMenuFlyoutItem { Text = _localizationService.T("Widget.Sort.DateModified") };
+
+        var sortItems = new[] { sortName, sortSize, sortType, sortDate };
+        var sortModes = new[] { WidgetSortMode.Name, WidgetSortMode.Size, WidgetSortMode.Type, WidgetSortMode.DateModified };
+        var currentSortIndex = Array.IndexOf(sortModes, ViewModel.Config.SortMode);
+
+        for (int i = 0; i < sortItems.Length; i++)
+        {
+            var item = sortItems[i];
+            var mode = sortModes[i];
+            item.IsChecked = i == currentSortIndex;
+            item.Click += (_, _) => ViewModel.SetSortMode(mode);
+            sortSubItem.Items.Add(item);
+        }
+
+        flyout.Items.Add(sortSubItem);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
@@ -4488,20 +4631,23 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private async Task StartItemRenameAsync(WidgetItem item)
     {
-        var target = FindItemSurface(item);
-        if (target is null)
+        var target = FindItemNameElement(item) ?? FindItemSurface(item);
+        var contentHost = SelectionOverlay.Parent as UIElement;
+        if (target is null || contentHost is null)
         {
             return;
         }
 
         SelectSingleItem(item);
-        EnsureItemRenameFlyout();
 
         _itemRenameTarget = item;
-        _itemRenameTextBox!.Text = item.Name;
+        _isCancellingItemRename = false;
+        ItemRenameTextBox.Text = item.Name;
+        PositionItemRenameTextBox(target, contentHost);
+        ItemRenameTextBox.Visibility = Visibility.Visible;
+        ItemRenameTextBox.IsHitTestVisible = true;
         ElevateForInteraction();
-        _itemRenameFlyout!.ShowAt(target);
-        FocusTextInputEditor(_itemRenameTextBox, selectAll: true);
+        FocusTextInputEditor(ItemRenameTextBox, selectAll: true);
         await Task.CompletedTask;
     }
 
@@ -4530,38 +4676,6 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         }
     }
 
-    private void EnsureItemRenameFlyout()
-    {
-        if (_itemRenameFlyout is not null && _itemRenameTextBox is not null)
-        {
-            return;
-        }
-
-        _itemRenameTextBox = new TextBox
-        {
-            Width = 220,
-            MinWidth = 160,
-            MaxWidth = 260,
-            MinHeight = 30,
-            Padding = new Thickness(8, 2, 8, 2),
-            HorizontalContentAlignment = HorizontalAlignment.Left
-        };
-        _itemRenameTextBox.KeyDown += ItemRenameTextBox_KeyDown;
-        _itemRenameTextBox.LostFocus += ItemRenameTextBox_LostFocus;
-
-        _itemRenameFlyout = new Flyout
-        {
-            Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
-            ShouldConstrainToRootBounds = false,
-            Content = _itemRenameTextBox
-        };
-        _itemRenameFlyout.Closed += (_, _) =>
-        {
-            _itemRenameTarget = null;
-            ReleaseInteractionLayer("file-item-rename-closed");
-        };
-    }
-
     private async void ItemRenameTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == Windows.System.VirtualKey.Enter)
@@ -4572,26 +4686,34 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         else if (e.Key == Windows.System.VirtualKey.Escape)
         {
             e.Handled = true;
-            _itemRenameFlyout?.Hide();
+            CancelItemRename();
         }
     }
 
     private async void ItemRenameTextBox_LostFocus(object sender, RoutedEventArgs e)
     {
+        if (_isCancellingItemRename)
+        {
+            _isCancellingItemRename = false;
+            return;
+        }
+
         await CommitItemRenameAsync();
     }
 
     private async Task CommitItemRenameAsync()
     {
-        if (_isCommittingItemRename || _itemRenameTarget is null || _itemRenameTextBox is null)
+        if (_isCommittingItemRename ||
+            _itemRenameTarget is null ||
+            ItemRenameTextBox.Visibility != Visibility.Visible)
         {
             return;
         }
 
-        string newName = _itemRenameTextBox.Text.Trim();
+        string newName = ItemRenameTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(newName))
         {
-            _itemRenameFlyout?.Hide();
+            CancelItemRename();
             return;
         }
 
@@ -4599,18 +4721,73 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         try
         {
             await ViewModel.RenameItemAsync(_itemRenameTarget, newName);
-            _itemRenameFlyout?.Hide();
+            CompleteItemRename();
         }
         catch (Exception ex)
         {
             await ShowErrorDialogAsync(_localizationService.T("Widget.RenameFailed"), ex.Message);
-            _itemRenameTextBox.Focus(FocusState.Programmatic);
-            _itemRenameTextBox.SelectAll();
+            ItemRenameTextBox.Focus(FocusState.Programmatic);
+            ItemRenameTextBox.SelectAll();
         }
         finally
         {
             _isCommittingItemRename = false;
         }
+    }
+
+    private void CancelItemRename()
+    {
+        _isCancellingItemRename = true;
+        CompleteItemRename();
+    }
+
+    private void CompleteItemRename()
+    {
+        ItemRenameTextBox.Visibility = Visibility.Collapsed;
+        ItemRenameTextBox.IsHitTestVisible = false;
+        ItemRenameTextBox.Text = string.Empty;
+        _itemRenameTarget = null;
+        ReleaseInteractionLayer("file-item-rename-closed");
+    }
+
+    private void PositionItemRenameTextBox(FrameworkElement target, UIElement contentHost)
+    {
+        var topLeft = target.TransformToVisual(contentHost)
+            .TransformPoint(new Windows.Foundation.Point(0, 0));
+        double width = Math.Clamp(target.ActualWidth > 0 ? target.ActualWidth + 12 : 220, 120, 280);
+        double height = Math.Max(30, target.ActualHeight > 0 ? target.ActualHeight + 6 : 30);
+
+        if (contentHost is FrameworkElement host)
+        {
+            width = Math.Min(width, Math.Max(120, host.ActualWidth - topLeft.X - 8));
+            height = Math.Min(height, Math.Max(30, host.ActualHeight - topLeft.Y - 8));
+        }
+
+        ItemRenameTextBox.Width = width;
+        ItemRenameTextBox.Height = height;
+        ItemRenameTextBox.Margin = new Thickness(topLeft.X - 6, topLeft.Y - 3, 0, 0);
+    }
+
+    private FrameworkElement? FindItemNameElement(WidgetItem item)
+    {
+        if (GetActiveItemsView()?.ContainerFromItem(item) is not SelectorItem container)
+        {
+            return null;
+        }
+
+        if (ViewModel.IsIconMode &&
+            TryGetDescendant<TextBlock>(container, out var iconNameText, "IconItemNameText"))
+        {
+            return iconNameText;
+        }
+
+        if (ViewModel.IsListMode &&
+            TryGetDescendant<TextBlock>(container, out var listNameText, "ListItemNameText"))
+        {
+            return listNameText;
+        }
+
+        return null;
     }
 
     private FrameworkElement? FindItemSurface(WidgetItem item)
@@ -5339,6 +5516,11 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void RootGrid_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (!_settingsService.Settings.ShowHoverButtons)
+        {
+            return;
+        }
+
         EnsureStoryboards();
         _hideButtonsStoryboard?.Stop();
         _showButtonsStoryboard?.Begin();
@@ -5413,25 +5595,12 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         }
 
         bool ctrlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
-        if (ctrlPressed && CanUseRequestedOperation(requestedOperation, DataPackageOperation.Copy))
+        if (ctrlPressed)
         {
             return DataPackageOperation.Copy;
         }
 
-        var defaultOperation = GetManagedDropOperation();
-        if (CanUseRequestedOperation(requestedOperation, defaultOperation))
-        {
-            return defaultOperation;
-        }
-
-        if (CanUseRequestedOperation(requestedOperation, DataPackageOperation.Move))
-        {
-            return DataPackageOperation.Move;
-        }
-
-        return CanUseRequestedOperation(requestedOperation, DataPackageOperation.Copy)
-            ? DataPackageOperation.Copy
-            : DataPackageOperation.None;
+        return GetManagedDropOperation();
     }
 
     private static bool CanUseRequestedOperation(DataPackageOperation requestedOperation, DataPackageOperation operation)

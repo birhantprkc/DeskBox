@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace DeskBox.Helpers;
@@ -9,6 +10,10 @@ public enum QuickAccessPinState
     Pinned
 }
 
+public readonly record struct QuickAccessStateResult(QuickAccessPinState State, string? Error);
+
+public readonly record struct QuickAccessOperationResult(bool Succeeded, string? Error);
+
 /// <summary>
 /// Shell helpers for exposing DeskBox folders in File Explorer entry points.
 /// </summary>
@@ -18,6 +23,17 @@ public static class ExplorerQuickAccessHelper
     private const string PinVerb = "pintohome";
     private const string UnpinVerb = "unpinfromhome";
     private const string IsPinnedProperty = "System.IsPinnedToNameSpaceTree";
+
+    public static Task<QuickAccessStateResult> GetQuickAccessPinStateAsync(string folderPath)
+    {
+        return RunShellStaAsync(
+            () =>
+            {
+                QuickAccessPinState state = GetQuickAccessPinState(folderPath, out string? error);
+                return new QuickAccessStateResult(state, error);
+            },
+            "GetPinState");
+    }
 
     public static QuickAccessPinState GetQuickAccessPinState(string folderPath, out string? error)
     {
@@ -76,9 +92,31 @@ public static class ExplorerQuickAccessHelper
         }
     }
 
+    public static Task<QuickAccessOperationResult> TryPinFolderToQuickAccessAsync(string folderPath)
+    {
+        return RunShellStaAsync(
+            () =>
+            {
+                bool succeeded = TryPinFolderToQuickAccess(folderPath, out string? error);
+                return new QuickAccessOperationResult(succeeded, error);
+            },
+            "PinFolder");
+    }
+
     public static bool TryPinFolderToQuickAccess(string folderPath, out string? error)
     {
         return TryInvokeFolderVerb(folderPath, PinVerb, createFolder: true, out error);
+    }
+
+    public static Task<QuickAccessOperationResult> TryUnpinFolderFromQuickAccessAsync(string folderPath)
+    {
+        return RunShellStaAsync(
+            () =>
+            {
+                bool succeeded = TryUnpinFolderFromQuickAccess(folderPath, out string? error);
+                return new QuickAccessOperationResult(succeeded, error);
+            },
+            "UnpinFolder");
     }
 
     public static bool TryUnpinFolderFromQuickAccess(string folderPath, out string? error)
@@ -128,6 +166,48 @@ public static class ExplorerQuickAccessHelper
             error = ex.Message;
             return false;
         }
+    }
+
+    private static Task<T> RunShellStaAsync<T>(Func<T> action, string operationName)
+    {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var thread = new Thread(() =>
+        {
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                T result = action();
+                LogShellTiming(operationName, stopwatch.Elapsed);
+                completion.TrySetResult(result);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                App.Log($"[QuickAccess] {operationName} failed after {stopwatch.ElapsedMilliseconds}ms: {ex}");
+                completion.TrySetException(ex);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = $"DeskBox QuickAccess {operationName}"
+        };
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return completion.Task;
+    }
+
+    private static void LogShellTiming(string operationName, TimeSpan elapsed)
+    {
+        string message = $"[QuickAccess] {operationName} completed in {elapsed.TotalMilliseconds:0}ms";
+        if (elapsed >= TimeSpan.FromSeconds(1))
+        {
+            App.Log(message);
+            return;
+        }
+
+        App.LogVerbose(message);
     }
 
     private static bool TryInvokeFolderVerb(string folderPath, string verb, bool createFolder, out string? error)

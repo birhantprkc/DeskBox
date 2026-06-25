@@ -53,9 +53,15 @@ public class WidgetConfig
     public bool FollowsDefaultStoragePath { get; set; }
 
     /// <summary>
-    /// Stable subfolder name used when the widget follows the default managed storage path.
+    /// <summary>Stable subfolder name used when the widget follows the default managed storage path.
     /// </summary>
     public string? ManagedFolderName { get; set; }
+
+    /// <summary>How items are sorted in this widget.</summary>
+    public WidgetSortMode SortMode { get; set; } = WidgetSortMode.Name;
+
+    /// <summary>Whether the sort order is descending.</summary>
+    public bool SortDescending { get; set; }
 
     /// <summary>Ordered list of items displayed in this widget.</summary>
     public List<WidgetItemConfig> Items { get; set; } = [];
@@ -71,6 +77,24 @@ public class WidgetItemConfig
 
     /// <summary>Display order within the parent widget.</summary>
     public int SortOrder { get; set; }
+}
+
+/// <summary>
+/// Determines how items are sorted inside a widget.
+/// </summary>
+public enum WidgetSortMode
+{
+    /// <summary>Sort by display name.</summary>
+    Name,
+
+    /// <summary>Sort by file size.</summary>
+    Size,
+
+    /// <summary>Sort by file type / extension.</summary>
+    Type,
+
+    /// <summary>Sort by last modification date.</summary>
+    DateModified
 }
 
 /// <summary>

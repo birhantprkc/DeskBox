@@ -474,6 +474,22 @@
                     Visibility="Collapsed" />
             </Canvas>
 
+            <TextBox
+                x:Name="ItemRenameTextBox"
+                Width="220"
+                MinWidth="120"
+                MaxWidth="280"
+                MinHeight="30"
+                Padding="8,2"
+                BorderThickness="1"
+                HorizontalAlignment="Left"
+                HorizontalContentAlignment="Left"
+                VerticalAlignment="Top"
+                VerticalContentAlignment="Center"
+                Visibility="Collapsed"
+                KeyDown="ItemRenameTextBox_KeyDown"
+                LostFocus="ItemRenameTextBox_LostFocus" />
+
             <Border
                 x:Name="StatusToast"
                 MinHeight="30"

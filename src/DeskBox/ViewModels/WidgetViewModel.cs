@@ -1271,6 +1271,41 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
                 _hideShortcutExtensionWhenShowingFileExtensions);
         }
 
+        SortItems();
+    }
+
+    public void SetSortMode(WidgetSortMode mode)
+    {
+        if (Config.SortMode == mode)
+        {
+            Config.SortDescending = !Config.SortDescending;
+        }
+        else
+        {
+            Config.SortMode = mode;
+            Config.SortDescending = false;
+        }
+
+        var sorted = Items.OrderBy(item => item, Comparer<WidgetItem>.Create(CompareItems)).ToList();
+        Items.Clear();
+        foreach (var item in sorted)
+        {
+            Items.Add(item);
+        }
+        NormalizeSortOrder();
+        OnPropertyChanged(nameof(SortModeLabel));
+    }
+
+    public string SortModeLabel => Config.SortMode switch
+    {
+        WidgetSortMode.Size => _localizationService.T("Widget.Sort.Size"),
+        WidgetSortMode.Type => _localizationService.T("Widget.Sort.Type"),
+        WidgetSortMode.DateModified => _localizationService.T("Widget.Sort.DateModified"),
+        _ => _localizationService.T("Widget.Sort.Name")
+    };
+
+    private void SortItems()
+    {
         var sortedItems = Items.ToList();
         sortedItems.Sort(CompareItems);
         for (int targetIndex = 0; targetIndex < sortedItems.Count; targetIndex++)
@@ -1493,20 +1528,35 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         return sanitizedName + extension;
     }
 
-    private static int CompareItems(WidgetItem left, WidgetItem right)
+    private int CompareItems(WidgetItem left, WidgetItem right)
     {
         if (left.IsFolder != right.IsFolder)
         {
             return left.IsFolder ? -1 : 1;
         }
 
-        int nameComparison = StringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name);
-        if (nameComparison != 0)
+        int result = Config.SortMode switch
         {
-            return nameComparison;
+            WidgetSortMode.Size => left.FileSize.CompareTo(right.FileSize),
+            WidgetSortMode.Type => string.Compare(
+                Path.GetExtension(left.Path),
+                Path.GetExtension(right.Path),
+                StringComparison.OrdinalIgnoreCase),
+            WidgetSortMode.DateModified => left.LastModified.CompareTo(right.LastModified),
+            _ => StringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name)
+        };
+
+        if (result == 0)
+        {
+            result = StringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name);
         }
 
-        return StringComparer.OrdinalIgnoreCase.Compare(left.Path, right.Path);
+        if (result == 0)
+        {
+            result = StringComparer.OrdinalIgnoreCase.Compare(left.Path, right.Path);
+        }
+
+        return Config.SortDescending ? -result : result;
     }
 
     public void Dispose()

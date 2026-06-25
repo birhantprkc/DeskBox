@@ -151,6 +151,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _isAtDesktopLayer = true;
         Win32Helper.ClearWindowTopMost(_hWnd);
         Win32Helper.SetWindowToBottom(_hWnd);
+        App.Log($"[ZOrder] QuickCapture PushToBottom hwnd=0x{_hWnd.ToInt64():X}");
     }
 
     public void ShowPreparedAtDesktopLayer(bool persistVisibility = true)
@@ -403,11 +404,17 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         RootGrid.Loaded += (_, _) =>
         {
+            ApplySurfaceStyle();
             ApplyBackdropPreference();
             Win32Helper.ApplyFullWindowFrame(_hWnd);
             QueueBackdropRefresh();
             UpdateTabSelectionIndicator();
             RootGrid.Focus(FocusState.Programmatic);
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                ApplyTabStyles();
+                UpdateTabSelectionIndicator();
+            });
         };
         RootGrid.ActualThemeChanged += (_, _) => ApplyBackdropPreference();
     }
@@ -512,7 +519,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         if (e.PropertyName == nameof(QuickCaptureWidgetViewModel.SelectedView))
         {
-            ApplySurfaceStyle();
+            ApplyTabStyles();
             UpdateTabSelectionIndicator();
         }
 
@@ -638,6 +645,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     {
         if (ViewModel.SelectedView == view)
         {
+            ApplyTabStyles();
+            UpdateTabSelectionIndicator();
             return;
         }
 
@@ -1763,16 +1772,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private static bool HasFallbackFileFormats(DataPackageView dataView)
     {
-        foreach (string format in dataView.AvailableFormats)
-        {
-            if (!format.StartsWith("Windows.", StringComparison.Ordinal) &&
-                !format.StartsWith("Preferred DropEffect", StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return dataView.AvailableFormats.Count > 0;
     }
 
     private async void RootGrid_Drop(object sender, DragEventArgs e)
@@ -1813,6 +1813,11 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private void RootGrid_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (!_settingsService.Settings.ShowHoverButtons)
+        {
+            return;
+        }
+
         RightActionButtons.Opacity = 1;
     }
 
@@ -2230,7 +2235,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
-            if (Visible && !_isAtDesktopLayer)
+            if (Visible && !_isAtDesktopLayer &&
+                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
             {
                 QueueRestoreDesktopLayerIfForegroundLeavesDeskBox();
             }
@@ -2242,7 +2248,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             !Visible ||
             !_isAtDesktopLayer ||
             _isDragging ||
-            _isResizing)
+            _isResizing ||
+            (App.Current.WidgetManager is { WidgetsRaisedFromTray: true }))
         {
             return;
         }
@@ -2264,7 +2271,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             }
 
             IntPtr foregroundWindow = Win32Helper.GetForegroundWindow();
-            if (App.Current.IsDeskBoxWindow(foregroundWindow))
+            bool foregroundIsWidget = App.Current.WidgetManager is { } wm && wm.IsWidgetWindow(foregroundWindow);
+            if (foregroundIsWidget)
             {
                 _restoreDesktopLayerWhenIdle = false;
                 return;
@@ -2289,11 +2297,13 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     {
         if (!force && !_restoreDesktopLayerWhenIdle && _keepRaisedUntilDeactivate)
         {
+            App.Log($"[ZOrder] QuickCapture RestoreDesktopLayer SKIPPED guard1 force={force} idle={_restoreDesktopLayerWhenIdle} keep={_keepRaisedUntilDeactivate}");
             return;
         }
 
         if (!force && (_isDragging || _isResizing))
         {
+            App.Log($"[ZOrder] QuickCapture RestoreDesktopLayer SKIPPED guard2 force={force} drag={_isDragging} resize={_isResizing}");
             if (force || _restoreDesktopLayerWhenIdle)
             {
                 _restoreDesktopLayerWhenIdle = true;
@@ -2302,6 +2312,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             return;
         }
 
+        App.Log($"[ZOrder] QuickCapture RestoreDesktopLayer EXECUTING force={force}");
         _keepRaisedUntilDeactivate = false;
         _restoreDesktopLayerWhenIdle = false;
         PushToBottom();
@@ -2320,6 +2331,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _keepRaisedUntilDeactivate = true;
         _restoreDesktopLayerWhenIdle = false;
         Win32Helper.SetWindowTopMost(_hWnd);
+        App.Log($"[ZOrder] QuickCapture HoldTemporaryTopMost hwnd=0x{_hWnd.ToInt64():X}");
     }
 
     private void ApplyWindowBounds(int x, int y, int width, int height, bool persist)
@@ -2354,13 +2366,15 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         }
 
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
+        Win32Helper.SetWindowTheme(_hWnd, isDark);
+
         double surfaceOpacity = Math.Clamp(ViewModel.WidgetOpacity, 0.0, 1.0);
         var tintColor = BuildNativeBackdropTintColor(isDark);
 
         try
         {
-            Win32Helper.SetWindowTheme(_hWnd, isDark);
             Win32Helper.ApplyFullWindowFrame(_hWnd);
+            RootGrid.Background = new SolidColorBrush(Colors.Transparent);
 
             int backdropType;
             if (ApplyAcrylicController(isDark, tintColor, surfaceOpacity))
@@ -2500,8 +2514,21 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         EmptyStateIcon.Foreground = new SolidColorBrush(secondaryForeground);
         ApplySearchVisualStyle(isDark, accentColor);
         ApplyEditOverlayStyle(isDark, accentColor);
-        ApplyTabSelectionIndicatorStyle(isDark, accentColor);
+        ApplyTabStyles(isDark, accentColor);
         ApplyItemActionButtonStyleToVisibleItems(isDark, accentColor);
+    }
+
+    private void ApplyTabStyles()
+    {
+        bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
+        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
+            ?? AccentColorHelper.DefaultAccentColor;
+        ApplyTabStyles(isDark, accentColor);
+    }
+
+    private void ApplyTabStyles(bool isDark, Windows.UI.Color accentColor)
+    {
+        ApplyTabSelectionIndicatorStyle(isDark, accentColor);
         ApplyTabButtonStyle(RecordsTabButton, ViewModel.IsRecordsView, isDark, accentColor);
         ApplyTabButtonStyle(PinnedTabButton, ViewModel.IsPinnedView, isDark, accentColor);
         ApplyTabButtonStyle(RecentTabButton, ViewModel.IsRecentView, isDark, accentColor);
@@ -2733,16 +2760,6 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
                 accentMix: isDark ? 0.12 : 0.08,
                 overlayMix: isDark ? 0.12 : 0.18),
             isDark ? (byte)0x28 : (byte)0x30);
-        var pointerBackground = WithAlpha(
-            BuildAccentSurfaceColor(
-                isDark,
-                accentColor,
-                isDark
-                    ? ColorHelper.FromArgb(0xFF, 0x30, 0x34, 0x3B)
-                    : ColorHelper.FromArgb(0xFF, 0xF4, 0xF8, 0xFC),
-                accentMix: isDark ? 0.18 : 0.12,
-                overlayMix: isDark ? 0.10 : 0.12),
-            isDark ? (byte)0x78 : (byte)0x86);
         var normalBorder = isDark
             ? ColorHelper.FromArgb(0x20, 0xFF, 0xFF, 0xFF)
             : ColorHelper.FromArgb(0x14, 0x00, 0x00, 0x00);
@@ -2756,25 +2773,19 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         var backgroundBrush = isSelected
             ? transparentBrush
             : new SolidColorBrush(normalBackground);
-        var pointerBackgroundBrush = isSelected
-            ? transparentBrush
-            : new SolidColorBrush(pointerBackground);
         var borderBrush = isSelected
             ? transparentBrush
             : new SolidColorBrush(normalBorder);
-        var pointerBorderBrush = isSelected
-            ? transparentBrush
-            : new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x78 : (byte)0x66));
         var foregroundBrush = new SolidColorBrush(foreground);
 
         ApplyButtonStateBrushes(
             button,
             backgroundBrush,
-            pointerBackgroundBrush,
-            pointerBackgroundBrush,
+            backgroundBrush,
+            backgroundBrush,
             borderBrush,
-            pointerBorderBrush,
-            pointerBorderBrush,
+            borderBrush,
+            borderBrush,
             foregroundBrush,
             foregroundBrush,
             foregroundBrush,
@@ -2814,7 +2825,6 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         TabSelectionIndicator.Width = selectedButton.ActualWidth;
         TabSelectionIndicator.Height = selectedButton.ActualHeight;
         TabSelectionIndicator.Opacity = 1;
-
         visual.Offset = targetOffset;
     }
 
@@ -3371,8 +3381,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private static CompositionEasingFunction CreateTrayVisualEasing(Compositor compositor, bool isShowing)
     {
         return isShowing
-            ? compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1.0f), new Vector2(0.3f, 1.0f))
-            : compositor.CreateCubicBezierEasingFunction(new Vector2(0.7f, 0.0f), new Vector2(0.84f, 0.0f));
+            ? compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0.8f), new Vector2(0.4f, 1.0f))
+            : compositor.CreateCubicBezierEasingFunction(new Vector2(0.6f, 0.0f), new Vector2(0.8f, 0.2f));
     }
 
     private WidgetAnimationProfile GetWidgetAnimationProfile()
@@ -3390,6 +3400,12 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             SettingsService.WidgetAnimationEffectSlideDown => new WidgetAnimationProfile(0, slideOffsets.Down, 0, slideOffsets.Down, 1, 1, 1, 1, durationMs, true),
             SettingsService.WidgetAnimationEffectScaleFade => new WidgetAnimationProfile(0, 0, 0, 0, WidgetAnimationSoftOpacity, WidgetAnimationSoftOpacity, WidgetAnimationSoftScale, WidgetAnimationSoftScale, durationMs, true),
             SettingsService.WidgetAnimationEffectSlideRight => new WidgetAnimationProfile(slideOffsets.Right, 0, slideOffsets.Right, 0, 1, 1, 1, 1, durationMs, true),
+            SettingsService.WidgetAnimationEffectZoom => new WidgetAnimationProfile(0, 0, 0, 0, 0, 0, 0.5f, 0.5f, durationMs, true),
+            SettingsService.WidgetAnimationEffectSlideUpFade => new WidgetAnimationProfile(0, -slideOffsets.Up, 0, -slideOffsets.Up, 0, 0, 1, 1, durationMs, true),
+            SettingsService.WidgetAnimationEffectSlideDownFade => new WidgetAnimationProfile(0, slideOffsets.Down, 0, slideOffsets.Down, 0, 0, 1, 1, durationMs, true),
+            SettingsService.WidgetAnimationEffectSlideLeftFade => new WidgetAnimationProfile(-slideOffsets.Left, 0, -slideOffsets.Left, 0, 0, 0, 1, 1, durationMs, true),
+            SettingsService.WidgetAnimationEffectSlideRightFade => new WidgetAnimationProfile(slideOffsets.Right, 0, slideOffsets.Right, 0, 0, 0, 1, 1, durationMs, true),
+            SettingsService.WidgetAnimationEffectScaleSlide => new WidgetAnimationProfile(slideOffsets.Right, 0, slideOffsets.Right, 0, 0, 0, 0.8f, 0.8f, durationMs, true),
             _ => new WidgetAnimationProfile(slideOffsets.Right, 0, slideOffsets.Right, 0, 1, 1, 1, 1, durationMs, true)
         };
     }

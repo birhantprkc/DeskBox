@@ -10,6 +10,7 @@ using H.NotifyIcon.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using DrawingPoint = System.Drawing.Point;
 using WinRT.Interop;
@@ -105,22 +106,187 @@ public partial class App : Application
         InitializeComponent();
         OrganizerService = new OrganizerService(SettingsService, FileService);
         UnhandledException += OnUnhandledException;
-        Log($"Process integrity elevated={IsRunningElevated()} pid={Environment.ProcessId}");
+        Log($"Process integrity {GetProcessIntegrityReport()} pid={Environment.ProcessId} baseDir={AppContext.BaseDirectory}");
     }
 
-    private static bool IsRunningElevated()
+    private static string GetProcessIntegrityReport()
     {
         try
         {
             using var identity = WindowsIdentity.GetCurrent();
             var principal = new WindowsPrincipal(identity);
-            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            string tokenElevated = TryGetTokenElevation(out bool isTokenElevated)
+                ? isTokenElevated.ToString()
+                : "unknown";
+            string integrityLevel = TryGetIntegrityLevel(out string level)
+                ? level
+                : "unknown";
+
+            return $"isAdminRole={principal.IsInRole(WindowsBuiltInRole.Administrator)} tokenElevated={tokenElevated} integrity={integrityLevel}";
         }
-        catch
+        catch (Exception ex)
+        {
+            return $"unknown error={ex.Message}";
+        }
+    }
+
+    private static bool TryGetTokenElevation(out bool isElevated)
+    {
+        isElevated = false;
+        if (!OpenProcessToken(GetCurrentProcess(), TokenQuery, out IntPtr tokenHandle))
         {
             return false;
         }
+
+        try
+        {
+            int length = Marshal.SizeOf<TokenElevation>();
+            IntPtr buffer = Marshal.AllocHGlobal(length);
+            try
+            {
+                if (!GetTokenInformation(tokenHandle, TokenInformationClass.TokenElevation, buffer, length, out _))
+                {
+                    return false;
+                }
+
+                var elevation = Marshal.PtrToStructure<TokenElevation>(buffer);
+                isElevated = elevation.TokenIsElevated != 0;
+                return true;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+        finally
+        {
+            CloseHandle(tokenHandle);
+        }
     }
+
+    private static bool TryGetIntegrityLevel(out string level)
+    {
+        level = string.Empty;
+        if (!OpenProcessToken(GetCurrentProcess(), TokenQuery, out IntPtr tokenHandle))
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = GetTokenInformation(tokenHandle, TokenInformationClass.TokenIntegrityLevel, IntPtr.Zero, 0, out int length);
+            if (length <= 0)
+            {
+                return false;
+            }
+
+            IntPtr buffer = Marshal.AllocHGlobal(length);
+            try
+            {
+                if (!GetTokenInformation(tokenHandle, TokenInformationClass.TokenIntegrityLevel, buffer, length, out _))
+                {
+                    return false;
+                }
+
+                var label = Marshal.PtrToStructure<TokenMandatoryLabel>(buffer);
+                IntPtr subAuthorityCount = GetSidSubAuthorityCount(label.Label.Sid);
+                if (subAuthorityCount == IntPtr.Zero)
+                {
+                    return false;
+                }
+
+                byte count = Marshal.ReadByte(subAuthorityCount);
+                if (count == 0)
+                {
+                    return false;
+                }
+
+                IntPtr integrityRidPointer = GetSidSubAuthority(label.Label.Sid, (uint)(count - 1));
+                int integrityRid = Marshal.ReadInt32(integrityRidPointer);
+                level = FormatIntegrityLevel(integrityRid);
+                return true;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+        finally
+        {
+            CloseHandle(tokenHandle);
+        }
+    }
+
+    private static string FormatIntegrityLevel(int integrityRid)
+    {
+        return integrityRid switch
+        {
+            < SecurityMandatoryLowRid => $"Untrusted(0x{integrityRid:X})",
+            < SecurityMandatoryMediumRid => $"Low(0x{integrityRid:X})",
+            < SecurityMandatoryHighRid => $"Medium(0x{integrityRid:X})",
+            < SecurityMandatorySystemRid => $"High(0x{integrityRid:X})",
+            < SecurityMandatoryProtectedProcessRid => $"System(0x{integrityRid:X})",
+            _ => $"Protected(0x{integrityRid:X})"
+        };
+    }
+
+    private const uint TokenQuery = 0x0008;
+    private const int SecurityMandatoryLowRid = 0x1000;
+    private const int SecurityMandatoryMediumRid = 0x2000;
+    private const int SecurityMandatoryHighRid = 0x3000;
+    private const int SecurityMandatorySystemRid = 0x4000;
+    private const int SecurityMandatoryProtectedProcessRid = 0x5000;
+
+    private enum TokenInformationClass
+    {
+        TokenElevation = 20,
+        TokenIntegrityLevel = 25
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TokenElevation
+    {
+        public int TokenIsElevated;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TokenMandatoryLabel
+    {
+        public SidAndAttributes Label;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SidAndAttributes
+    {
+        public IntPtr Sid;
+        public int Attributes;
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenProcessToken(IntPtr processHandle, uint desiredAccess, out IntPtr tokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetTokenInformation(
+        IntPtr tokenHandle,
+        TokenInformationClass tokenInformationClass,
+        IntPtr tokenInformation,
+        int tokenInformationLength,
+        out int returnLength);
+
+    [DllImport("advapi32.dll")]
+    private static extern IntPtr GetSidSubAuthority(IntPtr sid, uint subAuthority);
+
+    [DllImport("advapi32.dll")]
+    private static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
 
     public bool IsDeskBoxWindow(IntPtr hwnd)
     {
@@ -453,7 +619,7 @@ public partial class App : Application
 
         _trayIcon = new TaskbarIcon
         {
-            Icon = AppBranding.CreateTrayIcon(IsDarkThemeActive()),
+            Icon = AppBranding.CreateTrayIcon(SettingsService.Settings.TrayIconStyle ?? "System", IsDarkThemeActive()),
             ToolTipText = localization.T("Tray.Tooltip"),
             ContextMenuMode = ContextMenuMode.SecondWindow,
             MenuActivation = PopupActivationMode.None,
@@ -939,6 +1105,16 @@ public partial class App : Application
         return _settingsWindow;
     }
 
+    public void RefreshSettingsWindow()
+    {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Close();
+        }
+
+        OpenSettings();
+    }
+
     private void OpenManagedStorageFromTray()
     {
         string path = SettingsService.NormalizeManagedStorageRootPath(SettingsService.Settings.DefaultManagedStorageRootPath);
@@ -1018,7 +1194,13 @@ public partial class App : Application
             return;
         }
 
-        _trayIcon.Icon = AppBranding.CreateTrayIcon(IsDarkThemeActive());
+        string style = SettingsService.Settings.TrayIconStyle ?? "System";
+        _trayIcon.Icon = AppBranding.CreateTrayIcon(style, IsDarkThemeActive());
+    }
+
+    public void UpdateTrayIcon()
+    {
+        UpdateTrayIconAppearance();
     }
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)

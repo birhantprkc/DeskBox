@@ -60,6 +60,27 @@
                 <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="FontSize" Value="12" />
             </Style>
+
+            <Style x:Key="QuickCaptureTabButtonStyle" TargetType="Button" BasedOn="{StaticResource QuickCaptureSegmentButtonStyle}">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <ContentPresenter
+                                    Padding="{TemplateBinding Padding}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -208,7 +229,7 @@
                             PointerExited="TabButton_PointerExited"
                             Width="58"
                             FontSize="{Binding SegmentTextSize}"
-                            Style="{StaticResource QuickCaptureSegmentButtonStyle}">
+                            Style="{StaticResource QuickCaptureTabButtonStyle}">
                             <TextBlock
                                 Text="{Binding RecordsTabText}"
                                 TextAlignment="Center"
@@ -222,7 +243,7 @@
                             PointerExited="TabButton_PointerExited"
                             Width="58"
                             FontSize="{Binding SegmentTextSize}"
-                            Style="{StaticResource QuickCaptureSegmentButtonStyle}">
+                            Style="{StaticResource QuickCaptureTabButtonStyle}">
                             <TextBlock
                                 Text="{Binding PinnedTabText}"
                                 TextAlignment="Center"
@@ -236,7 +257,7 @@
                             PointerExited="TabButton_PointerExited"
                             Width="58"
                             FontSize="{Binding SegmentTextSize}"
-                            Style="{StaticResource QuickCaptureSegmentButtonStyle}">
+                            Style="{StaticResource QuickCaptureTabButtonStyle}">
                             <TextBlock
                                 Text="{Binding RecentTabText}"
                                 TextAlignment="Center"

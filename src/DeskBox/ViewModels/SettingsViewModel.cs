@@ -18,6 +18,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string ThemeSystem = "System";
     private const string ThemeLight = "Light";
     private const string ThemeDark = "Dark";
+    private const string TrayIconStyleSystem = "System";
+    private const string TrayIconStyleColorful = "Colorful";
+    private const string TrayIconStyleBlack = "Black";
+    private const string TrayIconStyleWhite = "White";
     private const string CornerDefault = SettingsService.WidgetCornerPreferenceDefault;
     private const string CornerSquare = SettingsService.WidgetCornerPreferenceSquare;
     private const string CornerSmall = SettingsService.WidgetCornerPreferenceSmall;
@@ -29,6 +33,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localizationService;
     private Color _currentAccentColor;
     private string _selectedTheme = ThemeSystem;
+    private string _selectedTrayIconStyle = TrayIconStyleSystem;
     private string _selectedLanguage = SettingsService.LanguageSystem;
     private string _selectedManagedDropAction = SettingsService.ManagedDropActionMove;
     private string _selectedWidgetCornerPreference = CornerSmall;
@@ -38,6 +43,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
     private string _managedStorageRootPath = SettingsService.GetDefaultManagedStorageRootPath();
     private QuickAccessPinState _quickAccessPinState = QuickAccessPinState.Unknown;
+    private bool _isQuickAccessBusy;
     private bool _globalHotkeyEnabled;
     private string _globalHotkeyText = string.Empty;
     private string _globalHotkeyStatusText = string.Empty;
@@ -53,6 +59,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _defaultWidth;
     [ObservableProperty] private double _defaultHeight;
     [ObservableProperty] private bool _hideShortcutArrowOverlay;
+    [ObservableProperty] private bool _showHoverButtons = true;
     [ObservableProperty] private bool _showListItemDetails;
     [ObservableProperty] private double _widgetOpacity = SettingsService.DefaultWidgetOpacity;
     [ObservableProperty] private double _iconSize = SettingsService.DefaultIconSize;
@@ -91,6 +98,46 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public string SelectedThemeText => GetThemeDisplayName(SelectedTheme);
+    public int SelectedThemeIndex => Array.IndexOf(AvailableThemes, _selectedTheme);
+
+    public string SelectedTrayIconStyle
+    {
+        get => _selectedTrayIconStyle;
+        set
+        {
+            if (!SetProperty(ref _selectedTrayIconStyle, value))
+            {
+                return;
+            }
+
+            string styleValue = value is TrayIconStyleColorful or TrayIconStyleBlack or TrayIconStyleWhite
+                ? value
+                : TrayIconStyleSystem;
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            _settingsService.Settings.TrayIconStyle = styleValue;
+            _settingsService.SaveDebounced();
+            App.Current.UpdateTrayIcon();
+            OnPropertyChanged(nameof(SelectedTrayIconStyleText));
+        }
+    }
+
+    public string SelectedTrayIconStyleText => GetTrayIconStyleDisplayName(SelectedTrayIconStyle);
+    public int SelectedTrayIconStyleIndex => Array.IndexOf(AvailableTrayIconStyles, _selectedTrayIconStyle);
+
+    public string[] AvailableTrayIconStyles { get; } =
+    [
+        TrayIconStyleSystem,
+        TrayIconStyleColorful,
+        TrayIconStyleBlack,
+        TrayIconStyleWhite
+    ];
+
+    public string[] AvailableTrayIconStyleDisplayNames => AvailableTrayIconStyles.Select(GetTrayIconStyleDisplayName).ToArray();
 
     public string SelectedLanguage
     {
@@ -114,6 +161,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public string SelectedLanguageText => _localizationService.GetLanguageDisplayName(SelectedLanguage);
+    public int SelectedLanguageIndex => Array.IndexOf(AvailableLanguages, _selectedLanguage);
 
     public bool UseSystemAccentColor
     {
@@ -163,6 +211,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public string SelectedManagedDropActionText => GetManagedDropActionDisplayName(SelectedManagedDropAction);
+    public int SelectedManagedDropActionIndex => Array.IndexOf(AvailableManagedDropActions, _selectedManagedDropAction);
 
     public string SelectedWidgetCornerPreference
     {
@@ -188,6 +237,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public string SelectedWidgetCornerPreferenceText => GetCornerDisplayName(SelectedWidgetCornerPreference);
+    public int SelectedWidgetCornerPreferenceIndex => Array.IndexOf(AvailableWidgetCornerPreferences, _selectedWidgetCornerPreference);
 
     public string SelectedWidgetAnimationEffect
     {
@@ -211,6 +261,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public string SelectedWidgetAnimationEffectText => GetWidgetAnimationEffectDisplayName(SelectedWidgetAnimationEffect);
+    public int SelectedWidgetAnimationEffectIndex => Array.IndexOf(AvailableWidgetAnimationEffects, _selectedWidgetAnimationEffect);
 
     public string SelectedWidgetAnimationSpeed
     {
@@ -234,6 +285,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public string SelectedWidgetAnimationSpeedText => GetWidgetAnimationSpeedDisplayName(SelectedWidgetAnimationSpeed);
+    public int SelectedWidgetAnimationSpeedIndex => Array.IndexOf(AvailableWidgetAnimationSpeeds, _selectedWidgetAnimationSpeed);
 
     public string AccentColorHex
     {
@@ -264,20 +316,45 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string QuickAccessStatusText => ManagedStorageQuickAccessPinState switch
+    public bool IsQuickAccessBusy
+    {
+        get => _isQuickAccessBusy;
+        private set
+        {
+            if (!SetProperty(ref _isQuickAccessBusy, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(QuickAccessStatusText));
+            OnPropertyChanged(nameof(PinQuickAccessButtonText));
+            OnPropertyChanged(nameof(PinQuickAccessToolTipText));
+            OnPropertyChanged(nameof(CanInvokeQuickAccessAction));
+        }
+    }
+
+    public bool CanInvokeQuickAccessAction => !IsQuickAccessBusy;
+
+    public string QuickAccessStatusText => IsQuickAccessBusy
+        ? _localizationService.T("Settings.ManagedPath.QuickAccessStatusUpdating")
+        : ManagedStorageQuickAccessPinState switch
     {
         QuickAccessPinState.Pinned => _localizationService.T("Settings.ManagedPath.QuickAccessStatusPinned"),
         QuickAccessPinState.NotPinned => _localizationService.T("Settings.ManagedPath.QuickAccessStatusNotPinned"),
         _ => _localizationService.T("Settings.ManagedPath.QuickAccessStatusUnknown")
     };
 
-    public string PinQuickAccessButtonText => ManagedStorageQuickAccessPinState == QuickAccessPinState.Pinned
-        ? _localizationService.T("Settings.ManagedPath.UnpinQuickAccess")
-        : _localizationService.T("Settings.ManagedPath.PinQuickAccess");
+    public string PinQuickAccessButtonText => IsQuickAccessBusy
+        ? _localizationService.T("Settings.ManagedPath.QuickAccessUpdating")
+        : ManagedStorageQuickAccessPinState == QuickAccessPinState.Pinned
+            ? _localizationService.T("Settings.ManagedPath.UnpinQuickAccess")
+            : _localizationService.T("Settings.ManagedPath.PinQuickAccess");
 
-    public string PinQuickAccessToolTipText => ManagedStorageQuickAccessPinState == QuickAccessPinState.Pinned
-        ? _localizationService.T("Settings.ManagedPath.UnpinQuickAccessTooltip")
-        : _localizationService.T("Settings.ManagedPath.PinQuickAccessTooltip");
+    public string PinQuickAccessToolTipText => IsQuickAccessBusy
+        ? _localizationService.T("Settings.ManagedPath.QuickAccessUpdatingTooltip")
+        : ManagedStorageQuickAccessPinState == QuickAccessPinState.Pinned
+            ? _localizationService.T("Settings.ManagedPath.UnpinQuickAccessTooltip")
+            : _localizationService.T("Settings.ManagedPath.PinQuickAccessTooltip");
 
     public bool ShouldUnpinManagedStorageFromQuickAccess => ManagedStorageQuickAccessPinState == QuickAccessPinState.Pinned;
 
@@ -465,6 +542,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         SettingsService.WidgetAnimationEffectSlideDown,
         SettingsService.WidgetAnimationEffectFade,
         SettingsService.WidgetAnimationEffectScaleFade,
+        SettingsService.WidgetAnimationEffectZoom,
+        SettingsService.WidgetAnimationEffectSlideUpFade,
+        SettingsService.WidgetAnimationEffectSlideDownFade,
+        SettingsService.WidgetAnimationEffectSlideLeftFade,
+        SettingsService.WidgetAnimationEffectSlideRightFade,
+        SettingsService.WidgetAnimationEffectScaleSlide,
         SettingsService.WidgetAnimationEffectNone
     ];
     public string[] AvailableWidgetAnimationEffectDisplayNames => AvailableWidgetAnimationEffects.Select(GetWidgetAnimationEffectDisplayName).ToArray();
@@ -548,6 +631,49 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         ManagedStorageQuickAccessPinState = ExplorerQuickAccessHelper.GetQuickAccessPinState(ManagedStorageRootPath, out _);
     }
 
+    public async Task RefreshQuickAccessStateAsync(bool showBusy = false)
+    {
+        string path = ManagedStorageRootPath;
+        if (showBusy)
+        {
+            IsQuickAccessBusy = true;
+        }
+
+        try
+        {
+            QuickAccessStateResult result = await ExplorerQuickAccessHelper.GetQuickAccessPinStateAsync(path);
+            if (string.Equals(path, ManagedStorageRootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                ManagedStorageQuickAccessPinState = result.State;
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SettingsViewModel] Failed to refresh Quick Access state: {ex}");
+            if (string.Equals(path, ManagedStorageRootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                ManagedStorageQuickAccessPinState = QuickAccessPinState.Unknown;
+            }
+        }
+        finally
+        {
+            if (showBusy)
+            {
+                IsQuickAccessBusy = false;
+            }
+        }
+    }
+
+    public void SetQuickAccessBusy(bool isBusy)
+    {
+        IsQuickAccessBusy = isBusy;
+    }
+
+    public void SetQuickAccessPinState(QuickAccessPinState state)
+    {
+        ManagedStorageQuickAccessPinState = state;
+    }
+
     public async Task RefreshQuickCaptureImageCacheInfoAsync()
     {
         if (App.Current?.QuickCaptureService is not { } quickCaptureService)
@@ -621,6 +747,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         var settings = settingsService.Settings;
         _selectedTheme = settings.Theme is ThemeLight or ThemeDark ? settings.Theme : ThemeSystem;
+        _selectedTrayIconStyle = settings.TrayIconStyle is TrayIconStyleColorful or TrayIconStyleBlack or TrayIconStyleWhite
+            ? settings.TrayIconStyle
+            : TrayIconStyleSystem;
         _selectedLanguage = LocalizationService.NormalizeLanguageSetting(settings.Language);
 
         _useSystemAccentColor = !string.Equals(settings.AccentColorMode, ThemeService.AccentModeCustom, StringComparison.OrdinalIgnoreCase);
@@ -629,6 +758,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _defaultWidth = settings.DefaultWidgetWidth;
         _defaultHeight = settings.DefaultWidgetHeight;
         _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
+        _showHoverButtons = settings.ShowHoverButtons;
         _showListItemDetails = settings.ShowListItemDetails;
         _widgetOpacity = settings.WidgetOpacity;
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerDefault or CornerSquare or CornerSmall or CornerRound
@@ -654,7 +784,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _managedStorageRootPath = settings.DefaultManagedStorageRootPath;
 
         RefreshAccentPreview();
-        RefreshQuickAccessState();
+        _ = RefreshQuickAccessStateAsync();
         _settingsService.SettingsChanged += OnSettingsChanged;
         _themeService.AppearanceChanged += OnAppearanceChanged;
         _localizationService.LanguageChanged += OnLanguageChanged;
@@ -697,7 +827,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         ManagedStorageRootPath = normalizedPath;
         _settingsService.Settings.DefaultManagedStorageRootPath = normalizedPath;
         _settingsService.SaveDebounced();
-        RefreshQuickAccessState();
+        _ = RefreshQuickAccessStateAsync(showBusy: true);
     }
 
     public async Task RestoreDefaultPreferencesAsync()
@@ -709,6 +839,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         try
         {
             SelectedTheme = ThemeSystem;
+            SelectedTrayIconStyle = TrayIconStyleSystem;
             UseSystemAccentColor = true;
             DefaultWidth = SettingsService.DefaultWidgetWidth;
             DefaultHeight = SettingsService.DefaultWidgetHeight;
@@ -785,6 +916,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         };
     }
 
+    public string GetTrayIconStyleDisplayName(string style)
+    {
+        return style switch
+        {
+            TrayIconStyleColorful => _localizationService.T("Settings.TrayIcon.Colorful"),
+            TrayIconStyleBlack => _localizationService.T("Settings.TrayIcon.Black"),
+            TrayIconStyleWhite => _localizationService.T("Settings.TrayIcon.White"),
+            _ => _localizationService.T("Settings.TrayIcon.System")
+        };
+    }
+
     public string GetManagedDropActionDisplayName(string action)
     {
         return string.Equals(action, SettingsService.ManagedDropActionCopy, StringComparison.OrdinalIgnoreCase)
@@ -814,6 +956,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SettingsService.WidgetAnimationEffectSlideUp => _localizationService.T("Settings.Animation.Effect.SlideUp"),
             SettingsService.WidgetAnimationEffectSlideDown => _localizationService.T("Settings.Animation.Effect.SlideDown"),
             SettingsService.WidgetAnimationEffectScaleFade => _localizationService.T("Settings.Animation.Effect.ScaleFade"),
+            SettingsService.WidgetAnimationEffectZoom => _localizationService.T("Settings.Animation.Effect.Zoom"),
+            SettingsService.WidgetAnimationEffectSlideUpFade => _localizationService.T("Settings.Animation.Effect.SlideUpFade"),
+            SettingsService.WidgetAnimationEffectSlideDownFade => _localizationService.T("Settings.Animation.Effect.SlideDownFade"),
+            SettingsService.WidgetAnimationEffectSlideLeftFade => _localizationService.T("Settings.Animation.Effect.SlideLeftFade"),
+            SettingsService.WidgetAnimationEffectSlideRightFade => _localizationService.T("Settings.Animation.Effect.SlideRightFade"),
+            SettingsService.WidgetAnimationEffectScaleSlide => _localizationService.T("Settings.Animation.Effect.ScaleSlide"),
             _ => _localizationService.T("Settings.Animation.Effect.SlideFade")
         };
     }
@@ -857,10 +1005,25 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         bool quickCaptureEnabled = settings.QuickCaptureEnabled;
         bool quickCaptureClipboardEnabled = settings.QuickCaptureClipboardEnabled;
         bool quickCaptureImageClipboardEnabled = settings.QuickCaptureImageClipboardEnabled;
+        string managedDropAction = string.Equals(settings.ManagedDropAction, SettingsService.ManagedDropActionCopy, StringComparison.OrdinalIgnoreCase)
+            ? SettingsService.ManagedDropActionCopy
+            : SettingsService.ManagedDropActionMove;
+        string managedStorageRootPath = SettingsService.NormalizeManagedStorageRootPath(settings.DefaultManagedStorageRootPath);
 
         _isApplyingSettingsSnapshot = true;
         try
         {
+            if (!string.Equals(SelectedManagedDropAction, managedDropAction, StringComparison.OrdinalIgnoreCase))
+            {
+                SelectedManagedDropAction = managedDropAction;
+            }
+
+            if (!string.Equals(ManagedStorageRootPath, managedStorageRootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                ManagedStorageRootPath = managedStorageRootPath;
+                _ = RefreshQuickAccessStateAsync();
+            }
+
             if (QuickCaptureEnabled != quickCaptureEnabled)
             {
                 QuickCaptureEnabled = quickCaptureEnabled;
@@ -881,6 +1044,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             _isApplyingSettingsSnapshot = false;
         }
 
+        OnPropertyChanged(nameof(SelectedManagedDropActionText));
+        OnPropertyChanged(nameof(SelectedManagedDropActionIndex));
         OnPropertyChanged(nameof(QuickCaptureStatusText));
         OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
         RefreshQuickCaptureClipboardDiagnostics();
@@ -888,12 +1053,20 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     private void RefreshLocalizedProperties()
     {
-        OnPropertyChanged(nameof(SelectedThemeText));
-        OnPropertyChanged(nameof(SelectedLanguageText));
-        OnPropertyChanged(nameof(SelectedManagedDropActionText));
-        OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceText));
-        OnPropertyChanged(nameof(SelectedWidgetAnimationEffectText));
-        OnPropertyChanged(nameof(SelectedWidgetAnimationSpeedText));
+        OnPropertyChanged(nameof(AvailableThemeDisplayNames));
+        OnPropertyChanged(nameof(AvailableTrayIconStyleDisplayNames));
+        OnPropertyChanged(nameof(AvailableLanguageDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetAnimationEffectDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetAnimationSpeedDisplayNames));
+        OnPropertyChanged(nameof(AvailableManagedDropActionDisplayNames));
+        OnPropertyChanged(nameof(SelectedThemeIndex));
+        OnPropertyChanged(nameof(SelectedTrayIconStyleIndex));
+        OnPropertyChanged(nameof(SelectedLanguageIndex));
+        OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceIndex));
+        OnPropertyChanged(nameof(SelectedWidgetAnimationEffectIndex));
+        OnPropertyChanged(nameof(SelectedWidgetAnimationSpeedIndex));
+        OnPropertyChanged(nameof(SelectedManagedDropActionIndex));
         OnPropertyChanged(nameof(AccentColorDescription));
         OnPropertyChanged(nameof(AboutVersionText));
         OnPropertyChanged(nameof(OpenSourceRepositoryDisplayText));
@@ -908,9 +1081,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(QuickCaptureStatusText));
         OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
         OnPropertyChanged(nameof(QuickCaptureRecentLimitText));
-        OnPropertyChanged(nameof(QuickCaptureRecentLimitInput));
         RefreshQuickCaptureClipboardDiagnostics();
-        _ = RefreshQuickCaptureImageCacheInfoAsync();
     }
 
     private string GetQuickCaptureClipboardReasonText(string reason)
@@ -945,7 +1116,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SettingsService.WidgetAnimationEffectSlideUp or
             SettingsService.WidgetAnimationEffectSlideDown or
             SettingsService.WidgetAnimationEffectScaleFade or
-            SettingsService.WidgetAnimationEffectSlideFade
+            SettingsService.WidgetAnimationEffectSlideFade or
+            SettingsService.WidgetAnimationEffectZoom or
+            SettingsService.WidgetAnimationEffectSlideUpFade or
+            SettingsService.WidgetAnimationEffectSlideDownFade or
+            SettingsService.WidgetAnimationEffectSlideLeftFade or
+            SettingsService.WidgetAnimationEffectSlideRightFade or
+            SettingsService.WidgetAnimationEffectScaleSlide
             ? effect
             : SettingsService.WidgetAnimationEffectSlideFade;
     }
@@ -1053,6 +1230,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.Settings.HideShortcutArrowOverlay = value;
+        _settingsService.SaveDebounced();
+    }
+
+    partial void OnShowHoverButtonsChanged(bool value)
+    {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
+        _settingsService.Settings.ShowHoverButtons = value;
         _settingsService.SaveDebounced();
     }
 
