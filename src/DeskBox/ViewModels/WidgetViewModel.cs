@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Dispatching;
@@ -988,7 +989,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .OrderBy(item => !item.IsFolder)
-                .ThenBy(item => item.Name)
+                .ThenBy(item => item.Name, NaturalStringComparer.CurrentCultureIgnoreCase)
                 .ToList();
         }
         else
@@ -1003,6 +1004,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         }
 
         SyncFolderItems(items);
+        SortItems();
         if (clearIconCacheBeforeHydration)
         {
             ClearCurrentItemIconCache();
@@ -1293,6 +1295,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             Items.Add(item);
         }
         NormalizeSortOrder();
+        _settingsService.UpdateWidget(Config, notifySubscribers: false);
         OnPropertyChanged(nameof(SortModeLabel));
     }
 
@@ -1445,8 +1448,9 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             Items.RemoveAt(existingIndex);
         }
 
-        item.SortOrder = GetSortedInsertIndex(item);
-        Items.Insert(GetSortedInsertIndex(item), item);
+        int insertIndex = GetSortedInsertIndex(item);
+        item.SortOrder = insertIndex;
+        Items.Insert(insertIndex, item);
         NormalizeSortOrder();
         StartItemHydration();
     }
@@ -1543,17 +1547,17 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
                 Path.GetExtension(right.Path),
                 StringComparison.OrdinalIgnoreCase),
             WidgetSortMode.DateModified => left.LastModified.CompareTo(right.LastModified),
-            _ => StringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name)
+            _ => NaturalStringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name)
         };
 
         if (result == 0)
         {
-            result = StringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name);
+            result = NaturalStringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name);
         }
 
         if (result == 0)
         {
-            result = StringComparer.OrdinalIgnoreCase.Compare(left.Path, right.Path);
+            result = NaturalStringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path);
         }
 
         return Config.SortDescending ? -result : result;

@@ -3,8 +3,8 @@
 ; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\x64 -v:minimal
 
 #define MyAppName "DeskBox"
-#define MyAppVersion "1.0.9"
-#define MyAppPublisher "DeskBox 开发者"
+#define MyAppVersion "1.1.0"
+#define MyAppPublisher "朱天雨"
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
 #define MyAppReleaseDir "..\artifacts\publish\DeskBox\x64"
@@ -22,7 +22,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DefaultDirName={localappdata}\Programs\{#MyAppName}
 DisableProgramGroupPage=yes
-DisableDirPage=yes
+DisableDirPage=no
 PrivilegesRequired=lowest
 UsePreviousAppDir=no
 UsePreviousPrivileges=no
@@ -32,7 +32,7 @@ RestartApplications=no
 OutputDir=..\Output
 OutputBaseFilename={#MyAppOutputBaseName}_{#MyAppVersion}_x64
 SetupIconFile=..\src\DeskBox\Assets\deskbox.ico
-VersionInfoVersion=1.0.9.0
+VersionInfoVersion=1.1.0.0
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoTextVersion={#MyAppVersion}
 Compression=lzma
@@ -44,7 +44,7 @@ Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "autostart"; Description: "{cm:AutoStart}"; GroupDescription: "{cm:WindowsIntegration}"; Flags: unchecked
+Name: "autostart"; Description: "{cm:AutoStart}"; GroupDescription: "{cm:WindowsIntegration}"
 
 [InstallDelete]
 Type: files; Name: "{userdesktop}\{#MyAppName}.lnk"; Tasks: desktopicon

@@ -113,6 +113,74 @@ public static partial class Win32Helper
         byte bAlpha,
         uint dwFlags);
 
+    public const uint MSGFLT_ALLOW = 1;
+    public const uint WM_DROPFILES = 0x0233;
+    public const uint WM_COPYDATA = 0x004A;
+    public const uint WM_COPYGLOBALDATA = 0x0049;
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ChangeWindowMessageFilterEx(
+        IntPtr hWnd,
+        uint message,
+        uint action,
+        IntPtr changeFilterStruct);
+
+    [LibraryImport("shell32.dll")]
+    public static partial void DragAcceptFiles(IntPtr hWnd, [MarshalAs(UnmanagedType.Bool)] bool accept);
+
+    [DllImport("shell32.dll", EntryPoint = "DragQueryFileW", CharSet = CharSet.Unicode)]
+    public static extern uint DragQueryFile(IntPtr hDrop, uint fileIndex, StringBuilder? fileName, uint bufferSize);
+
+    [LibraryImport("shell32.dll")]
+    public static partial void DragFinish(IntPtr hDrop);
+
+    public static void AllowShellDragDropMessages(IntPtr hWnd)
+    {
+        AllowWindowMessage(hWnd, WM_DROPFILES, "WM_DROPFILES");
+        AllowWindowMessage(hWnd, WM_COPYDATA, "WM_COPYDATA");
+        AllowWindowMessage(hWnd, WM_COPYGLOBALDATA, "WM_COPYGLOBALDATA");
+        DragAcceptFiles(hWnd, true);
+    }
+
+    public static IReadOnlyList<string> GetDroppedFilePaths(IntPtr hDrop)
+    {
+        var paths = new List<string>();
+        try
+        {
+            uint count = DragQueryFile(hDrop, 0xFFFFFFFF, null, 0);
+            for (uint index = 0; index < count; index++)
+            {
+                uint length = DragQueryFile(hDrop, index, null, 0);
+                if (length == 0)
+                {
+                    continue;
+                }
+
+                var builder = new StringBuilder((int)length + 1);
+                uint copied = DragQueryFile(hDrop, index, builder, (uint)builder.Capacity);
+                if (copied > 0)
+                {
+                    paths.Add(builder.ToString());
+                }
+            }
+        }
+        finally
+        {
+            DragFinish(hDrop);
+        }
+
+        return paths;
+    }
+
+    private static void AllowWindowMessage(IntPtr hWnd, uint message, string name)
+    {
+        bool changed = ChangeWindowMessageFilterEx(hWnd, message, MSGFLT_ALLOW, IntPtr.Zero);
+        int error = Marshal.GetLastWin32Error();
+        global::DeskBox.App.LogVerbose(
+            $"[WindowMessageFilter] hwnd=0x{hWnd.ToInt64():X} message={name} changed={changed} lastError={error}");
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct AccentPolicy
     {

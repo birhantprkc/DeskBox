@@ -257,6 +257,10 @@ public sealed partial class SettingsWindow : Window
         }
         GeneralSection.Visibility = sectionTag == "General" ? Visibility.Visible : Visibility.Collapsed;
         MaintenanceSection.Visibility = sectionTag == "Maintenance" ? Visibility.Visible : Visibility.Collapsed;
+        if (sectionTag == "Maintenance")
+        {
+            ViewModel.RefreshDragDropPermissionDiagnostic();
+        }
         AboutSection.Visibility = sectionTag == "About" ? Visibility.Visible : Visibility.Collapsed;
         SettingsNavigationView.IsBackButtonVisible = isNestedSection
             ? NavigationViewBackButtonVisible.Visible
@@ -966,6 +970,66 @@ public sealed partial class SettingsWindow : Window
         {
             await Launcher.LaunchUriAsync(uri);
         }
+    }
+
+    private void RefreshDragDropPermissionButton_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.RefreshDragDropPermissionDiagnostic();
+    }
+
+    private async void RepairDragDropPermissionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        var result = ViewModel.RepairDragDropPermission();
+        if (result.NeedsRelaunch)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = SettingsRoot.XamlRoot,
+                Title = _localizationService.T("Settings.DragDropPermission.RelaunchTitle"),
+                PrimaryButtonText = _localizationService.T("Settings.DragDropPermission.RelaunchButton"),
+                CloseButtonText = _localizationService.T("Common.Cancel"),
+                DefaultButton = ContentDialogButton.Primary,
+                Content = new TextBlock
+                {
+                    Text = _localizationService.T("Settings.DragDropPermission.RelaunchBody"),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            {
+                if (DragDropPermissionService.TryRelaunchAsExplorerUser())
+                {
+                    App.Current.Exit();
+                }
+                else
+                {
+                    await ShowInfoDialogAsync(
+                        _localizationService.T("Settings.DragDropPermission.RelaunchFailedTitle"),
+                        _localizationService.T("Settings.DragDropPermission.RelaunchFailedBody"));
+                }
+            }
+
+            return;
+        }
+
+        await ShowInfoDialogAsync(
+            _localizationService.T(result.Success
+                ? "Settings.DragDropPermission.RepairCompleteTitle"
+                : "Settings.DragDropPermission.RepairFailedTitle"),
+            result.Success
+                ? _localizationService.Format("Settings.DragDropPermission.RepairCompleteBody", result.RepairedCount)
+                : result.FailureMessage);
+    }
+
+    private async void OpenUacSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        await Task.Run(() => Win32Helper.OpenFile("UserAccountControlSettings.exe"));
     }
 
     private void OpenQuickCaptureSettingsButton_Click(object sender, RoutedEventArgs e)

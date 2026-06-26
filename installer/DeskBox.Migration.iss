@@ -193,6 +193,7 @@ begin
   DeleteShortcutIfExists(ExpandConstant('{userprograms}\DeskBox.lnk'));
   DeleteShortcutIfExists(ExpandConstant('{userdesktop}\DeskBox.lnk'));
   DeleteShortcutIfExists(ExpandConstant('{userstartup}\DeskBox.lnk'));
+  DeleteShortcutIfExists(ExpandConstant('{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\DeskBox.lnk'));
 
   DeleteAppCompatLayerValue(HKEY_LOCAL_MACHINE, LegacyExePath);
 

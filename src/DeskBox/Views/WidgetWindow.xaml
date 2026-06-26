@@ -13,6 +13,7 @@
         Background="Transparent"
         AllowDrop="True"
         IsTabStop="True"
+        DragEnter="RootGrid_DragEnter"
         DragLeave="RootGrid_DragLeave"
         DragOver="RootGrid_DragOver"
         Drop="RootGrid_Drop"

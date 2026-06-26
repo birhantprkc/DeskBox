@@ -17,12 +17,24 @@ public static class StartupService
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, false);
-            return key?.GetValue(AppName) is not null;
+            return GetRunValue() is not null;
         }
         catch
         {
             return false;
+        }
+    }
+
+    public static string? GetRunValue()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, false);
+            return key?.GetValue(AppName) as string;
+        }
+        catch
+        {
+            return null;
         }
     }
 

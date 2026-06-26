@@ -64,12 +64,15 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private const float WidgetAnimationSoftOpacity = 0.0f;
     private const float WidgetAnimationRestingScale = 1.0f;
     private const float WidgetAnimationSoftScale = 0.985f;
+    private const string DeskBoxInternalDragToken = "DeskBox.WidgetItemDrag.v2";
+    private static readonly UIntPtr FileDropSubclassId = new(0xDDB0);
 
     private readonly Microsoft.UI.WindowId _windowId;
     private readonly SettingsService _settingsService;
     private readonly LocalizationService _localizationService;
     private readonly IntPtr _hWnd;
     private readonly AppWindow _appWindow;
+    private readonly Win32Helper.SubclassProc _fileDropSubclassProc;
     private DesktopAcrylicController? _acrylicController;
     private SystemBackdropConfiguration? _backdropConfiguration;
     private ICompositionSupportsSystemBackdrop? _backdropTarget;
@@ -132,6 +135,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private bool _isApplyingTrayAnimationBounds;
     private long _backdropRefreshGeneration;
     private bool _areItemTransitionsSuppressed;
+    private bool _isFileDropSubclassInstalled;
     private TransitionCollection? _savedGridItemTransitions;
     private TransitionCollection? _savedListItemTransitions;
 
@@ -167,6 +171,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         ViewModel = viewModel;
         _settingsService = settingsService;
         _localizationService = localizationService ?? new LocalizationService(settingsService);
+        _fileDropSubclassProc = FileDropSubclassProc;
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
 
@@ -198,6 +203,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         int exStyle = Win32Helper.GetWindowLong(_hWnd, Win32Helper.GWL_EXSTYLE);
         exStyle |= Win32Helper.WS_EX_TOOLWINDOW;
         Win32Helper.SetWindowLong(_hWnd, Win32Helper.GWL_EXSTYLE, exStyle);
+        Win32Helper.AllowShellDragDropMessages(_hWnd);
+        InstallFileDropSubclass();
 
         int style = Win32Helper.GetWindowLong(_hWnd, Win32Helper.GWL_STYLE);
         style &= ~(Win32Helper.WS_CAPTION | Win32Helper.WS_BORDER | Win32Helper.WS_DLGFRAME | Win32Helper.WS_THICKFRAME);
@@ -302,6 +309,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             _settingsService.SettingsChanged -= OnSettingsChanged;
             _localizationService.LanguageChanged -= OnLanguageChanged;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            RemoveFileDropSubclass();
             StopTrayVisualAnimation();
             RestoreTrayVisualState();
             RestoreTrayWindowPosition();
@@ -1010,6 +1018,91 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 durationMs,
                 true)
         };
+    }
+
+    private void InstallFileDropSubclass()
+    {
+        if (_isFileDropSubclassInstalled)
+        {
+            return;
+        }
+
+        _isFileDropSubclassInstalled = Win32Helper.SetWindowSubclass(
+            _hWnd,
+            _fileDropSubclassProc,
+            FileDropSubclassId,
+            UIntPtr.Zero);
+        App.LogVerbose(
+            $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage=NativeSubclassInstall " +
+            $"hwnd=0x{_hWnd.ToInt64():X} installed={_isFileDropSubclassInstalled}");
+    }
+
+    private void RemoveFileDropSubclass()
+    {
+        if (!_isFileDropSubclassInstalled)
+        {
+            return;
+        }
+
+        Win32Helper.RemoveWindowSubclass(_hWnd, _fileDropSubclassProc, FileDropSubclassId);
+        _isFileDropSubclassInstalled = false;
+    }
+
+    private IntPtr FileDropSubclassProc(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr uIdSubclass,
+        UIntPtr dwRefData)
+    {
+        if (message == Win32Helper.WM_DROPFILES)
+        {
+            var paths = Win32Helper.GetDroppedFilePaths((IntPtr)wParam);
+            App.Log(
+                $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage=NativeDropFiles " +
+                $"count={paths.Count} mapped={!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath)} " +
+                $"managed={ViewModel.FollowsDefaultStoragePath}");
+            if (paths.Count > 0)
+            {
+                DispatcherQueue.TryEnqueue(async () => await ImportNativeDropPathsAsync(paths));
+            }
+
+            return IntPtr.Zero;
+        }
+
+        return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
+    }
+
+    private async Task ImportNativeDropPathsAsync(IReadOnlyList<string> paths)
+    {
+        if (_isMigrationBusy || paths.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
+            var acceptedOperation = NormalizePathDropOperation(DataPackageOperation.Copy | DataPackageOperation.Move, movesIntoFolder);
+            if (acceptedOperation == DataPackageOperation.None)
+            {
+                App.Log(
+                    $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage=NativeDropRejectedOperation " +
+                    $"count={paths.Count} mapped={movesIntoFolder}");
+                return;
+            }
+
+            bool? moveWhenMapped = movesIntoFolder
+                ? ShouldMoveForAcceptedOperation(acceptedOperation)
+                : null;
+            await ViewModel.ImportPathsAsync(paths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
+            ClearCutState();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[DropDiagnostic] NativeDropFailed widget='{ViewModel.Name}' id={ViewModel.Config.Id}: {ex}");
+        }
     }
 
     private (double Left, double Right, double Up, double Down) GetOffscreenSlideOffsets()
@@ -2124,19 +2217,6 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return;
         }
 
-        string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
-        if (!string.IsNullOrEmpty(ViewModel.MappedFolderPath) &&
-            string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal) &&
-            !Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control) &&
-            !IsPointerOverFolderDropTarget())
-        {
-            e.AcceptedOperation = DataPackageOperation.None;
-            e.DragUIOverride.IsGlyphVisible = false;
-            e.DragUIOverride.Caption = _localizationService.T("Widget.DragCaption.CurrentWidget");
-            LogDropDiagnostic("RootDragOverCurrentWidget", e.DataView, e.AcceptedOperation, movesIntoFolder: true);
-            return;
-        }
-
         bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
         e.AcceptedOperation = NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder);
         LogDropDiagnostic("RootDragOver", e.DataView, e.AcceptedOperation, movesIntoFolder);
@@ -2152,6 +2232,11 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 GetRootFolderDropCaptionKey(),
                 GetAcceptedOperationCaption(e.AcceptedOperation))
             : _localizationService.T("Widget.DragCaption.Reference");
+    }
+
+    private void RootGrid_DragEnter(object sender, DragEventArgs e)
+    {
+        LogDropDiagnostic("RootDragEnter", e.DataView, e.AcceptedOperation, !string.IsNullOrEmpty(ViewModel.MappedFolderPath));
     }
 
     private string GetRootFolderDropCaptionKey()
@@ -2248,8 +2333,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             var acceptedOperation = e.AcceptedOperation == DataPackageOperation.None
                 ? NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder)
                 : e.AcceptedOperation;
+            e.AcceptedOperation = acceptedOperation;
             if (acceptedOperation == DataPackageOperation.None)
             {
+                LogDropDiagnostic("RootDropRejectedOperation", e.DataView, acceptedOperation, movesIntoFolder);
                 return;
             }
 
@@ -2259,6 +2346,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
             string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
             if (movesIntoFolder &&
+                HasDeskBoxInternalDragData(e.DataView.Properties) &&
                 string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal) &&
                 moveWhenMapped == true)
             {
@@ -2709,6 +2797,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         dataPackage.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
         dataPackage.Properties["DeskBoxSourcePaths"] = sourcePaths;
+        dataPackage.Properties["DeskBoxInternalDragToken"] = DeskBoxInternalDragToken;
         dataPackage.Properties.Title = sourcePaths.Length == 1
             ? Path.GetFileName(sourcePaths[0])
             : _localizationService.Format("Widget.ItemCount", sourcePaths.Length);
@@ -2916,6 +3005,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
             package.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
             package.Properties["DeskBoxSourcePaths"] = sourcePaths;
+            package.Properties["DeskBoxInternalDragToken"] = DeskBoxInternalDragToken;
             Clipboard.SetContent(package);
             Clipboard.Flush();
         }
@@ -3205,6 +3295,15 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         };
     }
 
+    private static bool HasDeskBoxInternalDragData(DataPackagePropertySetView properties)
+    {
+        return string.Equals(
+                   TryGetPackageString(properties, "DeskBoxInternalDragToken"),
+                   DeskBoxInternalDragToken,
+                   StringComparison.Ordinal) &&
+               TryGetPackageStringArray(properties, "DeskBoxSourcePaths").Count > 0;
+    }
+
     private static bool HasPathDropData(DataPackageView dataView)
     {
         return TryGetPackageStringArray(dataView.Properties, "DeskBoxSourcePaths").Count > 0 ||
@@ -3217,14 +3316,33 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     {
         foreach (string format in dataView.AvailableFormats)
         {
-            if (!format.StartsWith("Windows.", StringComparison.Ordinal) &&
-                !format.StartsWith("Preferred DropEffect", StringComparison.Ordinal))
+            if (IsLikelyFileTransferFormat(format))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool IsLikelyFileTransferFormat(string format)
+    {
+        if (string.IsNullOrWhiteSpace(format))
+        {
+            return false;
+        }
+
+        if (format.StartsWith("Preferred DropEffect", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return format.Contains("StorageItems", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("StorageItem", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileGroupDescriptor", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileDrop", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileName", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("Shell", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<string[]> GetDropPathsAsync(DataPackageView dataView)
@@ -3279,9 +3397,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         string text = await dataView.GetTextAsync();
         return text
             .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(candidate => TryNormalizeDroppedPath(candidate, out string normalizedPath) ? normalizedPath : null)
             .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Select(Path.GetFullPath)
-            .Where(path => File.Exists(path) || Directory.Exists(path))
+            .Select(path => path!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -3319,6 +3437,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     {
         return format.Contains("FileName", StringComparison.OrdinalIgnoreCase) ||
                format.Contains("FileDrop", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileGroupDescriptor", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("Shell IDList Array", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("ShellIDListArray", StringComparison.OrdinalIgnoreCase) ||
                format.Contains("FileNameW", StringComparison.OrdinalIgnoreCase) ||
                format.Contains("FileNameMap", StringComparison.OrdinalIgnoreCase);
     }
@@ -3355,8 +3476,31 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                      ["\0", "\r\n", "\n"],
                      StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            paths.Add(candidate);
+            if (TryNormalizeDroppedPath(candidate, out string normalizedPath))
+            {
+                paths.Add(normalizedPath);
+            }
         }
+    }
+
+    private static bool TryNormalizeDroppedPath(string candidate, out string normalizedPath)
+    {
+        normalizedPath = string.Empty;
+
+        try
+        {
+            string fullPath = Path.GetFullPath(candidate.Trim().Trim('"'));
+            if (File.Exists(fullPath) || Directory.Exists(fullPath))
+            {
+                normalizedPath = fullPath;
+                return true;
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
     }
 
     private void LogDropDiagnostic(
@@ -3688,8 +3832,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             var acceptedOperation = e.AcceptedOperation == DataPackageOperation.None
                 ? NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder: true)
                 : e.AcceptedOperation;
+            e.AcceptedOperation = acceptedOperation;
             if (acceptedOperation == DataPackageOperation.None)
             {
+                LogDropDiagnostic("FolderDropRejectedOperation", e.DataView, acceptedOperation, movesIntoFolder: true);
                 return;
             }
 
@@ -5600,7 +5746,18 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return DataPackageOperation.Copy;
         }
 
-        return GetManagedDropOperation();
+        var preferredOperation = GetManagedDropOperation();
+        if (CanUseRequestedOperation(requestedOperation, preferredOperation))
+        {
+            return preferredOperation;
+        }
+
+        var fallbackOperation = preferredOperation == DataPackageOperation.Move
+            ? DataPackageOperation.Copy
+            : DataPackageOperation.Move;
+        return CanUseRequestedOperation(requestedOperation, fallbackOperation)
+            ? fallbackOperation
+            : DataPackageOperation.None;
     }
 
     private static bool CanUseRequestedOperation(DataPackageOperation requestedOperation, DataPackageOperation operation)

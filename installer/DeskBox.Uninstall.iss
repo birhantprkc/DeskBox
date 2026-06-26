@@ -3,6 +3,11 @@ const
   DeskBoxProcessName = 'DeskBox.exe';
   DeskBoxDataSettingsPath = '{localappdata}\DeskBox\data\settings.json';
   DeskBoxDefaultManagedStorageRootPath = '{%USERPROFILE}\DeskBox';
+  DeskBoxLocalAppDataRoot = '{localappdata}\DeskBox';
+  DeskBoxStartupRunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+var
+  ShouldRemoveLocalAppData: Boolean;
 
 function TrimString(Value: string): string;
 begin
@@ -189,11 +194,31 @@ begin
     '检测到 DeskBox 收纳目录中仍有内容：' + #13#10 +
     FolderPath + #13#10#13#10 +
     '当前包含 ' + IntToStr(FolderCount) + ' 个文件夹、' + IntToStr(FileCount) + ' 个文件。' + #13#10#13#10 +
-    Summary + #13 +
+    Summary +
     '卸载 DeskBox 不会删除这个目录，也不会删除里面的用户文件。' + #13#10 +
     '请确认你已经知道这些文件的位置。是否继续卸载？';
 
   Result := MsgBox(MessageText, mbConfirmation, MB_YESNO) = IDYES;
+end;
+
+function ConfirmRemoveLocalAppData: Boolean;
+var
+  AppDataRoot: string;
+  MessageText: string;
+begin
+  Result := False;
+  AppDataRoot := ExpandConstant(DeskBoxLocalAppDataRoot);
+
+  if not DirExists(AppDataRoot) then
+    Exit;
+
+  MessageText :=
+    '是否同时删除 DeskBox 应用数据？' + #13#10#13#10 +
+    '这些数据包含设置、格子布局、随记图片缓存和日志：' + #13#10 +
+    AppDataRoot + #13#10#13#10 +
+    '选择“否”会保留这些数据，之后重新安装 DeskBox 时仍可继续使用。';
+
+  Result := MsgBox(MessageText, mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
 end;
 
 procedure StopDeskBoxProcess;
@@ -209,16 +234,87 @@ begin
     ewWaitUntilTerminated,
     ResultCode);
 
-  Log('taskkill 退出代码：' + IntToStr(ResultCode));
+  Log('taskkill 返回代码：' + IntToStr(ResultCode));
+end;
+
+procedure RemoveStartupRegistryEntry;
+var
+  Value: string;
+begin
+  if RegQueryStringValue(HKEY_CURRENT_USER, DeskBoxStartupRunKey, 'DeskBox', Value) then
+  begin
+    if RegDeleteValue(HKEY_CURRENT_USER, DeskBoxStartupRunKey, 'DeskBox') then
+      Log('DeskBox uninstall removed startup registry entry.')
+    else
+      Log('DeskBox uninstall failed to remove startup registry entry.');
+  end;
+end;
+
+procedure RemoveLocalAppDataRoot;
+var
+  AppDataRoot: string;
+begin
+  AppDataRoot := ExpandConstant(DeskBoxLocalAppDataRoot);
+  if DirExists(AppDataRoot) then
+  begin
+    if DelTree(AppDataRoot, True, True, True) then
+      Log('DeskBox uninstall removed local app data directory: ' + AppDataRoot)
+    else
+      Log('DeskBox uninstall failed to remove local app data directory: ' + AppDataRoot);
+  end;
+end;
+
+procedure RemoveTaskbarPinnedShortcut;
+var
+  Path: string;
+begin
+  Path := ExpandConstant('{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\DeskBox.lnk');
+  if FileExists(Path) then
+  begin
+    if DeleteFile(Path) then
+      Log('DeskBox uninstall removed taskbar pinned shortcut.')
+    else
+      Log('DeskBox uninstall failed to remove taskbar pinned shortcut.');
+  end;
+end;
+
+procedure RemoveAppCompatFlag;
+var
+  ExePath: string;
+  Value: string;
+begin
+  ExePath := ExpandConstant('{app}\DeskBox.exe');
+  if RegQueryStringValue(HKEY_CURRENT_USER, DeskBoxAppCompatLayersKey, ExePath, Value) then
+  begin
+    if RegDeleteValue(HKEY_CURRENT_USER, DeskBoxAppCompatLayersKey, ExePath) then
+      Log('DeskBox uninstall removed AppCompat value: ' + ExePath)
+    else
+      Log('DeskBox uninstall failed to remove AppCompat value: ' + ExePath);
+  end;
 end;
 
 function InitializeUninstall: Boolean;
 begin
   Result := ConfirmManagedStoragePreserved;
+  if Result then
+    ShouldRemoveLocalAppData := ConfirmRemoveLocalAppData
+  else
+    ShouldRemoveLocalAppData := False;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
     StopDeskBoxProcess;
+
+  if CurUninstallStep = usPostUninstall then
+  begin
+    RemoveStartupRegistryEntry;
+    RemoveTaskbarPinnedShortcut;
+    RemoveAppCompatFlag;
+    if ShouldRemoveLocalAppData then
+      RemoveLocalAppDataRoot
+    else
+      Log('DeskBox uninstall kept local app data directory.');
+  end;
 end;

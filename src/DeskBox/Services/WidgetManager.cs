@@ -1156,7 +1156,7 @@ public sealed class WidgetManager
                 Path.GetFileName(path),
                 path,
                 CountDirectoryEntries(path)))
-            .OrderBy(candidate => candidate.Name, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(candidate => candidate.Name, NaturalStringComparer.CurrentCultureIgnoreCase)
             .ToList();
     }
 

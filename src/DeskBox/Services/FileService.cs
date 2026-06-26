@@ -261,7 +261,7 @@ public sealed class FileService
             .Select(path => TryCreateEntrySnapshot(path, loadFolderItemCounts))
             .OfType<FileSystemEntrySnapshot>()
             .OrderBy(entry => !entry.IsFolder)
-            .ThenBy(entry => entry.Name)
+            .ThenBy(entry => entry.Name, NaturalStringComparer.CurrentCultureIgnoreCase)
             .ToList();
     }
 

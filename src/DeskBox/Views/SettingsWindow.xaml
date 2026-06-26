@@ -747,23 +747,6 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.ImageClipboardTitle" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.ImageClipboardDescription" />
-                                </StackPanel>
-                                <ToggleSwitch
-                                    Grid.Column="1"
-                                    IsOn="{Binding QuickCaptureImageClipboardEnabled, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
-                            </Grid>
-
-                            <Border Style="{StaticResource SettingDividerStyle}" />
-
-                            <Grid Style="{StaticResource SettingRowStyle}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.ShowHoverButtons.Title" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ShowHoverButtons.Description" />
                                 </StackPanel>
@@ -1200,6 +1183,23 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.ImageClipboardTitle" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.ImageClipboardDescription" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    Grid.Column="1"
+                                    IsOn="{Binding QuickCaptureImageClipboardEnabled, Mode=TwoWay}"
+                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
                                     <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.RecentLimitTitle" />
                                     <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding QuickCaptureRecentLimitText}" />
                                 </StackPanel>
@@ -1398,6 +1398,88 @@
                                     </StackPanel>
                                 </Button>
                             </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <StackPanel Padding="16,14" Spacing="12">
+                                <StackPanel Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DragDropPermission.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.DragDropPermission.Description" />
+                                    <TextBlock
+                                        FontWeight="SemiBold"
+                                        Style="{StaticResource SettingDescriptionTextStyle}"
+                                        Text="{Binding DragDropPermissionSummaryText}" />
+                                    <TextBlock
+                                        Style="{StaticResource SettingDescriptionTextStyle}"
+                                        Text="{Binding DragDropPermissionDetailText}" />
+                                </StackPanel>
+
+                                <Grid ColumnSpacing="16" RowSpacing="6">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="112" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource SettingValueTextStyle}" svc:Localized.Key="Settings.DragDropPermission.ProcessLabel" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding DragDropPermissionProcessText}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource SettingValueTextStyle}" svc:Localized.Key="Settings.DragDropPermission.ExplorerLabel" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding DragDropPermissionExplorerText}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource SettingValueTextStyle}" svc:Localized.Key="Settings.DragDropPermission.UacLabel" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding DragDropPermissionUacText}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Style="{StaticResource SettingValueTextStyle}" svc:Localized.Key="Settings.DragDropPermission.AppCompatLabel" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding DragDropPermissionAppCompatText}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Style="{StaticResource SettingValueTextStyle}" svc:Localized.Key="Settings.DragDropPermission.StartupLabel" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding DragDropPermissionStartupText}" />
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Style="{StaticResource SettingValueTextStyle}" svc:Localized.Key="Settings.DragDropPermission.ShortcutLabel" />
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding DragDropPermissionShortcutText}" />
+                                </Grid>
+
+                                <TextBlock
+                                    Style="{StaticResource SettingDescriptionTextStyle}"
+                                    Text="{Binding DragDropPermissionRepairStatusText}" />
+
+                                <StackPanel
+                                    HorizontalAlignment="Right"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                                    <Button
+                                        Click="RefreshDragDropPermissionButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.DragDropPermission.RefreshTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="Refresh" />
+                                            <TextBlock svc:Localized.Key="Common.Refresh" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Click="RepairDragDropPermissionButton_Click"
+                                        IsEnabled="{Binding CanRepairDragDropPermission}"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.DragDropPermission.RepairTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="Setting" />
+                                            <TextBlock svc:Localized.Key="Settings.DragDropPermission.RepairButton" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Click="OpenUacSettingsButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.DragDropPermission.OpenUacTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="OpenFile" />
+                                            <TextBlock svc:Localized.Key="Settings.DragDropPermission.OpenUacButton" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </StackPanel>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
 

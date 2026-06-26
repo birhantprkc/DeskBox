@@ -5,11 +5,13 @@ using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.Views;
+using System.Diagnostics;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Win32;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using DrawingPoint = System.Drawing.Point;
@@ -106,7 +108,10 @@ public partial class App : Application
         InitializeComponent();
         OrganizerService = new OrganizerService(SettingsService, FileService);
         UnhandledException += OnUnhandledException;
-        Log($"Process integrity {GetProcessIntegrityReport()} pid={Environment.ProcessId} baseDir={AppContext.BaseDirectory}");
+        Log($"Process integrity {GetProcessIntegrityReport()} pid={Environment.ProcessId} processPath={Environment.ProcessPath ?? "unknown"} baseDir={AppContext.BaseDirectory}");
+        Log($"Process parent {GetParentProcessReport()} commandLine={Environment.CommandLine}");
+        Log($"UAC {GetUacPolicyReport()}");
+        Log($"AppCompat {GetAppCompatReport()}");
     }
 
     private static string GetProcessIntegrityReport()
@@ -115,14 +120,7 @@ public partial class App : Application
         {
             using var identity = WindowsIdentity.GetCurrent();
             var principal = new WindowsPrincipal(identity);
-            string tokenElevated = TryGetTokenElevation(out bool isTokenElevated)
-                ? isTokenElevated.ToString()
-                : "unknown";
-            string integrityLevel = TryGetIntegrityLevel(out string level)
-                ? level
-                : "unknown";
-
-            return $"isAdminRole={principal.IsInRole(WindowsBuiltInRole.Administrator)} tokenElevated={tokenElevated} integrity={integrityLevel}";
+            return $"isAdminRole={principal.IsInRole(WindowsBuiltInRole.Administrator)} {GetProcessTokenReport(GetCurrentProcess())}";
         }
         catch (Exception ex)
         {
@@ -130,10 +128,165 @@ public partial class App : Application
         }
     }
 
-    private static bool TryGetTokenElevation(out bool isElevated)
+    private static string GetAppCompatReport()
+    {
+        string exePath = Path.Combine(AppContext.BaseDirectory, "DeskBox.exe");
+        string? currentUser = GetAppCompatLayerValue(Registry.CurrentUser, exePath);
+        string? localMachine = GetAppCompatLayerValue(Registry.LocalMachine, exePath);
+
+        return $"exe='{exePath}' hkcu={(string.IsNullOrWhiteSpace(currentUser) ? "none" : currentUser)} " +
+               $"hklm={(string.IsNullOrWhiteSpace(localMachine) ? "none" : localMachine)}";
+    }
+
+    private static string GetParentProcessReport()
+    {
+        try
+        {
+            if (!TryGetParentProcessId(Environment.ProcessId, out uint parentProcessId) || parentProcessId == 0)
+            {
+                return "unknown";
+            }
+
+            string parentName = "unknown";
+            try
+            {
+                parentName = Process.GetProcessById((int)parentProcessId).ProcessName;
+            }
+            catch
+            {
+            }
+
+            string parentTokenReport = GetProcessTokenReport(parentProcessId);
+            return $"ppid={parentProcessId} parent={parentName} {parentTokenReport}";
+        }
+        catch (Exception ex)
+        {
+            return $"unknown error={ex.Message}";
+        }
+    }
+
+    private static string GetProcessTokenReport(uint processId)
+    {
+        IntPtr processHandle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+        if (processHandle == IntPtr.Zero)
+        {
+            return $"token=unavailable error={Marshal.GetLastWin32Error()}";
+        }
+
+        try
+        {
+            return GetProcessTokenReport(processHandle);
+        }
+        finally
+        {
+            CloseHandle(processHandle);
+        }
+    }
+
+    private static string GetProcessTokenReport(IntPtr processHandle)
+    {
+        string tokenElevated = TryGetTokenElevation(processHandle, out bool isTokenElevated)
+            ? isTokenElevated.ToString()
+            : "unknown";
+        string integrityLevel = TryGetIntegrityLevel(processHandle, out string level)
+            ? level
+            : "unknown";
+
+        return $"tokenElevated={tokenElevated} integrity={integrityLevel}";
+    }
+
+    private static string GetUacPolicyReport()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\System");
+            object? enableLua = key?.GetValue("EnableLUA");
+            object? consentPrompt = key?.GetValue("ConsentPromptBehaviorAdmin");
+            object? promptOnSecureDesktop = key?.GetValue("PromptOnSecureDesktop");
+
+            return $"EnableLUA={FormatRegistryValue(enableLua)} " +
+                   $"ConsentPromptBehaviorAdmin={FormatRegistryValue(consentPrompt)} " +
+                   $"PromptOnSecureDesktop={FormatRegistryValue(promptOnSecureDesktop)}";
+        }
+        catch (Exception ex)
+        {
+            return $"unknown error={ex.Message}";
+        }
+    }
+
+    private static string FormatRegistryValue(object? value)
+    {
+        return value is null ? "missing" : value.ToString() ?? "unknown";
+    }
+
+    private static bool TryGetParentProcessId(int processId, out uint parentProcessId)
+    {
+        parentProcessId = 0;
+        const uint Th32csSnapProcess = 0x00000002;
+
+        IntPtr snapshot = CreateToolhelp32Snapshot(Th32csSnapProcess, 0);
+        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1))
+        {
+            return false;
+        }
+
+        try
+        {
+            var entry = new ProcessEntry32
+            {
+                dwSize = (uint)Marshal.SizeOf<ProcessEntry32>()
+            };
+
+            if (!Process32First(snapshot, ref entry))
+            {
+                return false;
+            }
+
+            do
+            {
+                if (entry.th32ProcessID == (uint)processId)
+                {
+                    parentProcessId = entry.th32ParentProcessID;
+                    return true;
+                }
+            }
+            while (Process32Next(snapshot, ref entry));
+
+            return false;
+        }
+        finally
+        {
+            CloseHandle(snapshot);
+        }
+    }
+
+    private static string? GetAppCompatLayerValue(RegistryKey? rootKey, string exePath)
+    {
+        if (rootKey is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var key = rootKey.OpenSubKey(@"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers");
+            if (key?.GetValue(exePath) is string value && !string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"error:{ex.Message}";
+        }
+
+        return null;
+    }
+
+    private static bool TryGetTokenElevation(IntPtr processHandle, out bool isElevated)
     {
         isElevated = false;
-        if (!OpenProcessToken(GetCurrentProcess(), TokenQuery, out IntPtr tokenHandle))
+        if (!OpenProcessToken(processHandle, TokenQuery, out IntPtr tokenHandle))
         {
             return false;
         }
@@ -164,10 +317,10 @@ public partial class App : Application
         }
     }
 
-    private static bool TryGetIntegrityLevel(out string level)
+    private static bool TryGetIntegrityLevel(IntPtr processHandle, out string level)
     {
         level = string.Empty;
-        if (!OpenProcessToken(GetCurrentProcess(), TokenQuery, out IntPtr tokenHandle))
+        if (!OpenProcessToken(processHandle, TokenQuery, out IntPtr tokenHandle))
         {
             return false;
         }
@@ -231,6 +384,7 @@ public partial class App : Application
     }
 
     private const uint TokenQuery = 0x0008;
+    private const uint ProcessQueryLimitedInformation = 0x1000;
     private const int SecurityMandatoryLowRid = 0x1000;
     private const int SecurityMandatoryMediumRid = 0x2000;
     private const int SecurityMandatoryHighRid = 0x3000;
@@ -262,12 +416,42 @@ public partial class App : Application
         public int Attributes;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry32
+    {
+        public uint dwSize;
+        public uint cntUsage;
+        public uint th32ProcessID;
+        public IntPtr th32DefaultHeapID;
+        public uint th32ModuleID;
+        public uint cntThreads;
+        public uint th32ParentProcessID;
+        public int pcPriClassBase;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string szExeFile;
+    }
+
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetCurrentProcess();
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32First(IntPtr hSnapshot, ref ProcessEntry32 lppe);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32Next(IntPtr hSnapshot, ref ProcessEntry32 lppe);
 
     [DllImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -474,6 +658,8 @@ public partial class App : Application
 
             if (!IsStartupMode && !SettingsService.Settings.HasCompletedOnboarding)
             {
+                SettingsService.Settings.HasCompletedOnboarding = true;
+                await SettingsService.SaveAsync();
                 ShowOnboarding();
             }
 

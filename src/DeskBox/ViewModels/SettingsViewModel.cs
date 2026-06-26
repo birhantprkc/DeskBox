@@ -50,6 +50,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _globalHotkeyStatusKind = "Normal";
     private string _quickCaptureImageCacheText = string.Empty;
     private string _quickCaptureClipboardDiagnosticsText = string.Empty;
+    private DragDropPermissionDiagnostic? _dragDropPermissionDiagnostic;
+    private string _dragDropPermissionRepairStatusText = string.Empty;
+    private bool _isDragDropPermissionRepairing;
     private bool _canClearQuickCaptureImageCache;
     private bool _isRestoringDefaults;
     private bool _isApplyingSettingsSnapshot;
@@ -493,6 +496,45 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string GlobalHotkeyDescription => _localizationService.T("Settings.GlobalHotkey.Description");
     public bool CanShowGlobalHotkeyWarning => GlobalHotkeyEnabled && GlobalHotkeyService.IsRiskyGesture(GetCurrentGlobalHotkeyGesture());
+    public string DragDropPermissionSummaryText => GetDragDropPermissionSummaryText();
+    public string DragDropPermissionDetailText => GetDragDropPermissionDetailText();
+    public string DragDropPermissionSeverityKind => _dragDropPermissionDiagnostic?.Severity switch
+    {
+        DragDropDiagnosticSeverity.Warning => "Warning",
+        DragDropDiagnosticSeverity.Error => "Error",
+        _ => "Normal"
+    };
+    public string DragDropPermissionProcessText => _dragDropPermissionDiagnostic?.CurrentProcessIntegrity ?? _localizationService.T("Settings.DragDropPermission.Unknown");
+    public string DragDropPermissionExplorerText => _dragDropPermissionDiagnostic?.ExplorerIntegrity ?? _localizationService.T("Settings.DragDropPermission.Unknown");
+    public string DragDropPermissionUacText => _dragDropPermissionDiagnostic?.UacStatus ?? _localizationService.T("Settings.DragDropPermission.Unknown");
+    public string DragDropPermissionAppCompatText => _dragDropPermissionDiagnostic?.AppCompatStatus ?? _localizationService.T("Settings.DragDropPermission.Unknown");
+    public string DragDropPermissionStartupText => _dragDropPermissionDiagnostic?.StartupStatus ?? _localizationService.T("Settings.DragDropPermission.Unknown");
+    public string DragDropPermissionShortcutText => _dragDropPermissionDiagnostic?.ShortcutStatus ?? _localizationService.T("Settings.DragDropPermission.Unknown");
+    public string DragDropPermissionRepairStatusText
+    {
+        get => _dragDropPermissionRepairStatusText;
+        private set => SetProperty(ref _dragDropPermissionRepairStatusText, value);
+    }
+    public bool IsDragDropPermissionRepairing
+    {
+        get => _isDragDropPermissionRepairing;
+        private set
+        {
+            if (!SetProperty(ref _isDragDropPermissionRepairing, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CanRepairDragDropPermission));
+        }
+    }
+    public bool CanRepairDragDropPermission =>
+        !IsDragDropPermissionRepairing &&
+        _dragDropPermissionDiagnostic is not null &&
+        (_dragDropPermissionDiagnostic.HasAppCompatIssue ||
+         _dragDropPermissionDiagnostic.HasStartupIssue ||
+         _dragDropPermissionDiagnostic.HasShortcutIssue ||
+         _dragDropPermissionDiagnostic.NeedsRelaunch);
     public string QuickCaptureStatusText => QuickCaptureEnabled
         ? _localizationService.T("Settings.QuickCapture.Status.Enabled")
         : _localizationService.T("Settings.QuickCapture.Status.Disabled");
@@ -626,6 +668,64 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             : hotkeyService.LastError;
     }
 
+    public void RefreshDragDropPermissionDiagnostic()
+    {
+        try
+        {
+            _dragDropPermissionDiagnostic = DragDropPermissionService.Diagnose();
+            App.Log(
+                "[DragDropPermission] " +
+                $"issue={_dragDropPermissionDiagnostic.Issue} severity={_dragDropPermissionDiagnostic.Severity} " +
+                $"process='{_dragDropPermissionDiagnostic.CurrentProcessIntegrity}' " +
+                $"explorer='{_dragDropPermissionDiagnostic.ExplorerIntegrity}' " +
+                $"uac='{_dragDropPermissionDiagnostic.UacStatus}' " +
+                $"appCompat='{_dragDropPermissionDiagnostic.AppCompatStatus}' " +
+                $"startup='{_dragDropPermissionDiagnostic.StartupStatus}'");
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[DragDropPermission] Diagnose failed: {ex}");
+            _dragDropPermissionDiagnostic = new DragDropPermissionDiagnostic(
+                DragDropDiagnosticSeverity.Error,
+                DragDropDiagnosticIssue.None,
+                _localizationService.T("Settings.DragDropPermission.DiagnoseFailedSummary"),
+                ex.Message,
+                _localizationService.T("Settings.DragDropPermission.Unknown"),
+                _localizationService.T("Settings.DragDropPermission.Unknown"),
+                _localizationService.T("Settings.DragDropPermission.Unknown"),
+                _localizationService.T("Settings.DragDropPermission.Unknown"),
+                _localizationService.T("Settings.DragDropPermission.Unknown"),
+                _localizationService.T("Settings.DragDropPermission.Unknown"),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false);
+        }
+
+        NotifyDragDropPermissionPropertiesChanged();
+    }
+
+    public DragDropPermissionRepairResult RepairDragDropPermission()
+    {
+        IsDragDropPermissionRepairing = true;
+        try
+        {
+            var result = DragDropPermissionService.Repair(_settingsService);
+            DragDropPermissionRepairStatusText = result.Success
+                ? _localizationService.Format("Settings.DragDropPermission.RepairStatus", result.RepairedCount)
+                : _localizationService.Format("Settings.DragDropPermission.RepairFailedStatus", result.FailureMessage);
+            RefreshDragDropPermissionDiagnostic();
+            return result;
+        }
+        finally
+        {
+            IsDragDropPermissionRepairing = false;
+        }
+    }
+
     public void RefreshQuickAccessState()
     {
         ManagedStorageQuickAccessPinState = ExplorerQuickAccessHelper.GetQuickAccessPinState(ManagedStorageRootPath, out _);
@@ -744,6 +844,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _localizationService = localizationService ?? new LocalizationService(settingsService);
         _quickCaptureImageCacheText = _localizationService.T("Settings.QuickCapture.ImageCacheLoading");
         _quickCaptureClipboardDiagnosticsText = _localizationService.T("Settings.QuickCapture.ClipboardDiagnosticsUnavailable");
+        _dragDropPermissionRepairStatusText = string.Empty;
 
         var settings = settingsService.Settings;
         _selectedTheme = settings.Theme is ThemeLight or ThemeDark ? settings.Theme : ThemeSystem;
@@ -784,6 +885,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _managedStorageRootPath = settings.DefaultManagedStorageRootPath;
 
         RefreshAccentPreview();
+        RefreshDragDropPermissionDiagnostic();
         _ = RefreshQuickAccessStateAsync();
         _settingsService.SettingsChanged += OnSettingsChanged;
         _themeService.AppearanceChanged += OnAppearanceChanged;
@@ -839,7 +941,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         try
         {
             SelectedTheme = ThemeSystem;
-            SelectedTrayIconStyle = TrayIconStyleSystem;
+            SelectedTrayIconStyle = TrayIconStyleColorful;
             UseSystemAccentColor = true;
             DefaultWidth = SettingsService.DefaultWidgetWidth;
             DefaultHeight = SettingsService.DefaultWidgetHeight;
@@ -863,6 +965,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
             var settings = _settingsService.Settings;
             settings.Theme = "System";
+            settings.TrayIconStyle = TrayIconStyleColorful;
             settings.AccentColorMode = ThemeService.AccentModeSystem;
             settings.DefaultWidgetWidth = SettingsService.DefaultWidgetWidth;
             settings.DefaultWidgetHeight = SettingsService.DefaultWidgetHeight;
@@ -1078,10 +1181,59 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(GlobalHotkeyStatusText));
         OnPropertyChanged(nameof(GlobalHotkeyStatusKind));
         OnPropertyChanged(nameof(CanShowGlobalHotkeyWarning));
+        NotifyDragDropPermissionPropertiesChanged();
         OnPropertyChanged(nameof(QuickCaptureStatusText));
         OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
         OnPropertyChanged(nameof(QuickCaptureRecentLimitText));
         RefreshQuickCaptureClipboardDiagnostics();
+    }
+
+    private string GetDragDropPermissionSummaryText()
+    {
+        if (_dragDropPermissionDiagnostic is null)
+        {
+            return _localizationService.T("Settings.DragDropPermission.NotChecked");
+        }
+
+        return _dragDropPermissionDiagnostic.Issue switch
+        {
+            DragDropDiagnosticIssue.UacDisabled => _localizationService.T("Settings.DragDropPermission.Summary.UacDisabled"),
+            DragDropDiagnosticIssue.PermissionMismatch => _localizationService.T("Settings.DragDropPermission.Summary.PermissionMismatch"),
+            DragDropDiagnosticIssue.AppCompatIssue => _localizationService.T("Settings.DragDropPermission.Summary.AppCompatIssue"),
+            DragDropDiagnosticIssue.StartupShortcutIssue => _localizationService.T("Settings.DragDropPermission.Summary.StartupShortcutIssue"),
+            _ => _localizationService.T("Settings.DragDropPermission.Summary.Ok")
+        };
+    }
+
+    private string GetDragDropPermissionDetailText()
+    {
+        if (_dragDropPermissionDiagnostic is null)
+        {
+            return _localizationService.T("Settings.DragDropPermission.NotCheckedDetail");
+        }
+
+        return _dragDropPermissionDiagnostic.Issue switch
+        {
+            DragDropDiagnosticIssue.UacDisabled => _localizationService.T("Settings.DragDropPermission.Detail.UacDisabled"),
+            DragDropDiagnosticIssue.PermissionMismatch => _localizationService.T("Settings.DragDropPermission.Detail.PermissionMismatch"),
+            DragDropDiagnosticIssue.AppCompatIssue => _localizationService.T("Settings.DragDropPermission.Detail.AppCompatIssue"),
+            DragDropDiagnosticIssue.StartupShortcutIssue => _localizationService.T("Settings.DragDropPermission.Detail.StartupShortcutIssue"),
+            _ => _localizationService.T("Settings.DragDropPermission.Detail.Ok")
+        };
+    }
+
+    private void NotifyDragDropPermissionPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(DragDropPermissionSummaryText));
+        OnPropertyChanged(nameof(DragDropPermissionDetailText));
+        OnPropertyChanged(nameof(DragDropPermissionSeverityKind));
+        OnPropertyChanged(nameof(DragDropPermissionProcessText));
+        OnPropertyChanged(nameof(DragDropPermissionExplorerText));
+        OnPropertyChanged(nameof(DragDropPermissionUacText));
+        OnPropertyChanged(nameof(DragDropPermissionAppCompatText));
+        OnPropertyChanged(nameof(DragDropPermissionStartupText));
+        OnPropertyChanged(nameof(DragDropPermissionShortcutText));
+        OnPropertyChanged(nameof(CanRepairDragDropPermission));
     }
 
     private string GetQuickCaptureClipboardReasonText(string reason)

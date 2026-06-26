@@ -15,22 +15,23 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.0.9
+Current release: 1.1.0
 
-- [DeskBox_Setup_1.0.9_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.9/DeskBox_Setup_1.0.9_x64.exe)
+- [DeskBox_Setup_1.1.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.0/DeskBox_Setup_1.1.0_x64.exe)
 
 The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.0.9
+## What's New In 1.1.0
 
-- Reworked Settings into a cleaner Windows-style structure with native ComboBox, NumberBox, toggle labels, drill-in rows, tray icon options, and a clearer Quick Capture settings entry.
-- Added widget item sorting by name, size, item type, and date modified, with per-widget persistence and repeat-click ascending/descending behavior.
-- Improved widget menus so title-bar actions and content-area actions are separated more clearly, including view switching, sorting, paste, refresh, and mapped-folder actions.
-- Improved Quick Capture tab switching, title buttons, hover actions, copy feedback, and integration with the shared widget show/restore flow.
-- Improved drag/drop compatibility, empty-widget drop handling, mapped-vs-managed drag captions, z-order restoration, icon hydration retries, and Chinese IME support during item rename.
-- Refined first-run onboarding with shorter Windows-style copy and simpler setup choices.
+- Added drag-and-drop diagnostics and one-click repair in Settings. If Windows 10/11 cannot drag files into widgets, open Settings and run the repair first.
+- Improved Explorer drag/drop fallback handling for managed and mapped widgets, including better diagnostics for blocked or unusual shell formats.
+- Fixed widget sorting stability with natural name ordering and consistent insertion after new files are added.
+- Improved Quick Capture text behavior: double-click opens the inline editor for saved text, and the context menu can edit text in Notepad.
+- Changed the default tray icon style to colorful for new installs and restored defaults.
+- Improved first-run onboarding so it appears only after the first install launch, while remaining available from Settings.
+- Improved uninstall behavior with an optional prompt to remove or keep local DeskBox app data.
 
-See the full [changelog](CHANGELOG.md). GitHub Release copy is available in [docs/releases/v1.0.9.md](docs/releases/v1.0.9.md).
+See the full [changelog](CHANGELOG.md). GitHub Release copy is available in [docs/releases/v1.1.0.md](docs/releases/v1.1.0.md).
 
 ## Why DeskBox Exists
 
@@ -89,11 +90,11 @@ For development, install the .NET 8 SDK. Visual Studio 2022 with Windows App SDK
 
 ## Install And Uninstall
 
-The installer is built with Inno Setup. It installs DeskBox for the current user by default and preserves existing app settings, widget configuration, and managed storage content during overwrite installs. Older administrator installs under Program Files are migrated automatically so Explorer drag/drop can keep working normally.
+The installer is built with Inno Setup. It installs DeskBox for the current user by default, lets you change the install folder, and preserves existing app settings, widget configuration, and managed storage content during overwrite installs. Older administrator installs under Program Files are migrated automatically so Explorer drag/drop can keep working normally.
 
 Startup launch is handled silently through the tray. If DeskBox is already running and Windows starts it again at login, the second startup instance exits without opening Settings.
 
-During uninstall, DeskBox stops the running app first. Managed storage content is not deleted silently; when cleanup may affect user files, the installer asks before removing anything.
+During uninstall, DeskBox stops the running app first and lets you choose whether to remove app-local data under `%LocalAppData%\DeskBox`. Managed storage content is not deleted silently; when cleanup may affect user files, the installer asks before removing anything.
 
 ## Build
 
@@ -120,7 +121,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.0.9_x64.exe
+Output\DeskBox_Setup_1.1.0_x64.exe
 ```
 
 ## Project Structure
@@ -142,7 +143,7 @@ docs\releases               GitHub Releases copy
 
 ## Feedback
 
-DeskBox is still an early public release. If you hit file drag/drop issues, runtime dependency problems, window layering bugs, uninstall edge cases, or Windows-version compatibility problems, please open an [issue](https://github.com/Tianyu199509/DeskBox/issues) with reproduction details.
+DeskBox is still an early public release. If file drag/drop fails on Windows 10/11, try Settings -> Drag-and-drop diagnostics -> Repair first. If the issue remains, please open an [issue](https://github.com/Tianyu199509/DeskBox/issues) with reproduction details, or follow the WeChat public account shown in the app's About page and leave a message there.
 
 ## Author
 

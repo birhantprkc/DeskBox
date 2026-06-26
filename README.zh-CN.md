@@ -15,22 +15,23 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.0.9
+当前版本：1.1.0
 
-- [DeskBox_Setup_1.0.9_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.9/DeskBox_Setup_1.0.9_x64.exe)
+- [DeskBox_Setup_1.1.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.0/DeskBox_Setup_1.1.0_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
-## 1.0.9 更新
+## 1.1.0 更新
 
-- 重构设置页面结构，更接近 Windows 设置体验，并统一使用原生 ComboBox、NumberBox、带“开 / 关”文字的开关和钻入式设置项。
-- 新增格子内排序方式：名称、大小、项目类型、修改日期，并支持同一排序项升序 / 降序切换。
-- 优化格子右键菜单，将标题栏的格子管理操作和内容区的文件操作拆分得更清晰。
-- 优化随记 Tab、按钮、复制反馈和层级行为，让随记与普通格子在 F7 / 托盘唤起时更一致。
-- 增强拖拽兼容、空格子拖放、收纳 / 映射拖拽提示、层级恢复、图标加载重试和文件重命名中文输入法支持。
-- 精简新用户引导文案和设置选项，更贴近 Windows 风格。
+- 新增拖拽异常诊断和一键修复。如果 Win10/Win11 遇到文件拖不进格子的问题，请先到设置中运行一键修复。
+- 优化资源管理器拖拽兜底处理，收纳格子和映射格子会记录更完整的诊断信息，并兼容更多 Windows shell 拖拽格式。
+- 修复格子内排序稳定性，使用更接近 Windows 的自然名称排序，新加入文件也会按当前排序方式插入。
+- 优化随记文本操作：已保存文本双击进入随记内编辑，右键可选择“在记事本中编辑”。
+- 新安装和恢复默认设置时，托盘图标默认改为彩色。
+- 优化新用户引导，只在首次安装后自动弹出，之后可在设置中手动查看。
+- 优化卸载体验，可选择是否同时删除本地应用数据。
 
-完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.0.9.md](docs/releases/v1.0.9.md) 中的中英文发布文案。
+完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.1.0.md](docs/releases/v1.1.0.md) 中的中英文发布文案。
 
 ## 为什么做这个产品
 
@@ -89,7 +90,7 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 开机自启会静默启动到托盘。如果 DeskBox 已经运行，登录时再次启动的实例会直接退出，不会弹出设置页面。
 
-卸载时安装器会先停止正在运行的 DeskBox。收纳目录中的用户文件不会被静默删除；当清理可能影响用户文件时，会先提示确认。
+卸载时安装器会先停止正在运行的 DeskBox，并让你选择是否删除 `%LocalAppData%\DeskBox` 下的本地应用数据。收纳目录中的用户文件不会被静默删除；当清理可能影响用户文件时，会先提示确认。
 
 ## 构建
 
@@ -116,7 +117,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.0.9_x64.exe
+Output\DeskBox_Setup_1.1.0_x64.exe
 ```
 
 ## 项目结构
@@ -138,7 +139,7 @@ docs\releases               GitHub Releases 发布文案
 
 ## 反馈
 
-DeskBox 仍处于早期公开版本。如果你遇到文件拖拽、运行时依赖、窗口层级、卸载残留或不同 Windows 版本兼容性问题，欢迎通过 [Issues](https://github.com/Tianyu199509/DeskBox/issues) 提供复现路径。
+DeskBox 仍处于早期公开版本。如果 Win10/Win11 遇到文件拖不进格子的问题，请先尝试“设置 -> 拖拽异常诊断 -> 一键修复”。如果仍有问题，可以扫码关注应用“关于”页里的公众号留言，或在 GitHub 提交 [Issue](https://github.com/Tianyu199509/DeskBox/issues)。
 
 ## 作者
 

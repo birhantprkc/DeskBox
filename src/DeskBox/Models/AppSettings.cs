@@ -13,7 +13,7 @@ public class AppSettings
     /// <summary>
     /// Tray icon style. Valid values: <c>"System"</c>, <c>"Colorful"</c>, <c>"Black"</c>, <c>"White"</c>.
     /// </summary>
-    public string TrayIconStyle { get; set; } = "System";
+    public string TrayIconStyle { get; set; } = "Colorful";
 
     /// <summary>
     /// Display language. Valid values: <c>"System"</c>, <c>"zh-CN"</c>, <c>"en-US"</c>.

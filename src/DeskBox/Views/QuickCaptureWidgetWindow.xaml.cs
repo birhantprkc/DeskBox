@@ -373,6 +373,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         int exStyle = Win32Helper.GetWindowLong(_hWnd, Win32Helper.GWL_EXSTYLE);
         exStyle |= Win32Helper.WS_EX_TOOLWINDOW;
         Win32Helper.SetWindowLong(_hWnd, Win32Helper.GWL_EXSTYLE, exStyle);
+        Win32Helper.AllowShellDragDropMessages(_hWnd);
 
         int style = Win32Helper.GetWindowLong(_hWnd, Win32Helper.GWL_STYLE);
         style &= ~(Win32Helper.WS_CAPTION | Win32Helper.WS_BORDER | Win32Helper.WS_DLGFRAME | Win32Helper.WS_THICKFRAME);
@@ -701,7 +702,13 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             return;
         }
 
-        await OpenTextInDefaultEditorAsync(item);
+        if (item.IsRecent)
+        {
+            await OpenTextInDefaultEditorAsync(item);
+            return;
+        }
+
+        await EditItemAsync(item);
     }
 
     private async Task OpenImageInDefaultViewerAsync(QuickCaptureItemViewModel item)
@@ -729,21 +736,54 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         }
     }
 
-    private async Task OpenTextInDefaultEditorAsync(QuickCaptureItemViewModel item)
+    private async Task OpenTextInNotepadAsync(QuickCaptureItemViewModel item)
     {
-        if (string.IsNullOrWhiteSpace(item.Body))
+        if (item.IsRecent)
         {
-            ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+            return;
+        }
+
+        string? previewPath = await TryCreateTextPreviewFileAsync(item);
+        if (string.IsNullOrWhiteSpace(previewPath))
+        {
             return;
         }
 
         try
         {
-            Directory.CreateDirectory(QuickCaptureTextPreviewDirectory);
-            string fileName = BuildQuickCapturePreviewFileName(item);
-            string previewPath = Path.Combine(QuickCaptureTextPreviewDirectory, fileName);
-            await File.WriteAllTextAsync(previewPath, item.Body);
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "notepad.exe",
+                Arguments = $"\"{previewPath}\"",
+                UseShellExecute = true
+            });
 
+            if (process is null)
+            {
+                ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+                return;
+            }
+
+            await process.WaitForExitAsync();
+            await TryApplyTextPreviewEditAsync(item, previewPath);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCaptureWidget] Failed to open text in notepad: {ex}");
+            ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+        }
+    }
+
+    private async Task OpenTextInDefaultEditorAsync(QuickCaptureItemViewModel item)
+    {
+        string? previewPath = await TryCreateTextPreviewFileAsync(item);
+        if (string.IsNullOrWhiteSpace(previewPath))
+        {
+            return;
+        }
+
+        try
+        {
             var file = await StorageFile.GetFileFromPathAsync(previewPath);
             if (!await Launcher.LaunchFileAsync(file))
             {
@@ -754,6 +794,61 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         {
             App.Log($"[QuickCaptureWidget] Failed to open text preview: {ex}");
             ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+        }
+    }
+
+    private async Task TryApplyTextPreviewEditAsync(QuickCaptureItemViewModel item, string previewPath)
+    {
+        if (item.IsRecent)
+        {
+            return;
+        }
+
+        try
+        {
+            string editedBody = await File.ReadAllTextAsync(previewPath);
+            if (string.Equals(editedBody, item.Body, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(editedBody))
+            {
+                ShowStatusToast(_localizationService.T("QuickCapture.EmptyEdit"));
+                return;
+            }
+
+            await ViewModel.EditItemAsync(item, editedBody);
+            ShowStatusToast(_localizationService.T("QuickCapture.Edited"));
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCaptureWidget] Failed to apply notepad edit: {ex}");
+            ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+        }
+    }
+
+    private async Task<string?> TryCreateTextPreviewFileAsync(QuickCaptureItemViewModel item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Body))
+        {
+            ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+            return null;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(QuickCaptureTextPreviewDirectory);
+            string fileName = BuildQuickCapturePreviewFileName(item);
+            string previewPath = Path.Combine(QuickCaptureTextPreviewDirectory, fileName);
+            await File.WriteAllTextAsync(previewPath, item.Body);
+            return previewPath;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCaptureWidget] Failed to create text preview: {ex}");
+            ShowStatusToast(_localizationService.T("QuickCapture.OpenItemFailed"));
+            return null;
         }
     }
 
@@ -1313,6 +1408,14 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             };
             editItem.Click += async (_, _) => await EditItemAsync(item);
             flyout.Items.Add(editItem);
+
+            var notepadItem = new MenuFlyoutItem
+            {
+                Text = _localizationService.T("QuickCapture.EditInNotepad"),
+                Icon = new FontIcon { Glyph = "\uE70F" }
+            };
+            notepadItem.Click += async (_, _) => await OpenTextInNotepadAsync(item);
+            flyout.Items.Add(notepadItem);
         }
 
         var pinItem = new MenuFlyoutItem
