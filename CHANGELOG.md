@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1 - 2026-06-26
+
+### English
+
+- Fixed internal dragging for shortcut files (`.lnk`) in managed widgets. DeskBox now keeps its own path-based drag metadata even when Windows cannot convert a shortcut into a `StorageItem`.
+
+### 中文
+
+- 修复收纳格子内快捷方式（`.lnk`）无法长按拖动的问题。即使 Windows 无法把快捷方式转换为 `StorageItem`，DeskBox 也会使用自身的路径数据继续完成格子内拖拽。
+
 ## 1.1.0 - 2026-06-26
 
 ### English

@@ -15,11 +15,15 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.1.0
+Current release: 1.1.1
 
-- [DeskBox_Setup_1.1.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.0/DeskBox_Setup_1.1.0_x64.exe)
+- [DeskBox_Setup_1.1.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.1/DeskBox_Setup_1.1.1_x64.exe)
 
 The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
+
+## What's New In 1.1.1
+
+- Fixed internal dragging for shortcut files (`.lnk`) in managed widgets.
 
 ## What's New In 1.1.0
 
@@ -31,7 +35,7 @@ The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. I
 - Improved first-run onboarding so it appears only after the first install launch, while remaining available from Settings.
 - Improved uninstall behavior with an optional prompt to remove or keep local DeskBox app data.
 
-See the full [changelog](CHANGELOG.md). GitHub Release copy is available in [docs/releases/v1.1.0.md](docs/releases/v1.1.0.md).
+See the full [changelog](CHANGELOG.md). GitHub Release copy is available in [docs/releases/v1.1.1.md](docs/releases/v1.1.1.md).
 
 ## Why DeskBox Exists
 
@@ -121,7 +125,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.1.0_x64.exe
+Output\DeskBox_Setup_1.1.1_x64.exe
 ```
 
 ## Project Structure

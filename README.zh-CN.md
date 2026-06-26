@@ -15,11 +15,15 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.1.0
+当前版本：1.1.1
 
-- [DeskBox_Setup_1.1.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.0/DeskBox_Setup_1.1.0_x64.exe)
+- [DeskBox_Setup_1.1.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.1/DeskBox_Setup_1.1.1_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
+
+## 1.1.1 更新
+
+- 修复收纳格子内快捷方式（`.lnk`）无法长按拖动的问题。
 
 ## 1.1.0 更新
 
@@ -31,7 +35,7 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 - 优化新用户引导，只在首次安装后自动弹出，之后可在设置中手动查看。
 - 优化卸载体验，可选择是否同时删除本地应用数据。
 
-完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.1.0.md](docs/releases/v1.1.0.md) 中的中英文发布文案。
+完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。GitHub Release 可使用 [docs/releases/v1.1.1.md](docs/releases/v1.1.1.md) 中的中英文发布文案。
 
 ## 为什么做这个产品
 
@@ -117,7 +121,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.1.0_x64.exe
+Output\DeskBox_Setup_1.1.1_x64.exe
 ```
 
 ## 项目结构

@@ -2784,16 +2784,17 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return false;
         }
 
-        var storageItems = App.Current.FileService.GetStorageItems(sourcePaths);
-        if (storageItems.Count == 0)
-        {
-            _activeDragSourcePaths = [];
-            _activeDragHasStorageItems = false;
-            return false;
-        }
-
         dataPackage.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
-        dataPackage.SetStorageItems(storageItems, false);
+
+        var storageItems = App.Current.FileService.GetStorageItems(sourcePaths);
+        if (storageItems.Count > 0)
+        {
+            dataPackage.SetStorageItems(storageItems, false);
+        }
+        else
+        {
+            App.Log($"[DragStart] No StorageItems for selected paths; using path fallback. paths={sourcePaths.Length}");
+        }
 
         dataPackage.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
         dataPackage.Properties["DeskBoxSourcePaths"] = sourcePaths;
@@ -2801,6 +2802,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         dataPackage.Properties.Title = sourcePaths.Length == 1
             ? Path.GetFileName(sourcePaths[0])
             : _localizationService.Format("Widget.ItemCount", sourcePaths.Length);
+        dataPackage.SetText(string.Join(Environment.NewLine, sourcePaths));
         _activeDragSourcePaths = sourcePaths;
         _activeDragHasStorageItems = storageItems.Count > 0;
         return true;
