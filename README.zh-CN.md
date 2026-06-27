@@ -15,20 +15,24 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.1.2
+当前版本：1.1.3
 
-- [DeskBox_Setup_1.1.2_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.2/DeskBox_Setup_1.1.2_x64.exe)
+- [DeskBox_Setup_1.1.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.3/DeskBox_Setup_1.1.3_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
+## 1.1.3 更新
+
+- 优化格子动画性能，使用 GPU 加速透明度和原生贝塞尔缓动曲线。
+- 精简动画设置，统一滑动方向下拉框和缓动强度控制。
+- 修复文件格子和随记格子动画效果不一致的问题。
+- 新增图片文件缩略图预览。
+- 修复关闭"双击打开"后单击无法打开文件的问题。
+- 修复右键点击文件时误触发单击打开的问题。
+- 修复框选逻辑吞掉点击事件导致失效的问题。
+- 移除"唤起后仅保留点击的格子"设置，所有格子统一显示和隐藏。
+
 ## 1.1.2 更新
-
-- 优化随记格子 Tab 切换性能，使用字典查找替代 O(n²) 集合遍历，并缓存样式 Brush。
-- 新增"唤起后仅保留点击的格子"设置，开启后点击一个格子时其他格子自动隐藏。
-- 修复批量唤起格子时的层级问题，格子不再跑到全屏应用后面或意外留在前台。
-- 统一文件格子和随记格子的层级处理逻辑。
-
-## 1.1.1 更新
 
 - 修复收纳格子内快捷方式（`.lnk`）无法长按拖动的问题。
 

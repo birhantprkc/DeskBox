@@ -85,7 +85,19 @@ public class AppSettings
     /// <summary>
     /// Animation speed preset used when desktop widgets show or hide.
     /// </summary>
-    public string WidgetAnimationSpeed { get; set; } = "Fast";
+    public string WidgetAnimationSpeed { get; set; } = "Standard";
+
+    /// <summary>
+    /// Slide direction for Slide animation effect.
+    /// Valid values: <c>"None"</c>, <c>"Left"</c>, <c>"Right"</c>, <c>"Up"</c>, <c>"Down"</c>.
+    /// </summary>
+    public string WidgetAnimationSlideDirection { get; set; } = "Right";
+
+    /// <summary>
+    /// Easing intensity for animations.
+    /// Valid values: <c>"None"</c>, <c>"Light"</c>, <c>"Standard"</c>, <c>"Strong"</c>.
+    /// </summary>
+    public string WidgetAnimationEasingIntensity { get; set; } = "Standard";
 
     /// <summary>Whether to double click to open files.</summary>
     public bool DoubleClickToOpen { get; set; } = true;

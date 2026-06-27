@@ -56,6 +56,7 @@ public static class IconHelper
 
     /// <summary>
     /// Asynchronously retrieve the native Windows shell icon for the given path.
+    /// For image files, returns an actual thumbnail preview instead of the generic icon.
     /// </summary>
     public static async Task<BitmapImage?> GetIconAsync(string path, bool hideShortcutArrowOverlay = false)
     {
@@ -64,6 +65,11 @@ public static class IconHelper
         if (dispatcher == null || string.IsNullOrWhiteSpace(path))
         {
             return null;
+        }
+
+        if (IsImageFile(path))
+        {
+            return await LoadImageThumbnailAsync(dispatcher, path);
         }
 
         IconSource iconSource = ResolveIconSource(path, hideShortcutArrowOverlay);
@@ -78,10 +84,72 @@ public static class IconHelper
             _ => LoadBitmapImageAsync(dispatcher, iconSource, cacheKey));
     }
 
+    private static bool IsImageFile(string path)
+    {
+        string ext = Path.GetExtension(path);
+        return ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif" or ".heic" or ".heif";
+    }
+
+    private static async Task<BitmapImage?> LoadImageThumbnailAsync(
+        Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
+        string path)
+    {
+        string cacheKey = $"thumb:{path}:{GetFileIconVersion(path)}";
+        if (s_bitmapImageCache.TryGetValue(cacheKey, out var cached))
+        {
+            return await cached;
+        }
+
+        return await s_bitmapImageCache.GetOrAdd(
+            cacheKey,
+            _ => CreateImageThumbnailAsync(dispatcher, path, cacheKey));
+    }
+
+    private static async Task<BitmapImage?> CreateImageThumbnailAsync(
+        Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
+        string path,
+        string cacheKey)
+    {
+        try
+        {
+            byte[] bytes = await File.ReadAllBytesAsync(path);
+            if (bytes.Length == 0)
+            {
+                return null;
+            }
+
+            var image = await CreateBitmapImageAsync(dispatcher, bytes);
+            if (image is not null)
+            {
+                image.DecodePixelWidth = 80;
+            }
+
+            if (image is null)
+            {
+                s_bitmapImageCache.TryRemove(cacheKey, out _);
+            }
+
+            return image;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[IconHelper] Failed to load image thumbnail for {path}: {ex.Message}");
+            s_bitmapImageCache.TryRemove(cacheKey, out _);
+            return null;
+        }
+    }
+
     public static void ClearIconCache(string path, bool hideShortcutArrowOverlay = false)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
+            return;
+        }
+
+        if (IsImageFile(path))
+        {
+            string thumbCacheKey = $"thumb:{path}:{GetFileIconVersion(path)}";
+            s_bitmapImageCache.TryRemove(thumbCacheKey, out _);
             return;
         }
 

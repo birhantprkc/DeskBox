@@ -37,8 +37,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedLanguage = SettingsService.LanguageSystem;
     private string _selectedManagedDropAction = SettingsService.ManagedDropActionMove;
     private string _selectedWidgetCornerPreference = CornerSmall;
-    private string _selectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectSlideFade;
+    private string _selectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade;
     private string _selectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
+    private string _selectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
+    private string _selectedWidgetAnimationEasingIntensity = SettingsService.WidgetAnimationEasingStandard;
     private bool _useSystemAccentColor;
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
     private string _managedStorageRootPath = SettingsService.GetDefaultManagedStorageRootPath();
@@ -73,7 +75,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _fileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
     [ObservableProperty] private bool _showFileExtensions;
     [ObservableProperty] private bool _hideShortcutExtensionWhenShowingFileExtensions = true;
-    [ObservableProperty] private bool _focusClickedWidgetOnRaise;
     [ObservableProperty] private bool _quickCaptureEnabled;
     [ObservableProperty] private bool _quickCaptureClipboardEnabled;
     [ObservableProperty] private bool _quickCaptureImageClipboardEnabled = true;
@@ -261,11 +262,22 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             _settingsService.Settings.WidgetAnimationEffect = _selectedWidgetAnimationEffect;
             _settingsService.SaveDebounced();
             OnPropertyChanged(nameof(SelectedWidgetAnimationEffectText));
+            OnPropertyChanged(nameof(IsDirectionEnabled));
+            OnPropertyChanged(nameof(IsEasingEnabled));
+            OnPropertyChanged(nameof(IsSpeedEnabled));
         }
     }
 
     public string SelectedWidgetAnimationEffectText => GetWidgetAnimationEffectDisplayName(SelectedWidgetAnimationEffect);
     public int SelectedWidgetAnimationEffectIndex => Array.IndexOf(AvailableWidgetAnimationEffects, _selectedWidgetAnimationEffect);
+
+    public bool IsDirectionEnabled => _selectedWidgetAnimationEffect is
+        SettingsService.WidgetAnimationEffectSlideFade or
+        SettingsService.WidgetAnimationEffectScaleSlide;
+
+    public bool IsEasingEnabled => _selectedWidgetAnimationEffect != SettingsService.WidgetAnimationEffectNone;
+
+    public bool IsSpeedEnabled => _selectedWidgetAnimationEffect != SettingsService.WidgetAnimationEffectNone;
 
     public string SelectedWidgetAnimationSpeed
     {
@@ -290,6 +302,54 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string SelectedWidgetAnimationSpeedText => GetWidgetAnimationSpeedDisplayName(SelectedWidgetAnimationSpeed);
     public int SelectedWidgetAnimationSpeedIndex => Array.IndexOf(AvailableWidgetAnimationSpeeds, _selectedWidgetAnimationSpeed);
+
+    public string SelectedWidgetAnimationSlideDirection
+    {
+        get => _selectedWidgetAnimationSlideDirection;
+        set
+        {
+            if (!SetProperty(ref _selectedWidgetAnimationSlideDirection, NormalizeWidgetAnimationSlideDirection(value)))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetAnimationSlideDirection = _selectedWidgetAnimationSlideDirection;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedWidgetAnimationSlideDirectionText));
+        }
+    }
+
+    public string SelectedWidgetAnimationSlideDirectionText => GetWidgetAnimationSlideDirectionDisplayName(SelectedWidgetAnimationSlideDirection);
+    public int SelectedWidgetAnimationSlideDirectionIndex => Array.IndexOf(AvailableWidgetAnimationSlideDirections, _selectedWidgetAnimationSlideDirection);
+
+    public string SelectedWidgetAnimationEasingIntensity
+    {
+        get => _selectedWidgetAnimationEasingIntensity;
+        set
+        {
+            if (!SetProperty(ref _selectedWidgetAnimationEasingIntensity, NormalizeWidgetAnimationEasingIntensity(value)))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetAnimationEasingIntensity = _selectedWidgetAnimationEasingIntensity;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedWidgetAnimationEasingIntensityText));
+        }
+    }
+
+    public string SelectedWidgetAnimationEasingIntensityText => GetWidgetAnimationEasingIntensityDisplayName(SelectedWidgetAnimationEasingIntensity);
+    public int SelectedWidgetAnimationEasingIntensityIndex => Array.IndexOf(AvailableWidgetAnimationEasingIntensities, _selectedWidgetAnimationEasingIntensity);
 
     public string AccentColorHex
     {
@@ -579,18 +639,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string[] AvailableWidgetAnimationEffects { get; } =
     [
         SettingsService.WidgetAnimationEffectSlideFade,
-        SettingsService.WidgetAnimationEffectSlideRight,
-        SettingsService.WidgetAnimationEffectSlideLeft,
-        SettingsService.WidgetAnimationEffectSlideUp,
-        SettingsService.WidgetAnimationEffectSlideDown,
         SettingsService.WidgetAnimationEffectFade,
         SettingsService.WidgetAnimationEffectScaleFade,
         SettingsService.WidgetAnimationEffectZoom,
-        SettingsService.WidgetAnimationEffectSlideUpFade,
-        SettingsService.WidgetAnimationEffectSlideDownFade,
-        SettingsService.WidgetAnimationEffectSlideLeftFade,
-        SettingsService.WidgetAnimationEffectSlideRightFade,
-        SettingsService.WidgetAnimationEffectScaleSlide,
         SettingsService.WidgetAnimationEffectNone
     ];
     public string[] AvailableWidgetAnimationEffectDisplayNames => AvailableWidgetAnimationEffects.Select(GetWidgetAnimationEffectDisplayName).ToArray();
@@ -603,6 +654,23 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         SettingsService.WidgetAnimationSpeedSlow
     ];
     public string[] AvailableWidgetAnimationSpeedDisplayNames => AvailableWidgetAnimationSpeeds.Select(GetWidgetAnimationSpeedDisplayName).ToArray();
+    public string[] AvailableWidgetAnimationSlideDirections { get; } =
+    [
+        SettingsService.WidgetAnimationSlideDirectionNone,
+        SettingsService.WidgetAnimationSlideDirectionLeft,
+        SettingsService.WidgetAnimationSlideDirectionRight,
+        SettingsService.WidgetAnimationSlideDirectionUp,
+        SettingsService.WidgetAnimationSlideDirectionDown
+    ];
+    public string[] AvailableWidgetAnimationSlideDirectionDisplayNames => AvailableWidgetAnimationSlideDirections.Select(GetWidgetAnimationSlideDirectionDisplayName).ToArray();
+    public string[] AvailableWidgetAnimationEasingIntensities { get; } =
+    [
+        SettingsService.WidgetAnimationEasingNone,
+        SettingsService.WidgetAnimationEasingLight,
+        SettingsService.WidgetAnimationEasingStandard,
+        SettingsService.WidgetAnimationEasingStrong
+    ];
+    public string[] AvailableWidgetAnimationEasingIntensityDisplayNames => AvailableWidgetAnimationEasingIntensities.Select(GetWidgetAnimationEasingIntensityDisplayName).ToArray();
 
     public string AppVersion =>
         Assembly.GetExecutingAssembly()
@@ -857,7 +925,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _useSystemAccentColor = !string.Equals(settings.AccentColorMode, ThemeService.AccentModeCustom, StringComparison.OrdinalIgnoreCase);
         _autoStart = StartupService.IsEnabled();
         _doubleClickToOpen = settings.DoubleClickToOpen;
-        _focusClickedWidgetOnRaise = settings.FocusClickedWidgetOnRaise;
         _defaultWidth = settings.DefaultWidgetWidth;
         _defaultHeight = settings.DefaultWidgetHeight;
         _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
@@ -869,6 +936,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             : CornerSmall;
         _selectedWidgetAnimationEffect = NormalizeWidgetAnimationEffect(settings.WidgetAnimationEffect);
         _selectedWidgetAnimationSpeed = NormalizeWidgetAnimationSpeed(settings.WidgetAnimationSpeed);
+        _selectedWidgetAnimationSlideDirection = NormalizeWidgetAnimationSlideDirection(settings.WidgetAnimationSlideDirection);
+        _selectedWidgetAnimationEasingIntensity = NormalizeWidgetAnimationEasingIntensity(settings.WidgetAnimationEasingIntensity);
         _iconSize = settings.IconSize;
         _textSize = settings.TextSize;
         _layoutDensityScale = settings.LayoutDensityScale;
@@ -950,6 +1019,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SelectedWidgetCornerPreference = CornerSmall;
             SelectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectSlideFade;
             SelectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
+            SelectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
+            SelectedWidgetAnimationEasingIntensity = SettingsService.WidgetAnimationEasingStandard;
             WidgetOpacity = SettingsService.DefaultWidgetOpacity;
             IconSize = SettingsService.DefaultIconSize;
             TextSize = SettingsService.DefaultTextSize;
@@ -962,7 +1033,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             QuickCaptureImageClipboardEnabled = true;
             SelectedManagedDropAction = SettingsService.ManagedDropActionMove;
             DoubleClickToOpen = true;
-            FocusClickedWidgetOnRaise = false;
             HideShortcutArrowOverlay = true;
             ShowListItemDetails = false;
 
@@ -975,6 +1045,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             settings.WidgetCornerPreference = SettingsService.WidgetCornerPreferenceSmall;
             settings.WidgetAnimationEffect = SettingsService.WidgetAnimationEffectSlideFade;
             settings.WidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
+            settings.WidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
+            settings.WidgetAnimationEasingIntensity = SettingsService.WidgetAnimationEasingStandard;
             settings.WidgetOpacity = SettingsService.DefaultWidgetOpacity;
             settings.IconSize = SettingsService.DefaultIconSize;
             settings.TextSize = SettingsService.DefaultTextSize;
@@ -991,7 +1063,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             settings.GlobalHotkeyModifiers = SettingsService.DefaultGlobalHotkeyModifiers;
             settings.GlobalHotkeyKey = SettingsService.DefaultGlobalHotkeyKey;
             settings.DoubleClickToOpen = true;
-            settings.FocusClickedWidgetOnRaise = false;
             settings.HideShortcutArrowOverlay = true;
             settings.ShowListItemDetails = false;
 
@@ -1085,6 +1156,29 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         };
     }
 
+    public string GetWidgetAnimationSlideDirectionDisplayName(string direction)
+    {
+        return NormalizeWidgetAnimationSlideDirection(direction) switch
+        {
+            SettingsService.WidgetAnimationSlideDirectionLeft => _localizationService.T("Settings.Animation.Direction.Left"),
+            SettingsService.WidgetAnimationSlideDirectionRight => _localizationService.T("Settings.Animation.Direction.Right"),
+            SettingsService.WidgetAnimationSlideDirectionUp => _localizationService.T("Settings.Animation.Direction.Up"),
+            SettingsService.WidgetAnimationSlideDirectionDown => _localizationService.T("Settings.Animation.Direction.Down"),
+            _ => _localizationService.T("Settings.Animation.Direction.None")
+        };
+    }
+
+    public string GetWidgetAnimationEasingIntensityDisplayName(string intensity)
+    {
+        return NormalizeWidgetAnimationEasingIntensity(intensity) switch
+        {
+            SettingsService.WidgetAnimationEasingLight => _localizationService.T("Settings.Animation.Easing.Light"),
+            SettingsService.WidgetAnimationEasingStandard => _localizationService.T("Settings.Animation.Easing.Standard"),
+            SettingsService.WidgetAnimationEasingStrong => _localizationService.T("Settings.Animation.Easing.Strong"),
+            _ => _localizationService.T("Settings.Animation.Easing.None")
+        };
+    }
+
     public string GetLanguageDisplayName(string language)
     {
         return _localizationService.GetLanguageDisplayName(language);
@@ -1166,6 +1260,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetAnimationEffectDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetAnimationSpeedDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetAnimationSlideDirectionDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetAnimationEasingIntensityDisplayNames));
         OnPropertyChanged(nameof(AvailableManagedDropActionDisplayNames));
         OnPropertyChanged(nameof(SelectedThemeIndex));
         OnPropertyChanged(nameof(SelectedTrayIconStyleIndex));
@@ -1173,6 +1269,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceIndex));
         OnPropertyChanged(nameof(SelectedWidgetAnimationEffectIndex));
         OnPropertyChanged(nameof(SelectedWidgetAnimationSpeedIndex));
+        OnPropertyChanged(nameof(SelectedWidgetAnimationSlideDirectionIndex));
+        OnPropertyChanged(nameof(SelectedWidgetAnimationEasingIntensityIndex));
         OnPropertyChanged(nameof(SelectedManagedDropActionIndex));
         OnPropertyChanged(nameof(AccentColorDescription));
         OnPropertyChanged(nameof(AboutVersionText));
@@ -1295,6 +1393,29 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             : SettingsService.WidgetAnimationSpeedStandard;
     }
 
+    private static string NormalizeWidgetAnimationSlideDirection(string? direction)
+    {
+        return direction is
+            SettingsService.WidgetAnimationSlideDirectionNone or
+            SettingsService.WidgetAnimationSlideDirectionLeft or
+            SettingsService.WidgetAnimationSlideDirectionRight or
+            SettingsService.WidgetAnimationSlideDirectionUp or
+            SettingsService.WidgetAnimationSlideDirectionDown
+            ? direction
+            : SettingsService.WidgetAnimationSlideDirectionRight;
+    }
+
+    private static string NormalizeWidgetAnimationEasingIntensity(string? intensity)
+    {
+        return intensity is
+            SettingsService.WidgetAnimationEasingNone or
+            SettingsService.WidgetAnimationEasingLight or
+            SettingsService.WidgetAnimationEasingStandard or
+            SettingsService.WidgetAnimationEasingStrong
+            ? intensity
+            : SettingsService.WidgetAnimationEasingStandard;
+    }
+
     partial void OnAutoStartChanged(bool value)
     {
         if (_isRestoringDefaults)
@@ -1315,17 +1436,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.Settings.DoubleClickToOpen = value;
-        _settingsService.SaveDebounced();
-    }
-
-    partial void OnFocusClickedWidgetOnRaiseChanged(bool value)
-    {
-        if (_isRestoringDefaults)
-        {
-            return;
-        }
-
-        _settingsService.Settings.FocusClickedWidgetOnRaise = value;
         _settingsService.SaveDebounced();
     }
 

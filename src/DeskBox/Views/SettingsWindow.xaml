@@ -876,10 +876,57 @@
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
                                     MinWidth="176"
+                                    IsEnabled="{Binding IsSpeedEnabled}"
                                     ItemsSource="{Binding AvailableWidgetAnimationSpeedDisplayNames}"
                                     SelectedIndex="{Binding SelectedWidgetAnimationSpeedIndex, Mode=OneWay}"
                                     SelectionChanged="SettingsComboBox_SelectionChanged"
                                     Tag="WidgetAnimationSpeed" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Animation.Direction.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Animation.Direction.Description" />
+                                </StackPanel>
+                                <ComboBox
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    MinWidth="176"
+                                    IsEnabled="{Binding IsDirectionEnabled}"
+                                    ItemsSource="{Binding AvailableWidgetAnimationSlideDirectionDisplayNames}"
+                                    SelectedIndex="{Binding SelectedWidgetAnimationSlideDirectionIndex, Mode=OneWay}"
+                                    SelectionChanged="SettingsComboBox_SelectionChanged"
+                                    Tag="WidgetAnimationSlideDirection" />
+                            </Grid>
+
+                            <Border Style="{StaticResource SettingDividerStyle}" />
+
+                            <Grid Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Animation.Easing.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Animation.Easing.Description" />
+                                </StackPanel>
+                                <ComboBox
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    MinWidth="176"
+                                    IsEnabled="{Binding IsEasingEnabled}"
+                                    ItemsSource="{Binding AvailableWidgetAnimationEasingIntensityDisplayNames}"
+                                    SelectedIndex="{Binding SelectedWidgetAnimationEasingIntensityIndex, Mode=OneWay}"
+                                    SelectionChanged="SettingsComboBox_SelectionChanged"
+                                    Tag="WidgetAnimationEasingIntensity" />
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -1341,23 +1388,6 @@
                                 <ToggleSwitch
                                     Grid.Column="1"
                                     IsOn="{Binding DoubleClickToOpen, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
-                            </Grid>
-
-                            <Border Style="{StaticResource SettingDividerStyle}" />
-
-                            <Grid Style="{StaticResource SettingRowStyle}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Style="{StaticResource SettingTextPanelStyle}">
-                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.FocusClickedWidget.Title" />
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.FocusClickedWidget.Description" />
-                                </StackPanel>
-                                <ToggleSwitch
-                                    Grid.Column="1"
-                                    IsOn="{Binding FocusClickedWidgetOnRaise, Mode=TwoWay}"
                                     Style="{StaticResource SettingToggleSwitchStyle}" />
                             </Grid>
 

@@ -39,6 +39,15 @@ public sealed class SettingsService
     public const string WidgetAnimationSpeedStandard = "Standard";
     public const string WidgetAnimationSpeedRelaxed = "Relaxed";
     public const string WidgetAnimationSpeedSlow = "Slow";
+    public const string WidgetAnimationSlideDirectionNone = "None";
+    public const string WidgetAnimationSlideDirectionLeft = "Left";
+    public const string WidgetAnimationSlideDirectionRight = "Right";
+    public const string WidgetAnimationSlideDirectionUp = "Up";
+    public const string WidgetAnimationSlideDirectionDown = "Down";
+    public const string WidgetAnimationEasingNone = "None";
+    public const string WidgetAnimationEasingLight = "Light";
+    public const string WidgetAnimationEasingStandard = "Standard";
+    public const string WidgetAnimationEasingStrong = "Strong";
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
     public const string LanguageSystem = "System";

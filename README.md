@@ -15,20 +15,24 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.1.2
+Current release: 1.1.3
 
-- [DeskBox_Setup_1.1.2_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.2/DeskBox_Setup_1.1.2_x64.exe)
+- [DeskBox_Setup_1.1.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.3/DeskBox_Setup_1.1.3_x64.exe)
 
 The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
 
+## What's New In 1.1.3
+
+- Optimized widget animation with GPU-accelerated opacity and native bezier easing curves.
+- Simplified animation settings: unified slide direction dropdown and easing intensity control.
+- Fixed animation effects inconsistency between file widgets and Quick Capture.
+- Added image thumbnail previews for image files in widgets.
+- Fixed single-click file open when "Double-click to open" is disabled.
+- Fixed right-click triggering single-click open instead of context menu.
+- Fixed click events being consumed by box selection logic.
+- Removed "Focus clicked widget only" setting; all widgets now always show and hide together.
+
 ## What's New In 1.1.2
-
-- Optimized Quick Capture tab switching with faster collection diffing and cached brushes.
-- Added "Focus clicked widget only" setting: when on, clicking one widget during batch raise hides all others.
-- Fixed Z-order issues where widgets could fall behind fullscreen apps or stay on top unexpectedly.
-- Unified widget layer behavior between file widgets and Quick Capture.
-
-## What's New In 1.1.1
 
 - Fixed internal dragging for shortcut files (`.lnk`) in managed widgets.
 

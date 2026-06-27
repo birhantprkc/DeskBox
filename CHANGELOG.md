@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.1.3 - 2026-06-27
+
+### English
+
+- Optimized widget animation performance: replaced per-frame Win32 P/Invoke opacity calls with GPU-accelerated Visual.Opacity, cached Composition Visual, and enabled Windows-native cubic bezier easing curves.
+- Simplified animation settings: removed redundant direction-specific effects, added a single "Slide direction" dropdown and "Easing intensity" control with None/Light/Standard/Strong options. Direction dropdown is disabled for effects that have no slide component.
+- Fixed animation effect inconsistency between file widgets and Quick Capture widgets: both now support the same set of effects with identical parameters.
+- Added image thumbnail previews for image files in widgets instead of generic file type icons.
+- Fixed single-click file open not working when "Double-click to open" is disabled.
+- Fixed right-click triggering single-click open instead of showing the context menu.
+- Fixed widget click events being consumed by box selection logic, preventing ItemClick from firing.
+- Removed "Focus clicked widget only" setting due to unreliable z-order behavior across different widget types. All widgets now always show and hide together.
+- Improved default settings: animation effect defaults to Fade, speed defaults to Standard.
+
+### 中文
+
+- 优化格子动画性能：将每帧的 Win32 P/Invoke 透明度调用替换为 GPU 加速的 Visual.Opacity，缓存 Composition Visual，启用 Windows 原生贝塞尔缓动曲线。
+- 精简动画设置：移除重复的方向特定效果，新增统一的"滑动方向"下拉框和"缓动强度"控制（无/轻微/标准/强烈）。方向下拉框在无滑动成分的效果下自动禁用。
+- 修复文件格子和随记格子动画效果不一致的问题，两种格子现在支持完全相同的效果和参数。
+- 新增图片文件缩略图预览，替代原来的通用文件类型图标。
+- 修复关闭"双击打开"后单击无法打开文件的问题。
+- 修复右键点击文件时误触发单击打开而非弹出菜单的问题。
+- 修复格子框选逻辑吞掉 ItemClick 事件导致点击失效的问题。
+- 移除"唤起后仅保留点击的格子"设置，因不同格子类型间 z-order 行为不一致。所有格子现在统一显示和隐藏。
+- 优化默认设置：动画效果默认为淡入淡出，速度默认为标准。
+
 ## 1.1.2 - 2026-06-26
 
 ### English

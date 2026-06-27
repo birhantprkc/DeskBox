@@ -346,6 +346,12 @@ public sealed partial class SettingsWindow : Window
             case "WidgetAnimationSpeed":
                 ViewModel.SelectedWidgetAnimationSpeed = ViewModel.AvailableWidgetAnimationSpeeds[combo.SelectedIndex];
                 break;
+            case "WidgetAnimationSlideDirection":
+                ViewModel.SelectedWidgetAnimationSlideDirection = ViewModel.AvailableWidgetAnimationSlideDirections[combo.SelectedIndex];
+                break;
+            case "WidgetAnimationEasingIntensity":
+                ViewModel.SelectedWidgetAnimationEasingIntensity = ViewModel.AvailableWidgetAnimationEasingIntensities[combo.SelectedIndex];
+                break;
             case "ManagedDropAction":
                 ViewModel.SelectedManagedDropAction = ViewModel.AvailableManagedDropActions[combo.SelectedIndex];
                 break;
@@ -402,6 +408,20 @@ public sealed partial class SettingsWindow : Window
                 values = ViewModel.AvailableWidgetAnimationSpeeds;
                 applyValue = value => ViewModel.SelectedWidgetAnimationSpeed = value;
                 displayValue = ViewModel.GetWidgetAnimationSpeedDisplayName;
+                break;
+
+            case "WidgetAnimationSlideDirection":
+                selectedValue = ViewModel.SelectedWidgetAnimationSlideDirection;
+                values = ViewModel.AvailableWidgetAnimationSlideDirections;
+                applyValue = value => ViewModel.SelectedWidgetAnimationSlideDirection = value;
+                displayValue = ViewModel.GetWidgetAnimationSlideDirectionDisplayName;
+                break;
+
+            case "WidgetAnimationEasingIntensity":
+                selectedValue = ViewModel.SelectedWidgetAnimationEasingIntensity;
+                values = ViewModel.AvailableWidgetAnimationEasingIntensities;
+                applyValue = value => ViewModel.SelectedWidgetAnimationEasingIntensity = value;
+                displayValue = ViewModel.GetWidgetAnimationEasingIntensityDisplayName;
                 break;
 
             case "ManagedDropAction":
