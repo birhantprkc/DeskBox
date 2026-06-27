@@ -382,10 +382,11 @@ public static partial class Win32Helper
     /// </summary>
     public static void SetWindowToBottom(IntPtr hWnd)
     {
-        SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+        bool r1 = SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, 0, 0,
+        bool r2 = SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        App.Log($"[ZOrder] SetWindowToBottom hwnd=0x{hWnd.ToInt64():X} r1={r1} r2={r2}");
     }
 
     /// <summary>

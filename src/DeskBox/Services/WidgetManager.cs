@@ -46,6 +46,7 @@ internal interface IDesktopWidgetWindow
     void EnsureRaisedFromTrayTopMost();
     void ForceRestoreDesktopLayerFromManager();
     void RestoreDesktopLayerFromManager();
+    void PushToNonTopMost();
     void HideWindow();
 }
 
@@ -75,6 +76,7 @@ public sealed class WidgetManager
     private IntPtr _mouseHookHandle;
     private bool _widgetsRaisedFromTray;
     private bool _isTogglingWidgetsDesktopLayer;
+    private bool _focusClickedMode;
     private bool _isApplyingAppearancePreview;
     private bool _lastQuickCaptureEnabled;
     private DateTime _lastTrayLayerToggleUtc = DateTime.MinValue;
@@ -85,6 +87,8 @@ public sealed class WidgetManager
     public IReadOnlyDictionary<string, (QuickCaptureWidgetWindow Window, QuickCaptureWidgetViewModel ViewModel)> QuickCaptureWidgets => _quickCaptureWidgets;
 
     public bool WidgetsRaisedFromTray => _widgetsRaisedFromTray;
+    public bool FocusClickedMode => _focusClickedMode;
+
     public bool HasVisibleWidgets => _widgets.Values.Any(entry => entry.Window.Visible) ||
                                      _quickCaptureWidgets.Values.Any(entry => entry.Window.Visible);
 
@@ -567,6 +571,7 @@ public sealed class WidgetManager
                 .ToList();
             PrepareTrayShowAnimations(windowsToAnimate);
 
+            _focusClickedMode = false;
             _widgetsRaisedFromTray = windowsToRaise.Count > 0;
             var shownWindows = new List<IDesktopWidgetWindow>();
             foreach (var window in windowsToRaise)
@@ -1320,13 +1325,17 @@ public sealed class WidgetManager
             return;
         }
 
-        App.LogVerbose(
-            $"[TrayBatch] RestoreDesktopLayer force={force} file={_widgets.Count} quick={_quickCaptureWidgets.Count}");
+        App.Log(
+            $"[TrayBatch] RestoreDesktopLayer force={force} focusClicked={_focusClickedMode} file={_widgets.Count} quick={_quickCaptureWidgets.Count}");
         foreach (var (_, (window, _)) in _widgets.ToList())
         {
             try
             {
-                if (force)
+                if (_focusClickedMode)
+                {
+                    Win32Helper.ShowWindow(window.WindowHandle, Win32Helper.SW_HIDE);
+                }
+                else if (force)
                 {
                     window.ForceRestoreDesktopLayerFromManager();
                 }
@@ -1345,7 +1354,11 @@ public sealed class WidgetManager
         {
             try
             {
-                if (force)
+                if (_focusClickedMode)
+                {
+                    Win32Helper.ShowWindow(window.WindowHandle, Win32Helper.SW_HIDE);
+                }
+                else if (force)
                 {
                     window.ForceRestoreDesktopLayerFromManager();
                 }
@@ -1360,6 +1373,7 @@ public sealed class WidgetManager
             }
         }
 
+        _focusClickedMode = false;
         SetWidgetsRaisedFromTray(false);
         _trayRaiseBatchGeneration++;
         StopTrayLayerRestoreMonitor();
@@ -1437,6 +1451,13 @@ public sealed class WidgetManager
         if (nCode >= 0 && IsMouseDownMessage(wParam))
         {
             var data = System.Runtime.InteropServices.Marshal.PtrToStructure<Win32Helper.MSLLHOOKSTRUCT>(lParam);
+            if (_settingsService.Settings.FocusClickedWidgetOnRaise &&
+                _widgetsRaisedFromTray &&
+                IsCursorOverAnyWidget(data.pt))
+            {
+                _focusClickedMode = true;
+            }
+
             App.UiDispatcherQueue.TryEnqueue(() => RestoreRaisedWidgetsForExternalMouseDown(data.pt));
         }
 
@@ -1454,7 +1475,7 @@ public sealed class WidgetManager
 
     private void RestoreRaisedWidgetsForExternalMouseDown(Win32Helper.POINT cursor)
     {
-        if (!_widgetsRaisedFromTray || _isTogglingWidgetsDesktopLayer)
+        if (!_widgetsRaisedFromTray && !_focusClickedMode)
         {
             return;
         }
@@ -1469,13 +1490,46 @@ public sealed class WidgetManager
         bool overWidget = IsCursorOverAnyWidget(cursor);
         if (overWidget)
         {
-            App.LogVerbose($"[TrayBatch] RestoreMouseHook kept-all over-widget cursor={cursor.X},{cursor.Y}");
+            if (_settingsService.Settings.FocusClickedWidgetOnRaise && _widgetsRaisedFromTray)
+            {
+                IntPtr clickedHwnd = FindWidgetHwndAtCursor(cursor);
+                _focusClickedMode = true;
+                App.Log($"[TrayBatch] RestoreMouseHook focus-clicked hwnd=0x{clickedHwnd.ToInt64():X}");
+                RestoreRaisedWidgetsToDesktopLayerExcept(clickedHwnd);
+            }
+            else if (!_focusClickedMode)
+            {
+                App.LogVerbose($"[TrayBatch] RestoreMouseHook kept-all over-widget cursor={cursor.X},{cursor.Y}");
+            }
+
             return;
         }
 
         IntPtr targetWindow = Win32Helper.WindowFromPoint(cursor);
-        App.LogVerbose($"[TrayBatch] RestoreMouseHook restoring-all cursor={cursor.X},{cursor.Y} hwnd=0x{targetWindow.ToInt64():X}");
+        App.Log($"[TrayBatch] RestoreMouseHook restoring-all cursor={cursor.X},{cursor.Y} hwnd=0x{targetWindow.ToInt64():X} focusClicked={_focusClickedMode}");
+        _focusClickedMode = false;
         RestoreRaisedWidgetsToDesktopLayer(force: true);
+    }
+
+    private IntPtr FindWidgetHwndAtCursor(Win32Helper.POINT cursor)
+    {
+        foreach (var (_, (window, _)) in _widgets)
+        {
+            if (IsCursorOverWindow(window, cursor))
+            {
+                return window.WindowHandle;
+            }
+        }
+
+        foreach (var (_, (window, _)) in _quickCaptureWidgets)
+        {
+            if (IsCursorOverWindow(window, cursor))
+            {
+                return window.WindowHandle;
+            }
+        }
+
+        return IntPtr.Zero;
     }
 
     private bool IsCursorOverAnyWidget(Win32Helper.POINT cursor)
@@ -1520,24 +1574,30 @@ public sealed class WidgetManager
             return;
         }
 
+        App.Log($"[TrayBatch] RestoreExcept skip=0x{skipHwnd.ToInt64():X} file={_widgets.Count} quick={_quickCaptureWidgets.Count}");
         foreach (var (_, (window, _)) in _widgets.ToList())
         {
             if (window.WindowHandle == skipHwnd) continue;
-            try { window.ForceRestoreDesktopLayerFromManager(); }
-            catch (Exception ex) { App.Log($"[WidgetManager] Failed to restore file widget: {ex}"); }
+            App.Log($"[TrayBatch] RestoreExcept HIDE file hwnd=0x{window.WindowHandle.ToInt64():X}");
+            try { Win32Helper.ShowWindow(window.WindowHandle, Win32Helper.SW_HIDE); }
+            catch (Exception ex) { App.Log($"[WidgetManager] Failed to hide file widget: {ex}"); }
         }
 
         foreach (var (_, (window, _)) in _quickCaptureWidgets.ToList())
         {
             if (window.WindowHandle == skipHwnd) continue;
-            try { window.ForceRestoreDesktopLayerFromManager(); }
-            catch (Exception ex) { App.Log($"[WidgetManager] Failed to restore quick capture: {ex}"); }
+            App.Log($"[TrayBatch] RestoreExcept HIDE quick hwnd=0x{window.WindowHandle.ToInt64():X}");
+            try { Win32Helper.ShowWindow(window.WindowHandle, Win32Helper.SW_HIDE); }
+            catch (Exception ex) { App.Log($"[WidgetManager] Failed to hide quick capture: {ex}"); }
         }
+
+        SetWidgetsRaisedFromTray(false);
+        _trayRaiseBatchGeneration++;
     }
 
     private void TrayLayerRestoreTimer_Tick(DispatcherQueueTimer sender, object args)
     {
-        if (!_widgetsRaisedFromTray)
+        if (!_widgetsRaisedFromTray && !_focusClickedMode)
         {
             StopTrayLayerRestoreMonitor();
             return;

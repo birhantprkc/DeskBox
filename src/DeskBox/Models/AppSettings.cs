@@ -173,6 +173,12 @@ public class AppSettings
     /// <summary>All configured widgets.</summary>
     public List<WidgetConfig> Widgets { get; set; } = [];
 
+    /// <summary>
+    /// When true, clicking one widget during batch raise keeps only that widget on top;
+    /// others move to non-topmost. When false (default), all widgets stay visible together.
+    /// </summary>
+    public bool FocusClickedWidgetOnRaise { get; set; }
+
     /// <summary>Widget ids that were deleted and should not be restored.</summary>
     public List<string> DeletedWidgetIds { get; set; } = [];
 }

@@ -341,6 +341,13 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         App.Log($"[ZOrder] Widget PushToBottom hwnd=0x{_hWnd.ToInt64():X}");
     }
 
+    public void PushToNonTopMost()
+    {
+        _isAtDesktopLayer = true;
+        Win32Helper.ClearWindowTopMost(_hWnd);
+        App.Log($"[ZOrder] Widget PushToNonTopMost hwnd=0x{_hWnd.ToInt64():X}");
+    }
+
     public void ShowPreparedAtDesktopLayer(bool persistVisibility = true)
     {
         LogTrayWindow("ShowPreparedAtDesktopLayer");
@@ -390,7 +397,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         DispatcherQueue.TryEnqueue(async () =>
         {
             await Task.Delay(60);
-            if (Visible)
+            if (Visible && App.Current.WidgetManager is not { FocusClickedMode: true })
             {
                 HoldTemporaryTopMost();
             }
@@ -401,15 +408,21 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     {
         if (!Visible)
         {
-            LogTrayWindow("EnsureRaisedTopMost skipped reason=not-visible");
+            App.Log($"[ZOrder] Widget EnsureRaisedFromTrayTopMost SKIPPED not-visible hwnd=0x{_hWnd.ToInt64():X}");
             return;
         }
 
-        LogTrayWindow("EnsureRaisedTopMost");
+        if (App.Current.WidgetManager is { FocusClickedMode: true })
+        {
+            App.Log($"[ZOrder] Widget EnsureRaisedFromTrayTopMost SKIPPED focusClicked hwnd=0x{_hWnd.ToInt64():X}");
+            return;
+        }
+
+        App.Log($"[ZOrder] Widget EnsureRaisedFromTrayTopMost hwnd=0x{_hWnd.ToInt64():X} atDesktop={_isAtDesktopLayer}");
         _appWindow.Show();
-        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
+        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNORMAL);
+        Win32Helper.BringWindowToFront(_hWnd);
         HoldTemporaryTopMost();
-        QueueBackdropRefresh();
     }
 
     public void ActivateRaisedFromTrayBatch()
@@ -1229,6 +1242,11 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void ElevateForInteraction()
     {
+        if (App.Current.WidgetManager is { FocusClickedMode: true })
+        {
+            return;
+        }
+
         HoldTemporaryTopMost();
         RootGrid.Focus(FocusState.Programmatic);
     }
@@ -1239,7 +1257,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _keepRaisedUntilDeactivate = true;
         _restoreDesktopLayerWhenIdle = false;
         Win32Helper.SetWindowTopMost(_hWnd);
-        App.Log($"[ZOrder] Widget HoldTemporaryTopMost hwnd=0x{_hWnd.ToInt64():X} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray}");
+        var stack = new System.Diagnostics.StackTrace(true);
+        var frame = stack.GetFrame(1);
+        App.Log($"[ZOrder] Widget HoldTemporaryTopMost hwnd=0x{_hWnd.ToInt64():X} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray} focusClicked={App.Current.WidgetManager?.FocusClickedMode} from={frame?.GetMethod()?.DeclaringType?.Name}.{frame?.GetMethod()?.Name}");
     }
 
     private void WidgetWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -1249,7 +1269,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
             if (Visible && !_isAtDesktopLayer &&
-                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
+                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true } &&
+                App.Current.WidgetManager is not { FocusClickedMode: true })
             {
                 App.Log($"[ZOrder] Widget Deactivated→QueueRestore hwnd=0x{_hWnd.ToInt64():X}");
                 QueueRestoreDesktopLayerIfForegroundLeavesDeskBox();
@@ -1263,9 +1284,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             !_isAtDesktopLayer ||
             _isDragging ||
             _isResizing ||
-            (App.Current.WidgetManager is { WidgetsRaisedFromTray: true }))
+            (App.Current.WidgetManager is { WidgetsRaisedFromTray: true }) ||
+            (App.Current.WidgetManager is { FocusClickedMode: true }))
         {
-            App.Log($"[ZOrder] Widget PointerActivated BLOCKED hwnd=0x{_hWnd.ToInt64():X} visible={Visible} atDesktop={_isAtDesktopLayer} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray}");
+            App.Log($"[ZOrder] Widget PointerActivated BLOCKED hwnd=0x{_hWnd.ToInt64():X} visible={Visible} atDesktop={_isAtDesktopLayer} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray} focusClicked={App.Current.WidgetManager?.FocusClickedMode}");
             return;
         }
 
@@ -1316,7 +1338,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     public void ForceRestoreDesktopLayerFromManager()
     {
-        App.Log($"[ZOrder] Widget ForceRestoreDesktopLayerFromManager hwnd=0x{_hWnd.ToInt64():X}");
+        App.Log($"[ZOrder] Widget ForceRestore hwnd=0x{_hWnd.ToInt64():X} visible={Visible} atDesktop={_isAtDesktopLayer}");
         ForceCancelTransientState();
         RestoreDesktopLayer(force: true);
     }

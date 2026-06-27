@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.2 - 2026-06-26
+
+### English
+
+- Optimized Quick Capture tab switching performance: added equality guards to item view model updates, replaced O(n²) collection diffing with dictionary-based O(n) lookup, and cached tab/item action button brushes to eliminate per-switch allocations.
+- Added a new setting "Focus clicked widget only" for batch widget raise behavior. When enabled, clicking one widget hides all others; when disabled (default), all widgets stay visible together.
+- Fixed Z-order inconsistency during batch raise from tray: widgets no longer fall behind fullscreen applications when clicking one widget, and the previously-clicked widget no longer stays on top unexpectedly.
+- Unified Z-order behavior between file widgets and Quick Capture widgets to prevent asymmetric deactivation handling.
+
+### 中文
+
+- 优化随记格子 Tab 切换性能：为 item ViewModel 更新添加等值守卫，将 O(n²) 的集合同步替换为基于字典的 O(n) 查找，并缓存 Tab 和操作按钮的 Brush 以消除每次切换的对象分配。
+- 新增"唤起后仅保留点击的格子"设置。开启后点击一个格子，其他格子自动隐藏；关闭时（默认）所有格子保持可见。
+- 修复批量唤起格子时的层级不一致问题：点击格子时其他格子不再跑到全屏应用后面，之前点过的格子也不会意外留在前台。
+- 统一文件格子和随记格子的层级处理逻辑，避免两者行为不一致。
+
 ## 1.1.1 - 2026-06-26
 
 ### English

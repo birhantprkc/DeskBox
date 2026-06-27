@@ -180,6 +180,13 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         App.Log($"[ZOrder] QuickCapture PushToBottom hwnd=0x{_hWnd.ToInt64():X}");
     }
 
+    public void PushToNonTopMost()
+    {
+        _isAtDesktopLayer = true;
+        Win32Helper.ClearWindowTopMost(_hWnd);
+        App.Log($"[ZOrder] QuickCapture PushToNonTopMost hwnd=0x{_hWnd.ToInt64():X}");
+    }
+
     public void ShowPreparedAtDesktopLayer(bool persistVisibility = true)
     {
         LogTrayWindow("ShowPreparedAtDesktopLayer");
@@ -222,7 +229,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         DispatcherQueue.TryEnqueue(async () =>
         {
             await Task.Delay(60);
-            if (Visible)
+            if (Visible && App.Current.WidgetManager is not { FocusClickedMode: true })
             {
                 HoldTemporaryTopMost();
             }
@@ -237,9 +244,16 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             return;
         }
 
+        if (App.Current.WidgetManager is { FocusClickedMode: true })
+        {
+            LogTrayWindow("EnsureRaisedTopMost skipped reason=focusClicked");
+            return;
+        }
+
         LogTrayWindow("EnsureRaisedTopMost");
         _appWindow.Show();
-        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
+        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNORMAL);
+        Win32Helper.BringWindowToFront(_hWnd);
         HoldTemporaryTopMost();
         QueueBackdropRefresh();
     }
@@ -2381,7 +2395,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
             if (Visible && !_isAtDesktopLayer &&
-                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
+                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true } &&
+                App.Current.WidgetManager is not { FocusClickedMode: true })
             {
                 App.Log($"[ZOrder] QuickCapture Deactivated→QueueRestore hwnd=0x{_hWnd.ToInt64():X}");
                 QueueRestoreDesktopLayerIfForegroundLeavesDeskBox();
@@ -2395,9 +2410,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             !_isAtDesktopLayer ||
             _isDragging ||
             _isResizing ||
-            (App.Current.WidgetManager is { WidgetsRaisedFromTray: true }))
+            (App.Current.WidgetManager is { WidgetsRaisedFromTray: true }) ||
+            (App.Current.WidgetManager is { FocusClickedMode: true }))
         {
-            App.Log($"[ZOrder] QuickCapture PointerActivated BLOCKED hwnd=0x{_hWnd.ToInt64():X} visible={Visible} atDesktop={_isAtDesktopLayer} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray}");
+            App.Log($"[ZOrder] QuickCapture PointerActivated BLOCKED hwnd=0x{_hWnd.ToInt64():X} visible={Visible} atDesktop={_isAtDesktopLayer} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray} focusClicked={App.Current.WidgetManager?.FocusClickedMode}");
             return;
         }
 
@@ -2469,6 +2485,11 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private void ElevateForInteraction()
     {
+        if (App.Current.WidgetManager is { FocusClickedMode: true })
+        {
+            return;
+        }
+
         HoldTemporaryTopMost();
         RootGrid.Focus(FocusState.Programmatic);
     }

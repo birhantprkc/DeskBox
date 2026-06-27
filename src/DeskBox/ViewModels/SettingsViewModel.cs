@@ -73,6 +73,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _fileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
     [ObservableProperty] private bool _showFileExtensions;
     [ObservableProperty] private bool _hideShortcutExtensionWhenShowingFileExtensions = true;
+    [ObservableProperty] private bool _focusClickedWidgetOnRaise;
     [ObservableProperty] private bool _quickCaptureEnabled;
     [ObservableProperty] private bool _quickCaptureClipboardEnabled;
     [ObservableProperty] private bool _quickCaptureImageClipboardEnabled = true;
@@ -856,6 +857,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _useSystemAccentColor = !string.Equals(settings.AccentColorMode, ThemeService.AccentModeCustom, StringComparison.OrdinalIgnoreCase);
         _autoStart = StartupService.IsEnabled();
         _doubleClickToOpen = settings.DoubleClickToOpen;
+        _focusClickedWidgetOnRaise = settings.FocusClickedWidgetOnRaise;
         _defaultWidth = settings.DefaultWidgetWidth;
         _defaultHeight = settings.DefaultWidgetHeight;
         _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
@@ -960,6 +962,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             QuickCaptureImageClipboardEnabled = true;
             SelectedManagedDropAction = SettingsService.ManagedDropActionMove;
             DoubleClickToOpen = true;
+            FocusClickedWidgetOnRaise = false;
             HideShortcutArrowOverlay = true;
             ShowListItemDetails = false;
 
@@ -988,6 +991,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             settings.GlobalHotkeyModifiers = SettingsService.DefaultGlobalHotkeyModifiers;
             settings.GlobalHotkeyKey = SettingsService.DefaultGlobalHotkeyKey;
             settings.DoubleClickToOpen = true;
+            settings.FocusClickedWidgetOnRaise = false;
             settings.HideShortcutArrowOverlay = true;
             settings.ShowListItemDetails = false;
 
@@ -1311,6 +1315,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.Settings.DoubleClickToOpen = value;
+        _settingsService.SaveDebounced();
+    }
+
+    partial void OnFocusClickedWidgetOnRaiseChanged(bool value)
+    {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
+        _settingsService.Settings.FocusClickedWidgetOnRaise = value;
         _settingsService.SaveDebounced();
     }
 
