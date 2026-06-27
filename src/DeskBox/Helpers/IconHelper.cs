@@ -11,6 +11,7 @@ namespace DeskBox.Helpers;
 /// </summary>
 public static class IconHelper
 {
+    private const int MaxCacheEntries = 500;
     private static readonly ConcurrentDictionary<string, byte[]?> s_iconBytesCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, Task<BitmapImage?>> s_bitmapImageCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly SemaphoreSlim s_iconLoadSemaphore = new(4, 4);
@@ -180,6 +181,7 @@ public static class IconHelper
                     if (bytes is { Length: > 0 })
                     {
                         s_iconBytesCache[iconBytesCacheKey] = bytes;
+                        EvictCachesIfNeeded();
                     }
                 }
             }
@@ -435,6 +437,21 @@ public static class IconHelper
         catch
         {
             return "unknown";
+        }
+    }
+
+    private static void EvictCachesIfNeeded()
+    {
+        if (s_iconBytesCache.Count > MaxCacheEntries)
+        {
+            var keysToRemove = s_iconBytesCache.Keys
+                .Take(s_iconBytesCache.Count - MaxCacheEntries / 2)
+                .ToList();
+            foreach (var key in keysToRemove)
+            {
+                s_iconBytesCache.TryRemove(key, out _);
+                s_bitmapImageCache.TryRemove(key, out _);
+            }
         }
     }
 }

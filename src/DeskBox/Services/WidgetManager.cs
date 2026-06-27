@@ -66,6 +66,7 @@ public sealed class WidgetManager
     private readonly bool _recycleManagedFolderDeletes;
     private readonly Dictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> _widgets = new();
     private readonly Dictionary<string, (QuickCaptureWidgetWindow Window, QuickCaptureWidgetViewModel ViewModel)> _quickCaptureWidgets = new();
+    private readonly HashSet<IntPtr> _widgetWindowHandles = new();
     private readonly HashSet<string> _deletedWidgetIds = [];
     private readonly List<WidgetWindow> _retiredWindows = [];
     private readonly SemaphoreSlim _widgetRenameGate = new(1, 1);
@@ -91,8 +92,7 @@ public sealed class WidgetManager
 
     public bool IsWidgetWindow(IntPtr hwnd)
     {
-        return _widgets.Values.Any(w => w.Window.WindowHandle == hwnd) ||
-               _quickCaptureWidgets.Values.Any(w => w.Window.WindowHandle == hwnd);
+        return _widgetWindowHandles.Contains(hwnd);
     }
 
     public event Action<WidgetWindow>? WidgetCreated;
@@ -723,8 +723,9 @@ public sealed class WidgetManager
             App.Log($"[WidgetManager] Retiring widget window for delete: {widgetId}");
             entry.ViewModel.Dispose();
             _widgets.Remove(widgetId);
+            _widgetWindowHandles.Remove(entry.Window.WindowHandle);
             entry.Window.HideWindow();
-            _retiredWindows.Add(entry.Window);
+            try { entry.Window.Close(); } catch { }
         }
 
         if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))
@@ -732,6 +733,7 @@ public sealed class WidgetManager
             App.Log($"[WidgetManager] Retiring quick capture widget window for delete: {widgetId}");
             quickCaptureEntry.ViewModel.Dispose();
             _quickCaptureWidgets.Remove(widgetId);
+            _widgetWindowHandles.Remove(quickCaptureEntry.Window.WindowHandle);
             quickCaptureEntry.Window.HideWindow();
         }
 
@@ -751,6 +753,7 @@ public sealed class WidgetManager
 
         _settingsService.RemoveWidget(widgetId);
         await _settingsService.SaveAsync();
+        _deletedWidgetIds.Remove(widgetId);
         App.Log($"[WidgetManager] Widget delete persisted: {widgetId}");
         WidgetRemoved?.Invoke(widgetId);
     }
@@ -1766,18 +1769,6 @@ public sealed class WidgetManager
         }
 
         _quickCaptureWidgets.Clear();
-
-        foreach (var window in _retiredWindows)
-        {
-            try
-            {
-                window.Close();
-            }
-            catch
-            {
-            }
-        }
-
         _retiredWindows.Clear();
     }
 
@@ -2576,6 +2567,7 @@ public sealed class WidgetManager
 
         _themeService.TrackWindow(window);
         _widgets[config.Id] = (window, viewModel);
+        _widgetWindowHandles.Add(window.WindowHandle);
 
         window.Closed += (_, _) =>
         {
@@ -2663,6 +2655,7 @@ public sealed class WidgetManager
 
         _themeService.TrackWindow(window);
         _quickCaptureWidgets[config.Id] = (window, viewModel);
+        _widgetWindowHandles.Add(window.WindowHandle);
 
         window.Closed += (_, _) =>
         {

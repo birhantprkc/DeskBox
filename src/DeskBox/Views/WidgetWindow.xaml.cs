@@ -316,6 +316,15 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             RestoreTrayWindowPosition();
             RestoreItemContainerTransitions();
             DisposeAcrylicController();
+
+            foreach (var child in ResizeGrid.Children)
+            {
+                if (child is FrameworkElement element && element.Tag is string tag && !string.IsNullOrEmpty(tag))
+                {
+                    element.PointerMoved -= ResizeBorder_PointerMoved;
+                    element.PointerReleased -= ResizeBorder_PointerReleased;
+                }
+            }
         };
     }
 

@@ -59,6 +59,16 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private bool _isRestoringDefaults;
     private bool _isApplyingSettingsSnapshot;
 
+    private string[]? _cachedTrayIconStyleDisplayNames;
+    private string[]? _cachedThemeDisplayNames;
+    private string[]? _cachedLanguageDisplayNames;
+    private string[]? _cachedManagedDropActionDisplayNames;
+    private string[]? _cachedWidgetCornerPreferenceDisplayNames;
+    private string[]? _cachedWidgetAnimationEffectDisplayNames;
+    private string[]? _cachedWidgetAnimationSpeedDisplayNames;
+    private string[]? _cachedWidgetAnimationSlideDirectionDisplayNames;
+    private string[]? _cachedWidgetAnimationEasingIntensityDisplayNames;
+
     [ObservableProperty] private bool _autoStart;
     [ObservableProperty] private bool _doubleClickToOpen;
     [ObservableProperty] private double _defaultWidth;
@@ -142,7 +152,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         TrayIconStyleWhite
     ];
 
-    public string[] AvailableTrayIconStyleDisplayNames => AvailableTrayIconStyles.Select(GetTrayIconStyleDisplayName).ToArray();
+    public string[] AvailableTrayIconStyleDisplayNames => _cachedTrayIconStyleDisplayNames ??= AvailableTrayIconStyles.Select(GetTrayIconStyleDisplayName).ToArray();
 
     public string SelectedLanguage
     {
@@ -629,13 +639,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public SolidColorBrush AccentPreviewBrush { get; } = new(AccentColorHelper.DefaultAccentColor);
 
     public string[] AvailableThemes { get; } = [ThemeSystem, ThemeLight, ThemeDark];
-    public string[] AvailableThemeDisplayNames => AvailableThemes.Select(GetThemeDisplayName).ToArray();
+    public string[] AvailableThemeDisplayNames => _cachedThemeDisplayNames ??= AvailableThemes.Select(GetThemeDisplayName).ToArray();
     public string[] AvailableLanguages { get; } = [SettingsService.LanguageSystem, SettingsService.LanguageChinese, SettingsService.LanguageEnglish];
-    public string[] AvailableLanguageDisplayNames => AvailableLanguages.Select(_localizationService.GetLanguageDisplayName).ToArray();
+    public string[] AvailableLanguageDisplayNames => _cachedLanguageDisplayNames ??= AvailableLanguages.Select(_localizationService.GetLanguageDisplayName).ToArray();
     public string[] AvailableManagedDropActions { get; } = [SettingsService.ManagedDropActionMove, SettingsService.ManagedDropActionCopy];
-    public string[] AvailableManagedDropActionDisplayNames => AvailableManagedDropActions.Select(GetManagedDropActionDisplayName).ToArray();
+    public string[] AvailableManagedDropActionDisplayNames => _cachedManagedDropActionDisplayNames ??= AvailableManagedDropActions.Select(GetManagedDropActionDisplayName).ToArray();
     public string[] AvailableWidgetCornerPreferences { get; } = [CornerSmall, CornerRound, CornerSquare, CornerDefault];
-    public string[] AvailableWidgetCornerPreferenceDisplayNames => AvailableWidgetCornerPreferences.Select(GetCornerDisplayName).ToArray();
+    public string[] AvailableWidgetCornerPreferenceDisplayNames => _cachedWidgetCornerPreferenceDisplayNames ??= AvailableWidgetCornerPreferences.Select(GetCornerDisplayName).ToArray();
     public string[] AvailableWidgetAnimationEffects { get; } =
     [
         SettingsService.WidgetAnimationEffectSlideFade,
@@ -644,7 +654,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         SettingsService.WidgetAnimationEffectZoom,
         SettingsService.WidgetAnimationEffectNone
     ];
-    public string[] AvailableWidgetAnimationEffectDisplayNames => AvailableWidgetAnimationEffects.Select(GetWidgetAnimationEffectDisplayName).ToArray();
+    public string[] AvailableWidgetAnimationEffectDisplayNames => _cachedWidgetAnimationEffectDisplayNames ??= AvailableWidgetAnimationEffects.Select(GetWidgetAnimationEffectDisplayName).ToArray();
     public string[] AvailableWidgetAnimationSpeeds { get; } =
     [
         SettingsService.WidgetAnimationSpeedVeryFast,
@@ -653,7 +663,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         SettingsService.WidgetAnimationSpeedRelaxed,
         SettingsService.WidgetAnimationSpeedSlow
     ];
-    public string[] AvailableWidgetAnimationSpeedDisplayNames => AvailableWidgetAnimationSpeeds.Select(GetWidgetAnimationSpeedDisplayName).ToArray();
+    public string[] AvailableWidgetAnimationSpeedDisplayNames => _cachedWidgetAnimationSpeedDisplayNames ??= AvailableWidgetAnimationSpeeds.Select(GetWidgetAnimationSpeedDisplayName).ToArray();
     public string[] AvailableWidgetAnimationSlideDirections { get; } =
     [
         SettingsService.WidgetAnimationSlideDirectionNone,
@@ -662,7 +672,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         SettingsService.WidgetAnimationSlideDirectionUp,
         SettingsService.WidgetAnimationSlideDirectionDown
     ];
-    public string[] AvailableWidgetAnimationSlideDirectionDisplayNames => AvailableWidgetAnimationSlideDirections.Select(GetWidgetAnimationSlideDirectionDisplayName).ToArray();
+    public string[] AvailableWidgetAnimationSlideDirectionDisplayNames => _cachedWidgetAnimationSlideDirectionDisplayNames ??= AvailableWidgetAnimationSlideDirections.Select(GetWidgetAnimationSlideDirectionDisplayName).ToArray();
     public string[] AvailableWidgetAnimationEasingIntensities { get; } =
     [
         SettingsService.WidgetAnimationEasingNone,
@@ -670,7 +680,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         SettingsService.WidgetAnimationEasingStandard,
         SettingsService.WidgetAnimationEasingStrong
     ];
-    public string[] AvailableWidgetAnimationEasingIntensityDisplayNames => AvailableWidgetAnimationEasingIntensities.Select(GetWidgetAnimationEasingIntensityDisplayName).ToArray();
+    public string[] AvailableWidgetAnimationEasingIntensityDisplayNames => _cachedWidgetAnimationEasingIntensityDisplayNames ??= AvailableWidgetAnimationEasingIntensities.Select(GetWidgetAnimationEasingIntensityDisplayName).ToArray();
 
     public string AppVersion =>
         Assembly.GetExecutingAssembly()
@@ -1254,6 +1264,16 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     private void RefreshLocalizedProperties()
     {
+        _cachedThemeDisplayNames = null;
+        _cachedTrayIconStyleDisplayNames = null;
+        _cachedLanguageDisplayNames = null;
+        _cachedWidgetCornerPreferenceDisplayNames = null;
+        _cachedWidgetAnimationEffectDisplayNames = null;
+        _cachedWidgetAnimationSpeedDisplayNames = null;
+        _cachedWidgetAnimationSlideDirectionDisplayNames = null;
+        _cachedWidgetAnimationEasingIntensityDisplayNames = null;
+        _cachedManagedDropActionDisplayNames = null;
+
         OnPropertyChanged(nameof(AvailableThemeDisplayNames));
         OnPropertyChanged(nameof(AvailableTrayIconStyleDisplayNames));
         OnPropertyChanged(nameof(AvailableLanguageDisplayNames));

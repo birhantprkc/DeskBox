@@ -505,6 +505,16 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             RestoreTrayVisualState();
             RestoreTrayWindowPosition();
             DisposeAcrylicController();
+
+            foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
+            {
+                if (child.Tag is string tag && !string.IsNullOrWhiteSpace(tag))
+                {
+                    child.PointerMoved -= ResizeBorder_PointerMoved;
+                    child.PointerReleased -= ResizeBorder_PointerReleased;
+                    child.PointerEntered -= ResizeBorder_PointerEntered;
+                }
+            }
         };
     }
 
