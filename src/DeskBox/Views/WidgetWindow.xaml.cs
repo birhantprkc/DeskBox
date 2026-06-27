@@ -2419,6 +2419,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
             ClearCutState();
         }
+        catch (Exception ex)
+        {
+            App.Log($"[Widget] RootGrid_Drop failed: {ex}");
+        }
         finally
         {
             deferral.Complete();
@@ -2779,7 +2783,14 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private async void ItemsView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
-        await HandleItemDragCompletedAsync(args.DropResult);
+        try
+        {
+            await HandleItemDragCompletedAsync(args.DropResult);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Widget] ItemsView_DragItemsCompleted failed: {ex}");
+        }
     }
 
     private async Task HandleItemDragCompletedAsync(DataPackageOperation dropResult)

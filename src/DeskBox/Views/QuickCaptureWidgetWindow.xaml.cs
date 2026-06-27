@@ -1969,6 +1969,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
                 ? _localizationService.T("QuickCapture.DroppedWithSkipped")
                 : _localizationService.T("QuickCapture.Dropped"));
         }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCapture] RootGrid_Drop failed: {ex}");
+        }
         finally
         {
             deferral.Complete();

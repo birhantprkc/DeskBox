@@ -540,6 +540,22 @@ public partial class App : Application
         Log(msg);
     }
 
+    /// <summary>
+    /// Safely execute an async action from an event handler, catching and logging any exceptions.
+    /// Use this instead of async void to prevent unhandled exceptions from crashing the app.
+    /// </summary>
+    public static async void SafeFireAndForget(Func<Task> action, [System.Runtime.CompilerServices.CallerMemberName] string caller = "")
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            Log($"[SafeFireAndForget] Unhandled exception in {caller}: {ex}");
+        }
+    }
+
     private static void EnsureLogWorkerStarted()
     {
         if (Interlocked.CompareExchange(ref s_logWorkerStarted, 1, 0) == 0)
