@@ -629,21 +629,39 @@ public partial class App : Application
             IsStartupMode = IsStartupLaunch(args.Arguments);
             UiDispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
-            ThemeService = new ThemeService(SettingsService);
+            // Phase 1: Load settings (must complete first)
             await SettingsService.LoadAsync();
+
+            // Phase 2: Initialize services that depend on settings (parallel)
+            ThemeService = new ThemeService(SettingsService);
             LocalizationService = new LocalizationService(SettingsService);
             LocalizationService.LanguageChanged += OnLanguageChanged;
-            ThemeService.RefreshAppearance();
 
-            GlobalHotkeyService = new GlobalHotkeyService(SettingsService, LocalizationService, ToggleTrayWidgetsAsync);
-            QuickCaptureClipboardService = new QuickCaptureClipboardService(SettingsService, QuickCaptureService);
-            QuickCaptureClipboardService.Refresh();
-            WidgetManager = new WidgetManager(SettingsService, FileService, OrganizerService, ThemeService, QuickCaptureService, LocalizationService);
-            WidgetManager.TrayLayerStateChanged += UpdateTrayLayerStateText;
+            var quickCaptureService = QuickCaptureService;
+            var themeService = ThemeService;
+            var localizationService = LocalizationService;
 
+            // Parallel: theme refresh + clipboard service init
+            var themeTask = Task.Run(() => themeService.RefreshAppearance());
+            var clipboardTask = Task.Run(() =>
+            {
+                var clipboardService = new QuickCaptureClipboardService(SettingsService, quickCaptureService);
+                clipboardService.Refresh();
+                return clipboardService;
+            });
+
+            // Parallel: independent UI setup
             CreateTrayIcon();
             RegisterActivationListener();
 
+            await Task.WhenAll(themeTask, clipboardTask);
+
+            QuickCaptureClipboardService = await clipboardTask;
+            GlobalHotkeyService = new GlobalHotkeyService(SettingsService, localizationService, ToggleTrayWidgetsAsync);
+            WidgetManager = new WidgetManager(SettingsService, FileService, OrganizerService, themeService, quickCaptureService, localizationService);
+            WidgetManager.TrayLayerStateChanged += UpdateTrayLayerStateText;
+
+            // Phase 3: Restore widgets
             WidgetManager.SyncStorageFolderEntries();
             await WidgetManager.RestoreWidgetsAsync();
 
