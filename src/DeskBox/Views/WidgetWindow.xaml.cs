@@ -938,7 +938,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         _isNativeBackdropSuppressedForTrayReveal = true;
         SystemBackdrop = null;
-        DisposeAcrylicController();
+        if (_acrylicController is not null)
+        {
+            try { _acrylicController.RemoveAllSystemBackdropTargets(); } catch { }
+        }
         Win32Helper.DisableAccentPolicy(_hWnd);
     }
 
@@ -1580,6 +1583,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
                 DisposeAcrylicController();
                 return false;
             }
+        }
+        else
+        {
+            _acrylicController.AddSystemBackdropTarget(_backdropTarget);
         }
 
         _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
