@@ -2525,7 +2525,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _topMostSafetyTimer?.Stop();
         _topMostSafetyTimer = DispatcherQueue.CreateTimer();
         _topMostSafetyTimer.IsRepeating = false;
-        _topMostSafetyTimer.Interval = TimeSpan.FromSeconds(5);
+        _topMostSafetyTimer.Interval = TimeSpan.FromSeconds(2);
         _topMostSafetyTimer.Tick += (_, _) =>
         {
             _topMostSafetyTimer?.Stop();

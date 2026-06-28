@@ -43,6 +43,7 @@ public sealed partial class SettingsWindow : Window
     private readonly List<Grid> _metricRows = [];
     private readonly HashSet<Slider> _pressedAppearanceSliders = [];
     private readonly DispatcherTimer _resizeSettleTimer = new() { Interval = ResizeSettleDelay };
+    private DispatcherTimer? _topMostPollTimer;
     private bool _isSubclassInstalled;
     private bool _isAppearanceSliderDragging;
     private bool _keepTopMostUntilDeactivate;
@@ -165,16 +166,25 @@ public sealed partial class SettingsWindow : Window
             }
         });
 
-        DispatcherQueue.TryEnqueue(async () =>
+        _topMostPollTimer?.Stop();
+        _topMostPollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _topMostPollTimer.Tick += (_, _) =>
         {
-            await Task.Delay(5000);
-            if (_keepTopMostUntilDeactivate)
+            if (!_keepTopMostUntilDeactivate)
+            {
+                _topMostPollTimer.Stop();
+                return;
+            }
+            var foregroundHwnd = Win32Helper.GetForegroundWindow();
+            if (foregroundHwnd != _hWnd)
             {
                 _keepTopMostUntilDeactivate = false;
                 Win32Helper.ClearWindowTopMost(_hWnd);
-                App.Log("[SettingsWindow] Topmost auto-cleared after 5s timeout");
+                _topMostPollTimer.Stop();
+                App.Log("[SettingsWindow] Topmost cleared: foreground changed");
             }
-        });
+        };
+        _topMostPollTimer.Start();
     }
 
     private void SettingsWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -186,6 +196,7 @@ public sealed partial class SettingsWindow : Window
         }
 
         _keepTopMostUntilDeactivate = false;
+        _topMostPollTimer?.Stop();
         Win32Helper.ClearWindowTopMost(_hWnd);
 
         if (App.Current.WidgetManager is { } widgetManager)
