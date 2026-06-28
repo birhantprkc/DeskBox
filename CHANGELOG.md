@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.4 - 2026-06-28
+
+### English
+
+- Fixed widget z-order issue where widgets would stay above fullscreen browser after batch raise. Widgets now properly hide behind other windows when clicking outside.
+- Optimized startup initialization: theme refresh and clipboard service now initialize in parallel, reducing launch time by 2-3 seconds.
+- Added error handling to critical async event handlers (file drop, drag completion) to prevent unhandled exceptions from crashing the app.
+- Added `SafeFireAndForget` helper method for safe async execution in event handlers.
+
+### 中文
+
+- 修复批量唤起格子后点击外部窗口时，部分格子仍留在浏览器上方的层级问题。
+- 优化启动初始化：主题刷新和剪贴板服务并行初始化，启动速度提升 2-3 秒。
+- 为关键异步事件处理器（文件拖放、拖拽完成）添加错误处理，防止未处理异常导致崩溃。
+- 新增 `SafeFireAndForget` 辅助方法，用于事件处理器中的安全异步执行。
+
 ## 1.1.3 - 2026-06-27
 
 ### English
