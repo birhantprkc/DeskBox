@@ -335,8 +335,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding UseSystemAccentColor, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding UseSystemAccentColor, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -773,8 +774,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding ShowHoverButtons, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding ShowHoverButtons, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -790,8 +792,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding HideShortcutArrowOverlay, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding HideShortcutArrowOverlay, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -807,8 +810,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding ShowFileExtensions, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding ShowFileExtensions, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -826,9 +830,10 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
                                     IsEnabled="{Binding ShowFileExtensions}"
-                                    IsOn="{Binding HideShortcutExtensionWhenShowingFileExtensions, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    IsOn="{Binding HideShortcutExtensionWhenShowingFileExtensions, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -844,8 +849,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding ShowListItemDetails, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding ShowListItemDetails, Mode=TwoWay}" />
                             </Grid>
 
                         </StackPanel>
@@ -984,8 +990,9 @@
                                     <ToggleSwitch
                                         Grid.Row="0"
                                         Grid.Column="1"
-                                        IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}"
-                                        Style="{StaticResource SettingToggleSwitchStyle}" />
+                                        MinWidth="0"
+                                        HorizontalAlignment="Right"
+                                        IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}" />
                                     <Button
                                         x:Name="GlobalHotkeyCaptureButton"
                                         Grid.Row="1"
@@ -1219,8 +1226,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding QuickCaptureEnabled, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding QuickCaptureEnabled, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -1238,9 +1246,10 @@
                                 <ToggleSwitch
                                     x:Name="QuickCaptureClipboardToggle"
                                     Grid.Column="1"
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
                                     IsOn="{Binding QuickCaptureClipboardEnabled, Mode=OneWay}"
-                                    Toggled="QuickCaptureClipboardToggle_Toggled"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    Toggled="QuickCaptureClipboardToggle_Toggled" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -1256,8 +1265,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding QuickCaptureImageClipboardEnabled, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding QuickCaptureImageClipboardEnabled, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -1391,8 +1401,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding AutoStart, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding AutoStart, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
@@ -1408,8 +1419,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding DoubleClickToOpen, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding DoubleClickToOpen, Mode=TwoWay}" />
                             </Grid>
 
                             <Border Style="{StaticResource SettingDividerStyle}" />
