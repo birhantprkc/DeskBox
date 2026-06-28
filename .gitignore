@@ -25,6 +25,16 @@ build_*.txt
 /wechat_publish/
 /托盘图标/
 
+# Internal planning
+.mimocode/
+.claude/
+
+# CI test results
+.github-test-results-*/
+
+# Old website (replaced by deskbox-site)
+website/
+
 # Website
 deskbox-site/node_modules/
 deskbox-site/.next/
