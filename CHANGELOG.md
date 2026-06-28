@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.8 - 2026-06-29
+
+### English
+
+- Fixed app not launching and tray menu losing WinUI styling on other computers: caused by stale DLLs in the publish output directory. Now performing a clean publish before packaging.
+- Fixed toggle switch style consistency: all toggles now use SettingToggleSwitchStyle with proper OffContent/OnContent="" to hide text labels.
+
+### 中文
+
+- 修复其他电脑上应用无法启动、托盘菜单丢失 WinUI 样式的问题：原因是打包目录中残留了旧版本 DLL，现在每次打包前会清理目录。
+- 修复开关样式一致性：所有开关统一使用 SettingToggleSwitchStyle 样式。
+
 ## 1.1.6 - 2026-06-29
 
 ### English
