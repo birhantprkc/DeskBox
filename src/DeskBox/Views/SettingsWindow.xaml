@@ -1189,8 +1189,9 @@
                                 </StackPanel>
                                 <ToggleSwitch
                                     Grid.Column="1"
-                                    IsOn="{Binding QuickCaptureEnabled, Mode=TwoWay}"
-                                    Style="{StaticResource SettingToggleSwitchStyle}" />
+                                    MinWidth="0"
+                                    HorizontalAlignment="Right"
+                                    IsOn="{Binding QuickCaptureEnabled, Mode=TwoWay}" />
                                 <FontIcon
                                     Grid.Column="2"
                                     IsHitTestVisible="False"

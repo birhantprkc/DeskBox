@@ -801,15 +801,17 @@ public sealed partial class OnboardingWindow : Window
     {
         var enableToggle = new ToggleSwitch
         {
-            OnContent = _localizationService.T("Common.On"),
-            OffContent = _localizationService.T("Common.Off"),
+            MinWidth = 0,
+            OnContent = "",
+            OffContent = "",
             IsOn = _settingsService.Settings.QuickCaptureEnabled
         };
 
         var clipboardToggle = new ToggleSwitch
         {
-            OnContent = _localizationService.T("Common.On"),
-            OffContent = _localizationService.T("Common.Off"),
+            MinWidth = 0,
+            OnContent = "",
+            OffContent = "",
             IsOn = _settingsService.Settings.QuickCaptureClipboardEnabled,
             IsEnabled = _settingsService.Settings.QuickCaptureEnabled
         };
@@ -845,8 +847,9 @@ public sealed partial class OnboardingWindow : Window
     {
         var hotkeyToggle = new ToggleSwitch
         {
-            OnContent = _localizationService.T("Common.On"),
-            OffContent = _localizationService.T("Common.Off"),
+            MinWidth = 0,
+            OnContent = "",
+            OffContent = "",
             IsOn = _settingsService.Settings.GlobalHotkeyEnabled
         };
         hotkeyToggle.Toggled += (_, _) =>
@@ -864,8 +867,9 @@ public sealed partial class OnboardingWindow : Window
 
         var toggle = new ToggleSwitch
         {
-            OnContent = _localizationService.T("Common.On"),
-            OffContent = _localizationService.T("Common.Off"),
+            MinWidth = 0,
+            OnContent = "",
+            OffContent = "",
             IsOn = StartupService.IsEnabled()
         };
         toggle.Toggled += (_, _) =>
