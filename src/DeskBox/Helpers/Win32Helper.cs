@@ -559,6 +559,14 @@ public static partial class Win32Helper
         }
     }
 
+    /// <summary>
+    /// Get a subtle border color based on theme.
+    /// </summary>
+    public static int GetThemeBorderColor(bool isDark)
+    {
+        return isDark ? 0x00555555 : 0x00AAAAAA; // dark: subtle dark, light: subtle light
+    }
+
     public static void ApplyFullWindowFrame(IntPtr hWnd)
     {
         var margins = new MARGINS

@@ -645,7 +645,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string[] AvailableLanguageDisplayNames => _cachedLanguageDisplayNames ??= AvailableLanguages.Select(_localizationService.GetLanguageDisplayName).ToArray();
     public string[] AvailableManagedDropActions { get; } = [SettingsService.ManagedDropActionMove, SettingsService.ManagedDropActionCopy];
     public string[] AvailableManagedDropActionDisplayNames => _cachedManagedDropActionDisplayNames ??= AvailableManagedDropActions.Select(GetManagedDropActionDisplayName).ToArray();
-    public string[] AvailableWidgetCornerPreferences { get; } = [CornerSmall, CornerRound, CornerSquare, CornerDefault];
+    public string[] AvailableWidgetCornerPreferences { get; } = [CornerSmall, CornerRound, CornerSquare];
     public string[] AvailableWidgetCornerPreferenceDisplayNames => _cachedWidgetCornerPreferenceDisplayNames ??= AvailableWidgetCornerPreferences.Select(GetCornerDisplayName).ToArray();
     public string[] AvailableWidgetAnimationEffects { get; } =
     [
