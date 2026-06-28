@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.5 - 2026-06-29
+
+### English
+
+- Fixed clipboard monitoring not persisting after restart: changed QuickCaptureEnabled default to true so clipboard monitoring starts automatically on first install.
+- Fixed widget z-order issue where widgets could get stuck on top after interaction: added 5-second safety timer that auto-restores widgets to desktop layer if they remain topmost without user interaction.
+- Improved toggle switch style consistency across all settings: removed visual padding and aligned all toggles to the right edge.
+- Simplified corner radius options: removed "System default" option, keeping only Small radius, Round, and Square corners. Default remains Small radius.
+
+### 中文
+
+- 修复剪贴板监控重启后不生效的问题：将 QuickCaptureEnabled 默认值改为 true，首次安装后自动启用剪贴板监控。
+- 修复格子交互后可能卡在顶部的 z-order 问题：新增 5 秒安全定时器，如果格子在无用户交互的情况下保持顶部状态，自动恢复到桌面层。
+- 统一设置界面所有开关样式：移除视觉内边距，所有开关右对齐。
+- 精简圆角选项：移除"系统默认"选项，保留小圆角、圆角、直角三个选项。默认值仍为小圆角。
+
 ## 1.1.4 - 2026-06-28
 
 ### English
