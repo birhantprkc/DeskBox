@@ -534,6 +534,24 @@ public static partial class Win32Helper
         DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
     }
 
+    /// <summary>
+    /// Set or remove the DWM window border (Win11 22H2+).
+    /// colorRef: 0x00BBGGRR format, or -1 for default system color.
+    /// </summary>
+    public static void SetWindowBorder(IntPtr hWnd, bool show, int colorRef = -1)
+    {
+        if (show)
+        {
+            int color = colorRef >= 0 ? colorRef : 0x00998877; // subtle gray
+            DwmSetWindowAttribute(hWnd, DWMWA_BORDER_COLOR, ref color, sizeof(int));
+        }
+        else
+        {
+            int color = -1; // DWMWA_BORDER_COLOR = -1 means "no color / default"
+            DwmSetWindowAttribute(hWnd, DWMWA_BORDER_COLOR, ref color, sizeof(int));
+        }
+    }
+
     public static void ApplyFullWindowFrame(IntPtr hWnd)
     {
         var margins = new MARGINS

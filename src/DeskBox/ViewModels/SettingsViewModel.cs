@@ -77,6 +77,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _showHoverButtons = true;
     [ObservableProperty] private bool _showListItemDetails;
     [ObservableProperty] private double _widgetOpacity = SettingsService.DefaultWidgetOpacity;
+    [ObservableProperty] private bool _showWidgetBorder = true;
     [ObservableProperty] private double _iconSize = SettingsService.DefaultIconSize;
     [ObservableProperty] private double _textSize = SettingsService.DefaultTextSize;
     [ObservableProperty] private double _layoutDensityScale = SettingsService.DefaultLayoutDensityScale;
@@ -941,6 +942,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _showHoverButtons = settings.ShowHoverButtons;
         _showListItemDetails = settings.ShowListItemDetails;
         _widgetOpacity = settings.WidgetOpacity;
+        _showWidgetBorder = settings.ShowWidgetBorder;
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerDefault or CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
             : CornerSmall;
@@ -1689,6 +1691,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(WidgetOpacityValueText));
         OnPropertyChanged(nameof(WidgetOpacityPercent));
         OnPropertyChanged(nameof(WidgetOpacityPercentInput));
+    }
+
+    partial void OnShowWidgetBorderChanged(bool value)
+    {
+        _settingsService.Settings.ShowWidgetBorder = value;
+        SaveAppearanceChange();
     }
 
     partial void OnIconSizeChanged(double value)

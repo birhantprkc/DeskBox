@@ -2549,6 +2549,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         Win32Helper.SetWindowTheme(_hWnd, isDark);
+        Win32Helper.SetWindowBorder(_hWnd, App.Current.SettingsService.Settings.ShowWidgetBorder);
 
         double surfaceOpacity = Math.Clamp(ViewModel.WidgetOpacity, 0.0, 1.0);
         var tintColor = BuildNativeBackdropTintColor(isDark);
