@@ -95,6 +95,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private long _backdropRefreshGeneration;
     private long _statusToastGeneration;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _topMostSafetyTimer;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;
 
     private bool _hasTabBrushCache;
@@ -2490,6 +2491,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         }
 
         App.Log($"[ZOrder] QuickCapture RestoreDesktopLayer EXECUTING force={force}");
+        _topMostSafetyTimer?.Stop();
+        _topMostSafetyTimer = null;
         _keepRaisedUntilDeactivate = false;
         _restoreDesktopLayerWhenIdle = false;
         PushToBottom();
@@ -2514,6 +2517,27 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _restoreDesktopLayerWhenIdle = false;
         Win32Helper.SetWindowTopMost(_hWnd);
         App.Log($"[ZOrder] QuickCapture HoldTemporaryTopMost hwnd=0x{_hWnd.ToInt64():X}");
+        StartTopMostSafetyTimer();
+    }
+
+    private void StartTopMostSafetyTimer()
+    {
+        _topMostSafetyTimer?.Stop();
+        _topMostSafetyTimer = DispatcherQueue.CreateTimer();
+        _topMostSafetyTimer.IsRepeating = false;
+        _topMostSafetyTimer.Interval = TimeSpan.FromSeconds(5);
+        _topMostSafetyTimer.Tick += (_, _) =>
+        {
+            _topMostSafetyTimer?.Stop();
+            _topMostSafetyTimer = null;
+            if (!_isAtDesktopLayer && !_isDragging && !_isResizing &&
+                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
+            {
+                App.Log($"[ZOrder] QuickCapture safety timer: force restore hwnd=0x{_hWnd.ToInt64():X}");
+                RestoreDesktopLayer(force: true);
+            }
+        };
+        _topMostSafetyTimer.Start();
     }
 
     private void ApplyWindowBounds(int x, int y, int width, int height, bool persist)

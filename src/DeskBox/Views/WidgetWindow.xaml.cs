@@ -135,6 +135,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private long _backdropRefreshGeneration;
     private bool _areItemTransitionsSuppressed;
     private DispatcherQueueTimer? _autoRestoreTimer;
+    private DispatcherQueueTimer? _topMostSafetyTimer;
     private bool _isFileDropSubclassInstalled;
     private TransitionCollection? _savedGridItemTransitions;
     private TransitionCollection? _savedListItemTransitions;
@@ -1298,6 +1299,27 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         var stack = new System.Diagnostics.StackTrace(true);
         var frame = stack.GetFrame(1);
         App.Log($"[ZOrder] Widget HoldTemporaryTopMost hwnd=0x{_hWnd.ToInt64():X} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray} from={frame?.GetMethod()?.DeclaringType?.Name}.{frame?.GetMethod()?.Name}");
+        StartTopMostSafetyTimer();
+    }
+
+    private void StartTopMostSafetyTimer()
+    {
+        _topMostSafetyTimer?.Stop();
+        _topMostSafetyTimer = DispatcherQueue.CreateTimer();
+        _topMostSafetyTimer.IsRepeating = false;
+        _topMostSafetyTimer.Interval = TimeSpan.FromSeconds(5);
+        _topMostSafetyTimer.Tick += (_, _) =>
+        {
+            _topMostSafetyTimer?.Stop();
+            _topMostSafetyTimer = null;
+            if (!_isAtDesktopLayer && !_isDragging && !_isResizing &&
+                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
+            {
+                App.Log($"[ZOrder] Widget safety timer: force restore hwnd=0x{_hWnd.ToInt64():X}");
+                RestoreDesktopLayer(force: true);
+            }
+        };
+        _topMostSafetyTimer.Start();
     }
 
     private void WidgetWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -1402,6 +1424,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return;
         }
 
+        _topMostSafetyTimer?.Stop();
+        _topMostSafetyTimer = null;
         _keepRaisedUntilDeactivate = false;
         _restoreDesktopLayerWhenIdle = false;
         PushToBottom();
