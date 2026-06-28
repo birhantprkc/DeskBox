@@ -610,11 +610,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private async void AddButton_Click(object sender, RoutedEventArgs e)
     {
-        App.SafeFireAndForget(async () =>
-        {
-            await ViewModel.AddInputAsync();
-            InputTextBox.Focus(FocusState.Programmatic);
-        });
+        await ViewModel.AddInputAsync();
+        InputTextBox.Focus(FocusState.Programmatic);
     }
 
     private async void InputTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -627,7 +624,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         }
 
         e.Handled = true;
-        App.SafeFireAndForget(async () => await ViewModel.AddInputAsync());
+        await ViewModel.AddInputAsync();
     }
 
     private void SearchTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -722,13 +719,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private async void EnableRecentCaptureButton_Click(object sender, RoutedEventArgs e)
     {
-        App.SafeFireAndForget(async () =>
+        if (await QuickCaptureClipboardActivationHelper.EnableAsync(RootGrid.XamlRoot, _localizationService))
         {
-            if (await QuickCaptureClipboardActivationHelper.EnableAsync(RootGrid.XamlRoot, _localizationService))
-            {
-                SelectView(QuickCaptureViewMode.Recent);
-            }
-        });
+            SelectView(QuickCaptureViewMode.Recent);
+        }
     }
 
     private async void ItemsListView_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -738,7 +732,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             return;
         }
 
-        App.SafeFireAndForget(async () => await OpenItemInDefaultAppAsync(item));
+        await OpenItemInDefaultAppAsync(item);
     }
 
     private async Task OpenItemInDefaultAppAsync(QuickCaptureItemViewModel item)
@@ -949,14 +943,14 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         if (e.Key == Windows.System.VirtualKey.Delete)
         {
             e.Handled = true;
-            App.SafeFireAndForget(async () => await DeleteItemWithUndoAsync(item));
+            await DeleteItemWithUndoAsync(item);
             return;
         }
 
         if (e.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space)
         {
             e.Handled = true;
-            App.SafeFireAndForget(async () => await CopyItemWithFeedbackAsync(item));
+            await CopyItemWithFeedbackAsync(item);
         }
     }
 
@@ -1243,64 +1237,49 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private async void PinItemButton_Click(object sender, RoutedEventArgs e)
     {
-        App.SafeFireAndForget(async () =>
+        if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
         {
-            if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
+            if (item.IsRecent)
             {
-                if (item.IsRecent)
-                {
-                    await ViewModel.PinRecentItemAsync(item);
-                }
-                else
-                {
-                    await ViewModel.TogglePinnedAsync(item);
-                }
+                await ViewModel.PinRecentItemAsync(item);
             }
-        });
+            else
+            {
+                await ViewModel.TogglePinnedAsync(item);
+            }
+        }
     }
 
     private async void SaveRecentItemButton_Click(object sender, RoutedEventArgs e)
     {
-        App.SafeFireAndForget(async () =>
+        if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
         {
-            if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
-            {
-                await ViewModel.SaveRecentItemAsync(item);
-            }
-        });
+            await ViewModel.SaveRecentItemAsync(item);
+        }
     }
 
     private async void MovePinnedItemUpButton_Click(object sender, RoutedEventArgs e)
     {
-        App.SafeFireAndForget(async () =>
+        if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
         {
-            if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
-            {
-                await ViewModel.MovePinnedItemAsync(item, -1);
-            }
-        });
+            await ViewModel.MovePinnedItemAsync(item, -1);
+        }
     }
 
     private async void MovePinnedItemDownButton_Click(object sender, RoutedEventArgs e)
     {
-        App.SafeFireAndForget(async () =>
+        if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
         {
-            if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
-            {
-                await ViewModel.MovePinnedItemAsync(item, 1);
-            }
-        });
+            await ViewModel.MovePinnedItemAsync(item, 1);
+        }
     }
 
     private async void DeleteItemButton_Click(object sender, RoutedEventArgs e)
     {
-        App.SafeFireAndForget(async () =>
+        if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
         {
-            if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
-            {
-                await DeleteItemWithUndoAsync(item);
-            }
-        });
+            await DeleteItemWithUndoAsync(item);
+        }
     }
 
     private async Task DeleteItemWithUndoAsync(QuickCaptureItemViewModel item)
@@ -2624,10 +2603,6 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
                 return false;
             }
         }
-        else
-        {
-            _acrylicController.AddSystemBackdropTarget(_backdropTarget);
-        }
 
         _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
         _acrylicController.Kind = DesktopAcrylicKind.Thin;
@@ -3624,10 +3599,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         _isNativeBackdropSuppressedForTrayReveal = true;
         SystemBackdrop = null;
-        if (_acrylicController is not null)
-        {
-            try { _acrylicController.RemoveAllSystemBackdropTargets(); } catch { }
-        }
+        DisposeAcrylicController();
         Win32Helper.DisableAccentPolicy(_hWnd);
     }
 
