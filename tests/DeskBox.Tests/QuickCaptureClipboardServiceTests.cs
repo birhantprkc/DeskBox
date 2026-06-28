@@ -21,6 +21,7 @@ public sealed class QuickCaptureClipboardServiceTests : IDisposable
     public async Task CaptureCurrentForTestingAsync_DoesNotRecordWhenDisabled()
     {
         var settingsService = await CreateLoadedSettingsServiceAsync();
+        settingsService.Settings.QuickCaptureEnabled = false;
         var quickCaptureService = CreateQuickCaptureService();
         var reader = new FakeClipboardReader { Text = "disabled text" };
         using var service = new QuickCaptureClipboardService(settingsService, quickCaptureService, reader);
