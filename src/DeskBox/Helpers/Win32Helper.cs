@@ -544,12 +544,12 @@ public static partial class Win32Helper
         {
             if (show)
             {
-                int color = colorRef >= 0 ? colorRef : 0x00998877; // subtle gray
+                int color = colorRef >= 0 ? colorRef : -1; // -1 = system default
                 DwmSetWindowAttribute(hWnd, DWMWA_BORDER_COLOR, ref color, sizeof(int));
             }
             else
             {
-                int color = -1; // DWMWA_BORDER_COLOR = -1 means "no color / default"
+                int color = unchecked((int)0xFFFFFFFE); // no border at all
                 DwmSetWindowAttribute(hWnd, DWMWA_BORDER_COLOR, ref color, sizeof(int));
             }
         }
