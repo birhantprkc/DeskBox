@@ -2492,6 +2492,11 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private void ElevateForInteraction()
     {
+        if (App.Current.WidgetManager is { WidgetsRaisedFromTray: true })
+        {
+            return;
+        }
+
         HoldTemporaryTopMost();
         RootGrid.Focus(FocusState.Programmatic);
     }

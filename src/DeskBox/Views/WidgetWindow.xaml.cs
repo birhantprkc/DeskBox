@@ -1274,6 +1274,11 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void ElevateForInteraction()
     {
+        if (App.Current.WidgetManager is { WidgetsRaisedFromTray: true })
+        {
+            return;
+        }
+
         HoldTemporaryTopMost();
         RootGrid.Focus(FocusState.Programmatic);
     }
