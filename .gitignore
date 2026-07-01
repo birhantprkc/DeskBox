@@ -39,3 +39,6 @@ website/
 deskbox-site/node_modules/
 deskbox-site/.next/
 deskbox-site/out/
+
+# Local backup patches
+backups/
