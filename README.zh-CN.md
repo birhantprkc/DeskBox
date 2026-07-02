@@ -9,7 +9,7 @@
 
 DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量桌面格子帮你收纳文件、映射文件夹、记录待办、随手记点东西，也可以在桌面上控制音乐。DeskBox 不会替换 Windows 桌面，只是在原生桌面之上补一层更好整理、更好访问、更容易临时唤起的能力。
 
-![DeskBox 产品封面](docs/images/brand/product-cover-1280x720.png)
+![DeskBox 产品封面](docs/images/brand/product-cover-zh-cn-1280x720.png)
 
 ## 下载
 
@@ -54,17 +54,27 @@ Windows 桌面已经陪大家用了很多年，也是很多人每天最常用的
 
 ## 截图
 
-### 桌面格子
+### 桌面总览
 
-![DeskBox 浅色格子](docs/images/screenshots/zh-cn/widget-light.png)
+| 浅色主题 | 深色主题 |
+| --- | --- |
+| ![DeskBox 浅色桌面总览](docs/images/screenshots/zh-cn/desktop-light.png) | ![DeskBox 深色桌面总览](docs/images/screenshots/zh-cn/desktop-dark.png) |
 
-![DeskBox 深色格子](docs/images/screenshots/zh-cn/widget-dark.png)
+### 核心格子
 
-### 设置
+| 文件格子 | 待办格子 |
+| --- | --- |
+| ![DeskBox 文件格子列表视图](docs/images/screenshots/zh-cn/file-widget-list.png) | ![DeskBox 待办格子](docs/images/screenshots/zh-cn/todo-widget.png) |
+| 随记格子 | 音乐格子 |
+| ![DeskBox 随记格子](docs/images/screenshots/zh-cn/quick-capture-widget.png) | ![DeskBox 音乐格子](docs/images/screenshots/zh-cn/music-widget.png) |
 
-![DeskBox 常规设置](docs/images/screenshots/zh-cn/settings-general.png)
+### 设置页
 
-![DeskBox 收纳设置](docs/images/screenshots/zh-cn/settings-storage.png)
+| 常规 | 外观 |
+| --- | --- |
+| ![DeskBox 常规设置](docs/images/screenshots/zh-cn/settings-general-1-2.png) | ![DeskBox 外观设置](docs/images/screenshots/zh-cn/settings-appearance-1-2.png) |
+| 文件格子 | 功能格子 |
+| ![DeskBox 文件格子设置](docs/images/screenshots/zh-cn/settings-file-widgets-1-2.png) | ![DeskBox 功能格子设置](docs/images/screenshots/zh-cn/settings-feature-widgets-1-2.png) |
 
 ### 品牌动效
 

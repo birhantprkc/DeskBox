@@ -9,7 +9,7 @@ English | [简体中文](README.zh-CN.md)
 
 DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates native-feeling desktop widgets for collecting files, mapping folders, keeping todos, capturing quick notes, and controlling music from the desktop. It does not replace the Windows desktop shell; it adds one focused layer for keeping everyday things easier to reach, easier to sort, and easier to bring forward when you need them.
 
-![DeskBox product cover](docs/images/brand/product-cover-1280x720.png)
+![DeskBox product cover](docs/images/brand/product-cover-en-us-1280x720.png)
 
 ## Download
 
@@ -54,19 +54,29 @@ The project is intentionally built around native Windows behavior. I like the te
 
 ## Screenshots
 
-DeskBox includes both English and Chinese localization. The screenshots below highlight the app's Windows 11-style desktop widgets and Settings.
+DeskBox includes both English and Chinese localization. The screenshots below highlight the Windows 11-style desktop widgets, feature widgets, and Settings.
 
-### Desktop Widgets
+### Desktop Overview
 
-![DeskBox light widget](docs/images/screenshots/zh-cn/widget-light.png)
+| Light theme | Dark theme |
+| --- | --- |
+| ![DeskBox light desktop overview](docs/images/screenshots/en-us/desktop-light.png) | ![DeskBox dark desktop overview](docs/images/screenshots/en-us/desktop-dark.png) |
 
-![DeskBox dark widget](docs/images/screenshots/zh-cn/widget-dark.png)
+### Core Widgets
+
+| File widget | Todo widget |
+| --- | --- |
+| ![DeskBox file widget](docs/images/screenshots/en-us/file-widget.png) | ![DeskBox todo widget](docs/images/screenshots/en-us/todo-widget.png) |
+| Quick Capture widget | Music widget |
+| ![DeskBox Quick Capture widget](docs/images/screenshots/en-us/quick-capture-widget.png) | ![DeskBox music widget](docs/images/screenshots/en-us/music-widget.png) |
 
 ### Settings
 
-![DeskBox general settings](docs/images/screenshots/en-us/settings-general.png)
-
-![DeskBox storage settings](docs/images/screenshots/en-us/settings-storage.png)
+| General | Appearance |
+| --- | --- |
+| ![DeskBox general settings](docs/images/screenshots/en-us/settings-general-1-2.png) | ![DeskBox appearance settings](docs/images/screenshots/en-us/settings-appearance-1-2.png) |
+| File widgets | Feature widgets |
+| ![DeskBox file widget settings](docs/images/screenshots/en-us/settings-file-widgets-1-2.png) | ![DeskBox feature widget settings](docs/images/screenshots/en-us/settings-feature-widgets-1-2.png) |
 
 ### Logo Motion
 
