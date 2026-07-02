@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CharByChar } from "@/components/CharByChar";
 
@@ -83,9 +83,11 @@ export default function ChangelogPage() {
       if (cached) {
         const { data, ts } = JSON.parse(cached);
         if (Date.now() - ts < cacheTTL) {
-          setEntries(data);
-          setLoading(false);
-          setExpanded(new Set(data.length > 0 ? [data[0].version] : []));
+          requestAnimationFrame(() => {
+            setEntries(data);
+            setLoading(false);
+            setExpanded(new Set(data.length > 0 ? [data[0].version] : []));
+          });
           return;
         }
       }
