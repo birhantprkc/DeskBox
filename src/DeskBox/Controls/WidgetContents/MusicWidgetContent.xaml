@@ -18,6 +18,7 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="15" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
             <Setter Property="UseSystemFocusVisuals" Value="False" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -25,9 +26,55 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid
+                            x:Name="IconButtonRoot"
                             Background="Transparent"
                             CornerRadius="{TemplateBinding CornerRadius}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal">
+                                        <VisualState.Setters>
+                                            <Setter Target="IconButtonHoverSurface.Opacity" Value="0" />
+                                            <Setter Target="IconButtonPressedSurface.Opacity" Value="0" />
+                                            <Setter Target="IconButtonContentPresenter.Opacity" Value="0.92" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="IconButtonHoverSurface.Opacity" Value="0.16" />
+                                            <Setter Target="IconButtonPressedSurface.Opacity" Value="0" />
+                                            <Setter Target="IconButtonContentPresenter.Opacity" Value="1" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="IconButtonHoverSurface.Opacity" Value="0.10" />
+                                            <Setter Target="IconButtonPressedSurface.Opacity" Value="0.24" />
+                                            <Setter Target="IconButtonContentPresenter.Opacity" Value="0.82" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="IconButtonHoverSurface.Opacity" Value="0" />
+                                            <Setter Target="IconButtonPressedSurface.Opacity" Value="0" />
+                                            <Setter Target="IconButtonContentPresenter.Opacity" Value="0.34" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border
+                                x:Name="IconButtonHoverSurface"
+                                Background="#FFFFFFFF"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                IsHitTestVisible="False"
+                                Opacity="0" />
+                            <Border
+                                x:Name="IconButtonPressedSurface"
+                                Background="#FFFFFFFF"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                IsHitTestVisible="False"
+                                Opacity="0" />
                             <ContentPresenter
+                                x:Name="IconButtonContentPresenter"
                                 Margin="{TemplateBinding Padding}"
                                 HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                 VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
@@ -45,8 +92,85 @@
             <Setter Property="MinWidth" Value="42" />
             <Setter Property="MinHeight" Value="42" />
             <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="{ThemeResource SystemControlHighlightAccentBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="21" />
+            <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid
+                            x:Name="PrimaryButtonRoot"
+                            Background="Transparent"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal">
+                                        <VisualState.Setters>
+                                            <Setter Target="PrimarySurface.Opacity" Value="1" />
+                                            <Setter Target="PrimaryHoverOverlay.Opacity" Value="0" />
+                                            <Setter Target="PrimaryPressedOverlay.Opacity" Value="0" />
+                                            <Setter Target="PrimaryContentPresenter.Opacity" Value="1" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="PrimarySurface.Opacity" Value="1" />
+                                            <Setter Target="PrimaryHoverOverlay.Opacity" Value="0.10" />
+                                            <Setter Target="PrimaryPressedOverlay.Opacity" Value="0" />
+                                            <Setter Target="PrimaryContentPresenter.Opacity" Value="1" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="PrimarySurface.Opacity" Value="0.96" />
+                                            <Setter Target="PrimaryHoverOverlay.Opacity" Value="0" />
+                                            <Setter Target="PrimaryPressedOverlay.Opacity" Value="0.16" />
+                                            <Setter Target="PrimaryContentPresenter.Opacity" Value="0.86" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="PrimarySurface.Opacity" Value="0.42" />
+                                            <Setter Target="PrimaryHoverOverlay.Opacity" Value="0" />
+                                            <Setter Target="PrimaryPressedOverlay.Opacity" Value="0" />
+                                            <Setter Target="PrimaryContentPresenter.Opacity" Value="0.40" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border
+                                x:Name="PrimarySurface"
+                                Background="{TemplateBinding Background}"
+                                BorderThickness="0"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                IsHitTestVisible="False" />
+                            <Border
+                                x:Name="PrimaryHoverOverlay"
+                                Background="#FFFFFFFF"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                IsHitTestVisible="False"
+                                Opacity="0" />
+                            <Border
+                                x:Name="PrimaryPressedOverlay"
+                                Background="#66000000"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                IsHitTestVisible="False"
+                                Opacity="0" />
+                            <ContentPresenter
+                                x:Name="PrimaryContentPresenter"
+                                Margin="{TemplateBinding Padding}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
 
@@ -78,7 +202,7 @@
             Opacity="{Binding RhythmBarsOpacity}"
             Visibility="{Binding RhythmBarsVisibility}">
             <ItemsControl
-                Margin="4,0,4,7"
+                Margin="2,0,2,7"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -99,15 +223,18 @@
                             Height="{Binding Height}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Bottom"
-                            Background="{ThemeResource SystemControlHighlightAccentBrush}"
                             CornerRadius="3"
-                            Opacity="{Binding Opacity}" />
+                            Opacity="{Binding Opacity}">
+                            <Border.Background>
+                                <SolidColorBrush Color="{Binding AccentColor}" />
+                            </Border.Background>
+                        </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
             <ItemsControl
-                Margin="4,0,4,7"
+                Margin="2,0,2,7"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -128,15 +255,17 @@
                             Height="{Binding Height}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Bottom"
-                            BorderBrush="#52FFFFFF"
                             BorderThickness="1"
                             CornerRadius="2.5"
                             Opacity="{Binding Opacity}">
+                            <Border.BorderBrush>
+                                <SolidColorBrush Color="{Binding GlassStrokeColor}" />
+                            </Border.BorderBrush>
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Offset="0" Color="#88FFFFFF" />
-                                    <GradientStop Offset="0.42" Color="#66FFFFFF" />
-                                    <GradientStop Offset="1" Color="#22FFFFFF" />
+                                    <GradientStop Offset="0" Color="{Binding GlassStartColor}" />
+                                    <GradientStop Offset="0.42" Color="{Binding GlassMidColor}" />
+                                    <GradientStop Offset="1" Color="{Binding GlassEndColor}" />
                                 </LinearGradientBrush>
                             </Border.Background>
                         </Border>
@@ -145,7 +274,7 @@
             </ItemsControl>
 
             <ItemsControl
-                Margin="4,0,4,9"
+                Margin="2,0,2,9"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -166,14 +295,17 @@
                             Height="{Binding DotSize}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Bottom"
-                            Fill="{ThemeResource SystemControlHighlightAccentBrush}"
-                            Opacity="{Binding Opacity}" />
+                            Opacity="{Binding Opacity}">
+                            <Ellipse.Fill>
+                                <SolidColorBrush Color="{Binding AccentColor}" />
+                            </Ellipse.Fill>
+                        </Ellipse>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
             <ItemsControl
-                Margin="4,0,4,5"
+                Margin="2,0,2,5"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -194,9 +326,65 @@
                             Height="{Binding Height}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Bottom"
-                            Background="{ThemeResource SystemControlHighlightAccentBrush}"
                             CornerRadius="1"
-                            Opacity="{Binding Opacity}" />
+                            Opacity="{Binding Opacity}">
+                            <Border.Background>
+                                <SolidColorBrush Color="{Binding AccentColor}" />
+                            </Border.Background>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ItemsControl
+                Margin="2,0,2,5"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Bottom"
+                ItemsSource="{Binding VisualizerBars}"
+                Visibility="{Binding StackedEqualizerVisibility}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel
+                            HorizontalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="2"
+                            VerticalAlignment="Bottom" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid
+                            Width="5"
+                            Height="43"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom">
+                            <ItemsControl
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Bottom"
+                                ItemsSource="{Binding EqualizerSegments}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel
+                                            Orientation="Vertical"
+                                            Spacing="1.2"
+                                            VerticalAlignment="Bottom" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border
+                                            Width="5"
+                                            Height="3"
+                                            CornerRadius="1"
+                                            Opacity="{Binding Opacity}">
+                                            <Border.Background>
+                                                <SolidColorBrush Color="{Binding Color}" />
+                                            </Border.Background>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -292,15 +480,60 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock
+                <Grid
+                    x:Name="TitleMarqueeHost"
                     Grid.Row="0"
-                    FontSize="{Binding TitleTextSize}"
-                    FontWeight="SemiBold"
-                    MaxLines="1"
                     MinWidth="0"
-                    Text="{Binding Title}"
-                    TextTrimming="CharacterEllipsis"
-                    TextWrapping="NoWrap" />
+                    SizeChanged="TitleMarqueeHost_SizeChanged">
+                    <Grid.Clip>
+                        <RectangleGeometry x:Name="TitleMarqueeClip" />
+                    </Grid.Clip>
+                    <TextBlock
+                        x:Name="TitleStaticText"
+                        FontSize="{Binding TitleTextSize}"
+                        FontWeight="SemiBold"
+                        MaxLines="1"
+                        MinWidth="0"
+                        Text="{Binding Title}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="NoWrap" />
+                    <Canvas
+                        x:Name="TitleMarqueeCanvas"
+                        Height="{Binding ActualHeight, ElementName=TitleStaticText}"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed">
+                        <TextBlock
+                            x:Name="TitleTextPrimary"
+                            FontSize="{Binding TitleTextSize}"
+                            FontWeight="SemiBold"
+                            MaxLines="1"
+                            Text="{Binding Title}"
+                            TextTrimming="Clip"
+                            TextWrapping="NoWrap" />
+                        <TextBlock
+                            x:Name="TitleTextClone"
+                            FontSize="{Binding TitleTextSize}"
+                            FontWeight="SemiBold"
+                            MaxLines="1"
+                            Text="{Binding Title}"
+                            TextTrimming="Clip"
+                            TextWrapping="NoWrap" />
+                    </Canvas>
+                    <Canvas
+                        Width="0"
+                        Height="0"
+                        IsHitTestVisible="False"
+                        Opacity="0">
+                        <TextBlock
+                            x:Name="TitleMeasureText"
+                            FontSize="{Binding TitleTextSize}"
+                            FontWeight="SemiBold"
+                            MaxLines="1"
+                            Text="{Binding Title}"
+                            TextTrimming="Clip"
+                            TextWrapping="NoWrap" />
+                    </Canvas>
+                </Grid>
 
                 <TextBlock
                     Grid.Row="1"
@@ -366,7 +599,7 @@
                         Width="0"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
-                        Background="{ThemeResource SystemControlHighlightAccentBrush}"
+                        Background="{Binding MusicAccentBrush}"
                         CornerRadius="2" />
                     <Ellipse
                         x:Name="ProgressThumb"
@@ -374,7 +607,7 @@
                         Height="10"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
-                        Fill="{ThemeResource SystemControlHighlightAccentBrush}"
+                        Fill="{Binding MusicAccentBrush}"
                         Opacity="0"
                         Translation="-5,0,0" />
                 </Grid>
@@ -418,23 +651,27 @@
 
                 <Button
                     x:Name="PlayPauseButton"
+                    Background="{Binding PlayPauseButtonBackgroundBrush}"
                     Click="PlayPauseButton_Click"
                     IsEnabled="{Binding CanPlayPause}"
                     Style="{StaticResource MusicPrimaryButtonStyle}"
                     ToolTipService.ToolTip="{Binding PlayPauseTooltip}">
-                    <Grid Width="18" Height="18">
-                        <PathIcon
-                            Width="16"
-                            Height="16"
+                    <Grid Width="20" Height="20">
+                        <Viewbox
+                            Width="17"
+                            Height="17"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Data="M 6,3.9 C 6,3.3 6.7,2.9 7.2,3.2 L 14,7.3 C 14.8,7.8 14.8,9.2 14,9.7 L 7.2,13.8 C 6.7,14.1 6,13.7 6,13.1 Z"
-                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                            Translation="-1,0,0"
-                            Visibility="{Binding PlayIconVisibility}" />
+                            Translation="1,0,0"
+                            Visibility="{Binding PlayIconVisibility}">
+                            <Path
+                                Data="M 7.2,3.8 C 7.2,2.9 8.2,2.4 9.0,2.9 L 18.1,8.6 C 19.2,9.3 19.2,10.9 18.1,11.6 L 9.0,17.3 C 8.2,17.8 7.2,17.3 7.2,16.4 Z"
+                                Fill="#FFFFFFFF"
+                                Stretch="Uniform" />
+                        </Viewbox>
                         <Grid
-                            Width="14"
-                            Height="15"
+                            Width="16"
+                            Height="18"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             Visibility="{Binding PauseIconVisibility}">
@@ -445,20 +682,20 @@
                             </Grid.ColumnDefinitions>
                             <Border
                                 Grid.Column="0"
-                                Width="4"
-                                Height="13"
+                                Width="5"
+                                Height="16"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
-                                Background="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                CornerRadius="2" />
+                                Background="#FFFFFFFF"
+                                CornerRadius="2.5" />
                             <Border
                                 Grid.Column="2"
-                                Width="4"
-                                Height="13"
+                                Width="5"
+                                Height="16"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
-                                Background="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                CornerRadius="2" />
+                                Background="#FFFFFFFF"
+                                CornerRadius="2.5" />
                         </Grid>
                     </Grid>
                 </Button>

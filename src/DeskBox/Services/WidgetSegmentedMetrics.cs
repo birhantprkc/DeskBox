@@ -11,7 +11,7 @@ public readonly record struct WidgetSegmentedMetrics(
     {
         double normalizedTextSize = Math.Max(SettingsService.MinTextSize, textSize);
         double height = Math.Clamp(Math.Round(normalizedTextSize + 17), 28, 34);
-        double horizontal = Math.Clamp(Math.Round(normalizedTextSize * 0.55), 6, 8);
+        double horizontal = Math.Clamp(Math.Round(normalizedTextSize * 0.32), 3, 5);
         double vertical = Math.Clamp(Math.Round(normalizedTextSize * 0.18), 2, 4);
 
         return new WidgetSegmentedMetrics(

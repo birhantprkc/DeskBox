@@ -590,7 +590,7 @@ public sealed partial class SettingsWindow : Window
             Glyph = entry.Glyph,
             FontSize = 18,
             FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
-            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            Foreground = CreateFeatureWidgetIconBrush(),
             IsHitTestVisible = false,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -628,7 +628,8 @@ public sealed partial class SettingsWindow : Window
                 {
                     Glyph = "\uE72C",
                     FontSize = 13,
-                    FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"]
+                    FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
+                    Foreground = CreateFeatureWidgetIconBrush()
                 }
             };
             ToolTipService.SetToolTip(resetButton, _localizationService.T("Settings.FeatureWidgets.ResetTooltip"));
@@ -663,7 +664,7 @@ public sealed partial class SettingsWindow : Window
                 FontSize = 12,
                 FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
                 Glyph = "\uE974",
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                Foreground = CreateFeatureWidgetIconBrush(),
                 Margin = new Thickness(0, 0, -4, 0)
             };
             Grid.SetColumn(arrow, 4);
@@ -1438,15 +1439,14 @@ public sealed partial class SettingsWindow : Window
         var content = new StackPanel
         {
             MaxWidth = 560,
-            Spacing = 12
+            Spacing = 16
         };
 
-        content.Children.Add(CreateDialogParagraph(
-            _localizationService.T("Settings.Dialog.ProductReasonP1")));
-        content.Children.Add(CreateDialogParagraph(
-            _localizationService.T("Settings.Dialog.ProductReasonP2")));
-        content.Children.Add(CreateDialogParagraph(
-            _localizationService.T("Settings.Dialog.ProductReasonP3")));
+        for (int index = 1; index <= 5; index++)
+        {
+            content.Children.Add(CreateDialogParagraph(
+                _localizationService.T($"Settings.Dialog.ProductReasonP{index}")));
+        }
 
         var dialog = new ContentDialog
         {
@@ -1750,29 +1750,60 @@ public sealed partial class SettingsWindow : Window
         {
             Text = text,
             TextWrapping = TextWrapping.WrapWholeWords,
-            LineHeight = 22
+            LineHeight = 24
         };
     }
 
     private void OnAppearanceChanged()
     {
-        if (DispatcherQueue.HasThreadAccess)
+        void Apply()
         {
             ApplyTitleBarButtonColors();
+            RefreshFeatureWidgetList();
+        }
+
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            Apply();
             return;
         }
 
-        DispatcherQueue.TryEnqueue(ApplyTitleBarButtonColors);
+        DispatcherQueue.TryEnqueue(Apply);
     }
 
-    private void ApplyTitleBarButtonColors()
+    private Brush CreateFeatureWidgetIconBrush()
     {
-        bool isDark = _themeService.CurrentTheme switch
+        return new SolidColorBrush(IsEffectiveSettingsThemeDark() ? Colors.White : Colors.Black);
+    }
+
+    private bool IsEffectiveSettingsThemeDark()
+    {
+        if (SettingsRoot is not null)
+        {
+            return SettingsRoot.ActualTheme switch
+            {
+                ElementTheme.Dark => true,
+                ElementTheme.Light => false,
+                _ => _themeService.CurrentTheme switch
+                {
+                    ElementTheme.Dark => true,
+                    ElementTheme.Light => false,
+                    _ => Win32Helper.IsSystemDarkMode()
+                }
+            };
+        }
+
+        return _themeService.CurrentTheme switch
         {
             ElementTheme.Dark => true,
             ElementTheme.Light => false,
             _ => Win32Helper.IsSystemDarkMode()
         };
+    }
+
+    private void ApplyTitleBarButtonColors()
+    {
+        bool isDark = IsEffectiveSettingsThemeDark();
 
         var titleBar = _appWindow.TitleBar;
         titleBar.ButtonBackgroundColor = Colors.Transparent;

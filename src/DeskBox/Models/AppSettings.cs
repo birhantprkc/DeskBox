@@ -79,7 +79,7 @@ public class AppSettings
     /// <summary>Whether the Music widget shows playback rhythm bars.</summary>
     public bool MusicShowRhythmBars { get; set; } = true;
 
-    /// <summary>Music widget playback rhythm visual style. Valid values: <c>"SoftWave"</c>, <c>"GlassSpectrum"</c>, <c>"DotPulse"</c>, <c>"LineSpectrum"</c>.</summary>
+    /// <summary>Music widget playback rhythm visual style. Valid values: <c>"SoftWave"</c>, <c>"GlassSpectrum"</c>, <c>"DotPulse"</c>, <c>"LineSpectrum"</c>, <c>"StackedEqualizer"</c>.</summary>
     public string MusicRhythmStyle { get; set; } = "SoftWave";
 
     /// <summary>Whether the Music widget album cover reacts lightly to pointer hover.</summary>

@@ -92,6 +92,7 @@ public sealed class SettingsService
     public const string MusicRhythmStyleGlassSpectrum = "GlassSpectrum";
     public const string MusicRhythmStyleDotPulse = "DotPulse";
     public const string MusicRhythmStyleLineSpectrum = "LineSpectrum";
+    public const string MusicRhythmStyleStackedEqualizer = "StackedEqualizer";
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -598,7 +599,8 @@ public sealed class SettingsService
     {
         return value is MusicRhythmStyleGlassSpectrum or
             MusicRhythmStyleDotPulse or
-            MusicRhythmStyleLineSpectrum
+            MusicRhythmStyleLineSpectrum or
+            MusicRhythmStyleStackedEqualizer
                 ? value
                 : MusicRhythmStyleSoftWave;
     }

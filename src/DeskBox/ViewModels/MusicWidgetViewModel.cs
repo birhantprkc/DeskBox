@@ -4,6 +4,7 @@ using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.UI;
@@ -17,7 +18,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private const int VisualizerTransitionRefreshMs = 33;
     private const double VisualizerTransitionDurationMs = 420;
     private const int MinVisualizerBarCount = 28;
-    private const int MaxVisualizerBarCount = 64;
+    private const int MaxVisualizerBarCount = 128;
     private static readonly double[] s_visualizerSeeds =
     [
         0.28, 0.52, 0.36, 0.68, 0.44, 0.58, 0.32, 0.74,
@@ -68,6 +69,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private double? _pendingSessionVolume;
     private bool _isDisposed;
     private DateTimeOffset _visualizerTransitionStartedAt;
+    private double _lastVisualizerAvailableWidth;
     private double[] _visualizerTransitionStartHeights = [];
     private double[] _visualizerTransitionStartDotSizes = [];
     private double[] _visualizerTransitionStartOpacities = [];
@@ -81,6 +83,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private string _rhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
     private bool _enableCoverHoverMotion = true;
     private Color _artworkColor = AccentColorHelper.DefaultAccentColor;
+    private bool _hasArtworkColor;
     private MusicPlaybackMode _playbackMode = MusicPlaybackMode.Normal;
 
     public MusicWidgetViewModel(
@@ -188,6 +191,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _useArtworkBackdrop, value))
             {
                 OnPropertyChanged(nameof(ArtworkBackdropVisibility));
+                RaiseMusicAccentPropertiesChanged();
             }
         }
     }
@@ -204,6 +208,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(GlassSpectrumVisibility));
                 OnPropertyChanged(nameof(DotPulseVisibility));
                 OnPropertyChanged(nameof(LineSpectrumVisibility));
+                OnPropertyChanged(nameof(StackedEqualizerVisibility));
                 OnPropertyChanged(nameof(RhythmBarsOpacity));
                 UpdateVisualizerTimer();
             }
@@ -222,6 +227,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(GlassSpectrumVisibility));
                 OnPropertyChanged(nameof(DotPulseVisibility));
                 OnPropertyChanged(nameof(LineSpectrumVisibility));
+                OnPropertyChanged(nameof(StackedEqualizerVisibility));
+                UpdateVisualizerWidth(_lastVisualizerAvailableWidth);
                 UpdateVisualizerTimer();
             }
         }
@@ -456,6 +463,10 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         ? Visibility.Visible
         : Visibility.Collapsed;
 
+    public Visibility StackedEqualizerVisibility => ShowRhythmBars && RhythmStyle == SettingsService.MusicRhythmStyleStackedEqualizer
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
     public double RhythmBarsOpacity => ShowRhythmBars
         ? IsPlaying ? 0.92 : 0.48
         : 0.0;
@@ -465,6 +476,10 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     public Color ArtworkBackdropMidColor => Color.FromArgb(0x20, _artworkColor.R, _artworkColor.G, _artworkColor.B);
 
     public Color ArtworkBackdropEndColor => Color.FromArgb(0x00, _artworkColor.R, _artworkColor.G, _artworkColor.B);
+
+    public SolidColorBrush MusicAccentBrush => new(GetMusicAccentColor());
+
+    public SolidColorBrush PlayPauseButtonBackgroundBrush => new(GetMusicAccentColor());
 
     public string StatusText => PlaybackState switch
     {
@@ -903,6 +918,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
         TextSize = SettingsService.NormalizeTextSize(_settingsService.Settings.TextSize);
         ApplyMusicSettings(_settingsService.Settings);
+        RaiseMusicAccentPropertiesChanged();
     }
 
     public void UpdateVisualizerWidth(double availableWidth)
@@ -912,7 +928,10 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             return;
         }
 
-        int targetCount = Math.Clamp((int)Math.Floor(availableWidth / 6.0), MinVisualizerBarCount, MaxVisualizerBarCount);
+        _lastVisualizerAvailableWidth = availableWidth;
+        var (itemWidth, spacing) = GetVisualizerMetrics(RhythmStyle);
+        int targetCount = (int)Math.Floor((availableWidth + spacing) / (itemWidth + spacing));
+        targetCount = Math.Clamp(targetCount, MinVisualizerBarCount, MaxVisualizerBarCount);
         EnsureVisualizerBarCount(targetCount);
     }
 
@@ -980,7 +999,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             Position = TimeSpan.Zero;
             Duration = TimeSpan.Zero;
             ThumbnailImage = null;
-            ArtworkColor = AccentColorHelper.DefaultAccentColor;
+            SetArtworkColor(AccentColorHelper.DefaultAccentColor, hasArtworkColor: false);
             CanPlay = false;
             CanPause = false;
             CanGoPrevious = false;
@@ -1011,24 +1030,66 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         CanChangeRepeat = info.CanChangeRepeat;
         PlaybackMode = info.PlaybackMode;
         ThumbnailImage = await CreateThumbnailImageAsync(info);
-        ArtworkColor = await TryReadArtworkColorAsync(info) ?? AccentColorHelper.DefaultAccentColor;
+        Color? artworkColor = await TryReadArtworkColorAsync(info);
+        SetArtworkColor(artworkColor ?? AccentColorHelper.DefaultAccentColor, artworkColor.HasValue);
         RaiseDisplayPropertiesChanged();
     }
 
-    private Color ArtworkColor
+    private void SetArtworkColor(Color value, bool hasArtworkColor)
     {
-        get => _artworkColor;
-        set
-        {
-            if (_artworkColor.Equals(value))
-            {
-                return;
-            }
+        bool didChangeColor = !_artworkColor.Equals(value);
+        bool didChangeAvailability = _hasArtworkColor != hasArtworkColor;
 
-            _artworkColor = value;
+        _artworkColor = value;
+        _hasArtworkColor = hasArtworkColor;
+
+        if (didChangeColor)
+        {
             OnPropertyChanged(nameof(ArtworkBackdropStartColor));
             OnPropertyChanged(nameof(ArtworkBackdropMidColor));
             OnPropertyChanged(nameof(ArtworkBackdropEndColor));
+        }
+
+        if (didChangeColor || didChangeAvailability)
+        {
+            RaiseMusicAccentPropertiesChanged();
+        }
+    }
+
+    private Color GetMusicAccentColor()
+    {
+        if (UseArtworkBackdrop && _hasArtworkColor)
+        {
+            return _artworkColor;
+        }
+
+        try
+        {
+            return App.Current.ThemeService?.GetEffectiveAccentColor()
+                ?? AccentColorHelper.DefaultAccentColor;
+        }
+        catch
+        {
+            return AccentColorHelper.DefaultAccentColor;
+        }
+    }
+
+    private void RaiseMusicAccentPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(MusicAccentBrush));
+        OnPropertyChanged(nameof(PlayPauseButtonBackgroundBrush));
+        ApplyVisualizerAccentColor();
+    }
+
+    private void ApplyVisualizerAccentColor()
+    {
+        Color accentColor = GetMusicAccentColor();
+        int barCount = VisualizerBars.Count;
+        for (int i = 0; i < barCount; i++)
+        {
+            var bar = VisualizerBars[i];
+            bar.ApplyAccentColor(accentColor);
+            bar.ReapplyEqualizerFrame(i, barCount, accentColor, IsPlaying);
         }
     }
 
@@ -1196,14 +1257,18 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             return;
         }
 
-        for (int i = 0; i < VisualizerBars.Count; i++)
+        Color accentColor = GetMusicAccentColor();
+        int barCount = VisualizerBars.Count;
+        for (int i = 0; i < barCount; i++)
         {
             double seed = s_visualizerSeeds[i % s_visualizerSeeds.Length];
             double jitter = _random.NextDouble() * 0.28;
             double value = Math.Clamp(seed + jitter - 0.1, 0.12, 1.0);
-            VisualizerBars[i].Height = ScaleBar(value);
-            VisualizerBars[i].DotSize = ScaleDot(value);
-            VisualizerBars[i].Opacity = 0.68 + _random.NextDouble() * 0.32;
+            var bar = VisualizerBars[i];
+            bar.Height = ScaleBar(value);
+            bar.DotSize = ScaleDot(value);
+            bar.Opacity = 0.68 + _random.NextDouble() * 0.32;
+            bar.ApplyEqualizerFrame(value, i, barCount, accentColor, isPlaying: true);
         }
     }
 
@@ -1261,7 +1326,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private void ApplyVisualizerTransitionFrame(double progress)
     {
-        for (int i = 0; i < VisualizerBars.Count; i++)
+        Color accentColor = GetMusicAccentColor();
+        int barCount = VisualizerBars.Count;
+        for (int i = 0; i < barCount; i++)
         {
             double targetValue = s_visualizerSeeds[i % s_visualizerSeeds.Length] * 0.45;
             double targetHeight = ScaleBar(targetValue);
@@ -1278,9 +1345,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
                 ? _visualizerTransitionStartOpacities[i]
                 : targetOpacity;
 
-            VisualizerBars[i].Height = Lerp(startHeight, targetHeight, progress);
-            VisualizerBars[i].DotSize = Lerp(startDotSize, targetDotSize, progress);
-            VisualizerBars[i].Opacity = Lerp(startOpacity, targetOpacity, progress);
+            double startValue = Math.Clamp((startHeight - 3) / 22, 0.0, 1.0);
+            var bar = VisualizerBars[i];
+            bar.Height = Lerp(startHeight, targetHeight, progress);
+            bar.DotSize = Lerp(startDotSize, targetDotSize, progress);
+            bar.Opacity = Lerp(startOpacity, targetOpacity, progress);
+            bar.ApplyEqualizerFrame(Lerp(startValue, targetValue, progress), i, barCount, accentColor, isPlaying: false);
         }
     }
 
@@ -1341,6 +1411,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ThumbnailVisibility));
         OnPropertyChanged(nameof(ThumbnailPlaceholderVisibility));
         OnPropertyChanged(nameof(ArtworkBackdropVisibility));
+        OnPropertyChanged(nameof(MusicAccentBrush));
+        OnPropertyChanged(nameof(PlayPauseButtonBackgroundBrush));
         OnPropertyChanged(nameof(HasSeekableTimeline));
         OnPropertyChanged(nameof(CanInteractWithProgress));
         OnPropertyChanged(nameof(RhythmBarsVisibility));
@@ -1348,6 +1420,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(GlassSpectrumVisibility));
         OnPropertyChanged(nameof(DotPulseVisibility));
         OnPropertyChanged(nameof(LineSpectrumVisibility));
+        OnPropertyChanged(nameof(StackedEqualizerVisibility));
         OnPropertyChanged(nameof(RhythmBarsOpacity));
     }
 
@@ -1364,6 +1437,18 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         };
     }
 
+    private static (double ItemWidth, double Spacing) GetVisualizerMetrics(string rhythmStyle)
+    {
+        return SettingsService.NormalizeMusicRhythmStyle(rhythmStyle) switch
+        {
+            SettingsService.MusicRhythmStyleGlassSpectrum => (3.0, 2.0),
+            SettingsService.MusicRhythmStyleDotPulse => (4.2, 2.0),
+            SettingsService.MusicRhythmStyleLineSpectrum => (2.0, 2.0),
+            SettingsService.MusicRhythmStyleStackedEqualizer => (5.0, 2.0),
+            _ => (4.0, 2.0)
+        };
+    }
+
     private static double ScaleBar(double value)
     {
         return Math.Round(3 + value * 22);
@@ -1372,20 +1457,34 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private void EnsureVisualizerBarCount(int targetCount)
     {
         int normalizedCount = Math.Clamp(targetCount, MinVisualizerBarCount, MaxVisualizerBarCount);
+        bool didChangeCount = VisualizerBars.Count != normalizedCount;
+        Color accentColor = GetMusicAccentColor();
         while (VisualizerBars.Count < normalizedCount)
         {
             int index = VisualizerBars.Count;
             double seed = s_visualizerSeeds[index % s_visualizerSeeds.Length];
-            VisualizerBars.Add(new MusicBarViewModel(ScaleBar(seed * (IsPlaying ? 0.9 : 0.45)))
+            var bar = new MusicBarViewModel(ScaleBar(seed * (IsPlaying ? 0.9 : 0.45)))
             {
                 DotSize = ScaleDot(seed),
                 Opacity = IsPlaying ? 0.72 : 0.54
-            });
+            };
+            double value = seed * (IsPlaying ? 0.9 : 0.45);
+            bar.ApplyAccentColor(accentColor);
+            bar.ApplyEqualizerFrame(value, index, normalizedCount, accentColor, IsPlaying);
+            VisualizerBars.Add(bar);
         }
 
         while (VisualizerBars.Count > normalizedCount)
         {
             VisualizerBars.RemoveAt(VisualizerBars.Count - 1);
+        }
+
+        if (didChangeCount)
+        {
+            for (int i = 0; i < VisualizerBars.Count; i++)
+            {
+                VisualizerBars[i].ReapplyEqualizerFrame(i, VisualizerBars.Count, accentColor, IsPlaying);
+            }
         }
     }
 

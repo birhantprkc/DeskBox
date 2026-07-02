@@ -12,6 +12,11 @@ public sealed partial class MusicWidgetContent : UserControl
 {
     private const float AlbumArtHoverScale = 1.018f;
     private const double AlbumArtHoverOffset = 3.0;
+    private const double TitleMarqueeGap = 32.0;
+    private const double TitleMarqueeStartDelayMs = 900.0;
+    private const double TitleMarqueeSpeedPixelsPerSecond = 28.0;
+    private const double TitleMarqueeOverflowTolerance = 4.0;
+    private const int TitleMarqueeDeferredMeasureMs = 180;
     private const double MinimumResponsiveWidth = 200.0;
     private const double WideResponsiveWidth = 320.0;
     private const double WideAlbumArtSize = 82.0;
@@ -23,6 +28,10 @@ public sealed partial class MusicWidgetContent : UserControl
     private bool _isProgressDragging;
     private bool _isProgressHovering;
     private bool _isInlineVolumeRefreshing;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _titleMarqueeTimer;
+    private DateTimeOffset _titleMarqueeStartedAt;
+    private double _titleMarqueeDistance;
+    private int _titleMarqueeMeasureVersion;
 
     public MusicWidgetContent()
     {
@@ -34,6 +43,7 @@ public sealed partial class MusicWidgetContent : UserControl
             ApplyResponsiveLayout();
             UpdateProgressVisuals();
         };
+        RhythmBackdrop.SizeChanged += (_, _) => UpdateVisualizerWidthFromLayout();
     }
 
     public MusicWidgetContent(MusicWidgetViewModel viewModel)
@@ -123,13 +133,22 @@ public sealed partial class MusicWidgetContent : UserControl
 
     private void MusicWidgetContent_Loaded(object sender, RoutedEventArgs e)
     {
+        EnsureTitleMarqueeTimer();
         ApplyResponsiveLayout();
         UpdateProgressVisuals();
+        QueueTitleMarqueeUpdate();
     }
 
     private void MusicWidgetContent_Unloaded(object sender, RoutedEventArgs e)
     {
         InlineVolumePanel.Visibility = Visibility.Collapsed;
+        StopTitleMarquee();
+    }
+
+    private void TitleMarqueeHost_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        TitleMarqueeClip.Rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, e.NewSize.Width), Math.Max(0, e.NewSize.Height));
+        QueueTitleMarqueeUpdate();
     }
 
     private void ProgressHost_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -277,7 +296,13 @@ public sealed partial class MusicWidgetContent : UserControl
         VolumeButton.CornerRadius = new CornerRadius(iconButtonSize / 2);
         PlayPauseButton.CornerRadius = new CornerRadius(primaryButtonSize / 2);
         PositionInlineVolumePanel();
-        ViewModel?.UpdateVisualizerWidth(Math.Max(0, RhythmBackdrop.ActualWidth - 8));
+        UpdateVisualizerWidthFromLayout();
+        QueueTitleMarqueeUpdate();
+    }
+
+    private void UpdateVisualizerWidthFromLayout()
+    {
+        ViewModel?.UpdateVisualizerWidth(Math.Max(0, RhythmBackdrop.ActualWidth - 4));
     }
 
     private void SetAlbumArtSize(double size)
@@ -378,6 +403,137 @@ public sealed partial class MusicWidgetContent : UserControl
         {
             UpdateProgressVisuals();
         }
+
+        if (e.PropertyName is nameof(MusicWidgetViewModel.Title) or
+            nameof(MusicWidgetViewModel.TitleTextSize))
+        {
+            QueueTitleMarqueeUpdate();
+        }
+    }
+
+    private void EnsureTitleMarqueeTimer()
+    {
+        if (_titleMarqueeTimer is not null)
+        {
+            return;
+        }
+
+        _titleMarqueeTimer = DispatcherQueue.CreateTimer();
+        _titleMarqueeTimer.Interval = TimeSpan.FromMilliseconds(33);
+        _titleMarqueeTimer.IsRepeating = true;
+        _titleMarqueeTimer.Tick += TitleMarqueeTimer_Tick;
+    }
+
+    private void QueueTitleMarqueeUpdate()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        int version = ++_titleMarqueeMeasureVersion;
+        _ = DispatcherQueue.TryEnqueue(() => UpdateTitleMarquee(version));
+        _ = RunDeferredTitleMarqueeUpdateAsync(version);
+    }
+
+    private async Task RunDeferredTitleMarqueeUpdateAsync(int version)
+    {
+        await Task.Delay(TitleMarqueeDeferredMeasureMs);
+        if (version != _titleMarqueeMeasureVersion || !IsLoaded)
+        {
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(() => UpdateTitleMarquee(version));
+    }
+
+    private void UpdateTitleMarquee(int version)
+    {
+        if (version != _titleMarqueeMeasureVersion)
+        {
+            return;
+        }
+
+        double viewportWidth = TitleMarqueeHost.ActualWidth;
+        if (!IsLoaded || viewportWidth <= 0)
+        {
+            StopTitleMarquee();
+            return;
+        }
+
+        double titleWidth = MeasureTitleWidth();
+        if (titleWidth <= 0)
+        {
+            StopTitleMarquee();
+            return;
+        }
+
+        bool shouldScroll = titleWidth > viewportWidth + TitleMarqueeOverflowTolerance;
+        if (!shouldScroll)
+        {
+            StopTitleMarquee();
+            return;
+        }
+
+        TitleTextPrimary.Width = titleWidth;
+        TitleTextClone.Width = titleWidth;
+        TitleStaticText.Opacity = 0;
+        TitleMarqueeCanvas.Visibility = Visibility.Visible;
+        Canvas.SetLeft(TitleTextPrimary, 0);
+        Canvas.SetLeft(TitleTextClone, titleWidth + TitleMarqueeGap);
+        _titleMarqueeDistance = titleWidth + TitleMarqueeGap;
+        _titleMarqueeStartedAt = DateTimeOffset.UtcNow;
+        TitleMarqueeCanvas.Translation = Vector3.Zero;
+        EnsureTitleMarqueeTimer();
+        _titleMarqueeTimer?.Start();
+    }
+
+    private void StopTitleMarquee()
+    {
+        _titleMarqueeTimer?.Stop();
+        _titleMarqueeDistance = 0;
+        TitleTextPrimary.ClearValue(WidthProperty);
+        TitleTextClone.ClearValue(WidthProperty);
+        TitleStaticText.Opacity = 1;
+        TitleMarqueeCanvas.Visibility = Visibility.Collapsed;
+        TitleMarqueeCanvas.Translation = Vector3.Zero;
+    }
+
+    private void TitleMarqueeTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        double titleWidth = MeasureTitleWidth();
+        if (_titleMarqueeDistance <= 0 ||
+            TitleMarqueeHost.ActualWidth <= 0 ||
+            titleWidth <= TitleMarqueeHost.ActualWidth + TitleMarqueeOverflowTolerance)
+        {
+            StopTitleMarquee();
+            return;
+        }
+
+        double elapsedMs = (DateTimeOffset.UtcNow - _titleMarqueeStartedAt).TotalMilliseconds;
+        double movingMs = Math.Max(0, elapsedMs - TitleMarqueeStartDelayMs);
+        double offset = movingMs * TitleMarqueeSpeedPixelsPerSecond / 1000.0;
+
+        if (offset >= _titleMarqueeDistance)
+        {
+            _titleMarqueeStartedAt = DateTimeOffset.UtcNow;
+            offset = 0;
+        }
+
+        TitleMarqueeCanvas.Translation = new Vector3((float)-offset, 0, 0);
+    }
+
+    private double MeasureTitleWidth()
+    {
+        TitleMeasureText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        double desiredWidth = TitleMeasureText.DesiredSize.Width;
+        if (double.IsFinite(desiredWidth) && desiredWidth > 0)
+        {
+            return Math.Ceiling(desiredWidth);
+        }
+
+        double actualWidth = TitleTextPrimary.ActualWidth;
+        return double.IsFinite(actualWidth) ? Math.Ceiling(actualWidth) : 0;
     }
 
     private void UpdateSeekFromPointer(PointerRoutedEventArgs e)

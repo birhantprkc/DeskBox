@@ -34,6 +34,8 @@ public sealed class QuickCaptureStore
 
     internal string ImageDirectory => Path.Combine(Path.GetDirectoryName(_storePath)!, "images");
 
+    internal string ThumbnailDirectory => Path.Combine(Path.GetDirectoryName(_storePath)!, "thumbnails");
+
     internal string ExportDirectory => Path.Combine(Path.GetDirectoryName(_storePath)!, "exports");
 
     public async Task<QuickCaptureStoreData> LoadAsync()

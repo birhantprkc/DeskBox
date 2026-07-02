@@ -19,8 +19,8 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private string? _draggedTodoItemId;
     private TodoItemViewModel? _editingItem;
+    private TodoItemViewModel? _customDueDateItem;
     private MenuFlyout? _pendingConfirmFlyout;
-    private Flyout? _customDueDateFlyout;
     private long _undoToastGeneration;
     private bool _isAddingFromInlineEditor;
 
@@ -91,6 +91,22 @@ public sealed partial class TodoWidgetContent : UserControl
 
         App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;
         CloseTodoEdit();
+        CloseCustomDueDateOverlay();
+    }
+
+    private void TodoFilterSegmented_Loaded(object sender, RoutedEventArgs e)
+    {
+        ApplySegmentedLayout();
+    }
+
+    private void TodoFilterSegmented_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplySegmentedLayout();
+    }
+
+    private void ApplySegmentedLayout()
+    {
+        WidgetSegmentedLayoutHelper.ApplyEqualItemWidths(TodoFilterSegmented);
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -130,6 +146,10 @@ public sealed partial class TodoWidgetContent : UserControl
             : localization.T("Todo.Menu.Edit");
         TodoInlineEditor.CancelText = localization.T("Common.Cancel");
         TodoInlineEditor.SaveText = localization.T("Common.Save");
+        CustomDueDateTitleText.Text = localization.T("Todo.Due.Custom");
+        CustomDueDatePicker.PlaceholderText = localization.T("Todo.Due.Custom");
+        CustomDueDateCancelButton.Content = localization.T("Common.Cancel");
+        CustomDueDateSaveButton.Content = localization.T("Common.Ok");
     }
 
     private async void AddTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -148,6 +168,7 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private void ExpandInputButton_Click(object sender, RoutedEventArgs e)
     {
+        CloseCustomDueDateOverlay();
         _editingItem = null;
         _isAddingFromInlineEditor = true;
         TodoInlineEditor.Title = App.Current.LocalizationService.T("Todo.AddPlaceholder");
@@ -573,88 +594,49 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private Task PickCustomDueDateAsync(TodoItemViewModel item)
     {
-        if (ViewModel is null || XamlRoot is null)
+        if (ViewModel is null)
         {
             return Task.CompletedTask;
         }
 
-        var localization = App.Current.LocalizationService;
-        _customDueDateFlyout?.Hide();
-
-        var picker = new CalendarDatePicker
-        {
-            Width = 206,
-            MinWidth = 0,
-            Date = item.DueDate ?? DateTimeOffset.Now,
-            MinDate = DateTimeOffset.Now.Date,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-
-        var root = new StackPanel
-        {
-            Width = 236,
-            Padding = new Thickness(2),
-            Spacing = 10
-        };
-
-        root.Children.Add(new TextBlock
-        {
-            Text = localization.T("Todo.Due.Custom"),
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            TextWrapping = TextWrapping.WrapWholeWords
-        });
-        root.Children.Add(picker);
-
-        var actions = new StackPanel
-        {
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Orientation = Orientation.Horizontal,
-            Spacing = 8
-        };
-
-        var cancelButton = new Button
-        {
-            Content = localization.T("Common.Cancel"),
-            Style = (Style)Resources["TodoConfirmCommandButtonStyle"]
-        };
-        var confirmButton = new Button
-        {
-            Content = localization.T("Common.Ok"),
-            Style = (Style)Resources["TodoConfirmCommandButtonStyle"]
-        };
-
-        bool isDark = ActualTheme == ElementTheme.Dark;
-        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor;
-        ApplyEditorCommandButtonTheme(cancelButton, isDark, accentColor, isPrimary: false);
-        ApplyEditorCommandButtonTheme(confirmButton, isDark, accentColor, isPrimary: true);
-
-        actions.Children.Add(cancelButton);
-        actions.Children.Add(confirmButton);
-        root.Children.Add(actions);
-
-        var flyout = new Flyout
-        {
-            Content = root,
-            Placement = FlyoutPlacementMode.TopEdgeAlignedRight,
-            LightDismissOverlayMode = LightDismissOverlayMode.Off
-        };
-
-        _customDueDateFlyout = flyout;
-        cancelButton.Click += (_, _) => flyout.Hide();
-        confirmButton.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await ViewModel.SetDueDateAsync(item.Id, picker.Date);
-        };
-        flyout.Closed += (_, _) =>
-        {
-            if (ReferenceEquals(_customDueDateFlyout, flyout))
-            {
-                _customDueDateFlyout = null;
-            }
-        };
-        flyout.ShowAt(this);
+        CloseTodoEdit();
+        _pendingConfirmFlyout?.Hide();
+        _customDueDateItem = item;
+        CustomDueDatePicker.MinDate = DateTimeOffset.Now.Date;
+        CustomDueDatePicker.Date = item.DueDate ?? DateTimeOffset.Now;
+        ApplyLocalizedText();
+        ApplyEditorVisualStyle();
+        CustomDueDateOverlay.Visibility = Visibility.Visible;
+        CustomDueDatePicker.Focus(FocusState.Programmatic);
         return Task.CompletedTask;
+    }
+
+    private void CustomDueDateCancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        CloseCustomDueDateOverlay();
+    }
+
+    private async void CustomDueDateSaveButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null || _customDueDateItem is null)
+        {
+            CloseCustomDueDateOverlay();
+            return;
+        }
+
+        string itemId = _customDueDateItem.Id;
+        DateTimeOffset selectedDate = CustomDueDatePicker.Date ?? DateTimeOffset.Now;
+        CloseCustomDueDateOverlay();
+        await ViewModel.SetDueDateAsync(itemId, selectedDate);
+    }
+
+    private void CloseCustomDueDateOverlay()
+    {
+        _customDueDateItem = null;
+        if (CustomDueDateOverlay is not null)
+        {
+            CustomDueDateOverlay.Visibility = Visibility.Collapsed;
+        }
     }
 
     private async Task DeleteItemAsync(TodoItemViewModel item, FrameworkElement anchor)
@@ -699,6 +681,7 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private void BeginItemEdit(TodoItemViewModel item)
     {
+        CloseCustomDueDateOverlay();
         _isAddingFromInlineEditor = false;
         _editingItem = item;
         TodoInlineEditor.Title = App.Current.LocalizationService.T("Todo.Menu.Edit");
@@ -885,6 +868,15 @@ public sealed partial class TodoWidgetContent : UserControl
         ApplyEditorCommandButtonTheme(TodoEditCancelButton, isDark, accentColor, isPrimary: false);
         ApplyEditorCommandButtonTheme(TodoEditSaveButton, isDark, accentColor, isPrimary: true);
         ApplyActionButtonTheme(TodoEditCloseButton, isDark, accentColor);
+
+        CustomDueDateOverlay.Background = new SolidColorBrush(WithAlpha(overlayBackground, 0xFF));
+        CustomDueDateOverlay.BorderBrush = new SolidColorBrush(isDark
+            ? ColorHelper.FromArgb(0x52, 0xFF, 0xFF, 0xFF)
+            : ColorHelper.FromArgb(0x24, 0x00, 0x00, 0x00));
+        CustomDueDateOverlay.BorderThickness = new Thickness(0.8);
+        ApplyEditorCommandButtonTheme(CustomDueDateCancelButton, isDark, accentColor, isPrimary: false);
+        ApplyEditorCommandButtonTheme(CustomDueDateSaveButton, isDark, accentColor, isPrimary: true);
+        ApplyActionButtonTheme(CustomDueDateCloseButton, isDark, accentColor);
     }
 
     private static void ApplyEditorCommandButtonTheme(Button button, bool isDark, Windows.UI.Color accentColor, bool isPrimary)

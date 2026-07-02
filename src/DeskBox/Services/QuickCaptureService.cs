@@ -1,5 +1,8 @@
 using System.Security.Cryptography;
 using DeskBox.Models;
+using Windows.Graphics.Imaging;
+using Windows.Storage;
+using Windows.Storage.Streams;
 
 namespace DeskBox.Services;
 
@@ -22,6 +25,7 @@ public sealed class QuickCaptureService
     public const int DefaultRecentLimit = 30;
     public const int MinRecentLimit = 10;
     public const int MaxRecentLimit = 100;
+    private const uint ThumbnailMaxPixelSize = 180;
     private static readonly TimeSpan ExportCleanupAge = TimeSpan.FromDays(1);
 
     private readonly QuickCaptureStore _store;
@@ -615,6 +619,11 @@ public sealed class QuickCaptureService
         }
     }
 
+    public Task<string?> GetOrCreateImageThumbnailPathAsync(string? imagePath)
+    {
+        return CreateImageThumbnailAsync(imagePath);
+    }
+
     private async Task EnsureLoadedAsync()
     {
         await _gate.WaitAsync();
@@ -704,9 +713,17 @@ public sealed class QuickCaptureService
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    private HashSet<string> GetReferencedThumbnailPathsCore(HashSet<string> referencedImagePaths)
+    {
+        return referencedImagePaths
+            .Select(GetThumbnailPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     private QuickCaptureImageCacheInfo GetImageCacheInfoCore(HashSet<string> referencedImagePaths)
     {
-        if (!Directory.Exists(_store.ImageDirectory))
+        if (!Directory.Exists(_store.ImageDirectory) && !Directory.Exists(_store.ThumbnailDirectory))
         {
             return new QuickCaptureImageCacheInfo(0, 0, 0, 0);
         }
@@ -715,13 +732,17 @@ public sealed class QuickCaptureService
         long totalBytes = 0;
         int unusedFileCount = 0;
         long unusedBytes = 0;
+        var referencedThumbnailPaths = GetReferencedThumbnailPathsCore(referencedImagePaths);
 
-        foreach (var filePath in Directory.EnumerateFiles(_store.ImageDirectory, "*", SearchOption.TopDirectoryOnly).ToList())
+        foreach (var filePath in EnumerateCacheFiles(_store.ImageDirectory).Concat(EnumerateCacheFiles(_store.ThumbnailDirectory)))
         {
             var fileInfo = new FileInfo(filePath);
             totalFileCount++;
             totalBytes += fileInfo.Length;
-            if (!referencedImagePaths.Contains(NormalizePath(filePath)))
+            string normalizedFilePath = NormalizePath(filePath);
+            bool isReferenced = referencedImagePaths.Contains(normalizedFilePath) ||
+                referencedThumbnailPaths.Contains(normalizedFilePath);
+            if (!isReferenced)
             {
                 unusedFileCount++;
                 unusedBytes += fileInfo.Length;
@@ -733,18 +754,20 @@ public sealed class QuickCaptureService
 
     private QuickCaptureImageCacheCleanupResult CleanupUnusedImageCacheCore(HashSet<string> referencedImagePaths)
     {
-        if (!Directory.Exists(_store.ImageDirectory))
+        if (!Directory.Exists(_store.ImageDirectory) && !Directory.Exists(_store.ThumbnailDirectory))
         {
             return new QuickCaptureImageCacheCleanupResult(0, 0);
         }
 
         int deletedFileCount = 0;
         long deletedBytes = 0;
+        var referencedThumbnailPaths = GetReferencedThumbnailPathsCore(referencedImagePaths);
 
-        foreach (var filePath in Directory.EnumerateFiles(_store.ImageDirectory, "*", SearchOption.TopDirectoryOnly).ToList())
+        foreach (var filePath in EnumerateCacheFiles(_store.ImageDirectory).Concat(EnumerateCacheFiles(_store.ThumbnailDirectory)))
         {
             string normalizedFilePath = NormalizePath(filePath);
-            if (referencedImagePaths.Contains(normalizedFilePath))
+            if (referencedImagePaths.Contains(normalizedFilePath) ||
+                referencedThumbnailPaths.Contains(normalizedFilePath))
             {
                 continue;
             }
@@ -763,6 +786,13 @@ public sealed class QuickCaptureService
         }
 
         return new QuickCaptureImageCacheCleanupResult(deletedFileCount, deletedBytes);
+    }
+
+    private static IEnumerable<string> EnumerateCacheFiles(string directory)
+    {
+        return Directory.Exists(directory)
+            ? Directory.EnumerateFiles(directory, "*", SearchOption.TopDirectoryOnly).ToList()
+            : [];
     }
 
     private static string NormalizePath(string? path)
@@ -837,6 +867,7 @@ public sealed class QuickCaptureService
             await File.WriteAllBytesAsync(imagePath, imagePngBytes);
         }
 
+        _ = CreateImageThumbnailAsync(imagePath);
         return imagePath;
     }
 
@@ -852,7 +883,97 @@ public sealed class QuickCaptureService
             await File.WriteAllBytesAsync(imagePath, bytes);
         }
 
+        _ = CreateImageThumbnailAsync(imagePath);
         return imagePath;
+    }
+
+    private async Task<string?> CreateImageThumbnailAsync(string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath) ||
+            !File.Exists(imagePath) ||
+            !IsImageFile(imagePath))
+        {
+            return null;
+        }
+
+        string thumbnailPath = GetThumbnailPath(imagePath);
+        if (File.Exists(thumbnailPath))
+        {
+            return thumbnailPath;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(_store.ThumbnailDirectory);
+            var file = await StorageFile.GetFileFromPathAsync(imagePath);
+            using IRandomAccessStream inputStream = await file.OpenAsync(FileAccessMode.Read);
+            var decoder = await BitmapDecoder.CreateAsync(inputStream);
+            var transform = new BitmapTransform
+            {
+                InterpolationMode = BitmapInterpolationMode.Fant
+            };
+
+            if (decoder.PixelWidth >= decoder.PixelHeight)
+            {
+                transform.ScaledWidth = Math.Min(decoder.PixelWidth, ThumbnailMaxPixelSize);
+                transform.ScaledHeight = Math.Max(1, (uint)Math.Round(decoder.PixelHeight * (transform.ScaledWidth / (double)decoder.PixelWidth)));
+            }
+            else
+            {
+                transform.ScaledHeight = Math.Min(decoder.PixelHeight, ThumbnailMaxPixelSize);
+                transform.ScaledWidth = Math.Max(1, (uint)Math.Round(decoder.PixelWidth * (transform.ScaledHeight / (double)decoder.PixelHeight)));
+            }
+
+            using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied,
+                transform,
+                ExifOrientationMode.RespectExifOrientation,
+                ColorManagementMode.ColorManageToSRgb);
+
+            string tempPath = $"{thumbnailPath}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                await using (var outputFileStream = File.Open(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+                {
+                    using IRandomAccessStream outputStream = outputFileStream.AsRandomAccessStream();
+                    var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, outputStream);
+                    encoder.SetSoftwareBitmap(softwareBitmap);
+                    await encoder.FlushAsync();
+                }
+
+                if (File.Exists(thumbnailPath))
+                {
+                    File.Delete(tempPath);
+                }
+                else
+                {
+                    File.Move(tempPath, thumbnailPath);
+                }
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
+
+            return thumbnailPath;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCaptureService] Failed to create thumbnail for '{imagePath}': {ex}");
+            return File.Exists(thumbnailPath) ? thumbnailPath : null;
+        }
+    }
+
+    private string GetThumbnailPath(string imagePath)
+    {
+        string hash = !string.IsNullOrWhiteSpace(Path.GetFileNameWithoutExtension(imagePath))
+            ? Path.GetFileNameWithoutExtension(imagePath)
+            : ComputeContentHash(File.ReadAllBytes(imagePath));
+        return Path.Combine(_store.ThumbnailDirectory, $"{hash}.png");
     }
 
     private static string ComputeContentHash(byte[] bytes)

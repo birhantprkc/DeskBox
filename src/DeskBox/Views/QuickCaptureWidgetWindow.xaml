@@ -136,8 +136,10 @@
                         MinHeight="{Binding SegmentHeight}"
                         FontSize="{Binding SegmentTextSize}"
                         HorizontalAlignment="Stretch"
+                        Loaded="QuickCaptureViewSegmented_Loaded"
                         SelectionChanged="QuickCaptureViewSegmented_SelectionChanged"
-                        SelectedIndex="0">
+                        SelectedIndex="0"
+                        SizeChanged="QuickCaptureViewSegmented_SizeChanged">
                         <toolkit:SegmentedItem
                             Style="{StaticResource WidgetSegmentedItemStyle}"
                             Tag="Records"

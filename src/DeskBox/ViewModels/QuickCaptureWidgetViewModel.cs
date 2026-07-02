@@ -505,6 +505,11 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         return _quickCaptureService.CleanupUnusedImageCacheAsync();
     }
 
+    public Task<string?> GetOrCreateImageThumbnailPathAsync(QuickCaptureItemViewModel item)
+    {
+        return _quickCaptureService.GetOrCreateImageThumbnailPathAsync(item.ImagePath);
+    }
+
     public async Task SaveRecentItemAsync(QuickCaptureItemViewModel item)
     {
         if (!item.IsRecent)

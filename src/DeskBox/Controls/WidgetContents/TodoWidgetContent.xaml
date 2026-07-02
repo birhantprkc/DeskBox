@@ -96,8 +96,10 @@
                 MinHeight="{Binding SegmentHeight}"
                 FontSize="{Binding SegmentTextSize}"
                 HorizontalAlignment="Stretch"
+                Loaded="TodoFilterSegmented_Loaded"
                 SelectionChanged="TodoFilterSegmented_SelectionChanged"
-                SelectedIndex="0">
+                SelectedIndex="0"
+                SizeChanged="TodoFilterSegmented_SizeChanged">
                 <toolkit:SegmentedItem
                     Style="{StaticResource WidgetSegmentedItemStyle}"
                     Tag="All"
@@ -430,6 +432,71 @@
             SaveRequested="TodoEditSaveButton_Click"
             TitleFontSize="{Binding TextSize}"
             Visibility="Collapsed" />
+
+        <Border
+            x:Name="CustomDueDateOverlay"
+            Grid.RowSpan="4"
+            Canvas.ZIndex="21"
+            Margin="8"
+            MaxWidth="300"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Center"
+            Style="{StaticResource WidgetInlineEditorOverlayStyle}"
+            Visibility="Collapsed">
+            <Grid RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        x:Name="CustomDueDateTitleText"
+                        Grid.Column="0"
+                        FontSize="{Binding TextSize}"
+                        Style="{StaticResource WidgetInlineEditorTitleTextStyle}" />
+
+                    <Button
+                        x:Name="CustomDueDateCloseButton"
+                        Grid.Column="1"
+                        Click="CustomDueDateCancelButton_Click"
+                        Style="{StaticResource WidgetInlineEditorCloseButtonStyle}">
+                        <FontIcon FontSize="10" Glyph="&#xE711;" />
+                    </Button>
+                </Grid>
+
+                <CalendarDatePicker
+                    x:Name="CustomDueDatePicker"
+                    Grid.Row="1"
+                    Height="36"
+                    MinHeight="36"
+                    MinWidth="0"
+                    HorizontalAlignment="Stretch" />
+
+                <StackPanel
+                    Grid.Row="2"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        x:Name="CustomDueDateCancelButton"
+                        Click="CustomDueDateCancelButton_Click"
+                        FontSize="{Binding FilterTextSize}"
+                        Style="{StaticResource WidgetEditorCommandButtonStyle}" />
+                    <Button
+                        x:Name="CustomDueDateSaveButton"
+                        Click="CustomDueDateSaveButton_Click"
+                        FontSize="{Binding FilterTextSize}"
+                        Style="{StaticResource WidgetEditorCommandButtonStyle}" />
+                </StackPanel>
+            </Grid>
+        </Border>
 
     </Grid>
 </UserControl>

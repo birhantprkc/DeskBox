@@ -197,8 +197,11 @@
                 <Image
                     Width="18"
                     Height="18"
-                    VerticalAlignment="Center"
-                    Source="ms-appx:///Assets/deskbox.svg" />
+                    VerticalAlignment="Center">
+                    <Image.Source>
+                        <media:SvgImageSource UriSource="ms-appx:///Assets/deskbox.svg" />
+                    </Image.Source>
+                </Image>
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="14"
@@ -458,6 +461,33 @@
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
+                            svc:Localized.HeaderKey="Settings.Opacity.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE9D2;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <StackPanel
+                                VerticalAlignment="Center"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                                <TextBlock Style="{StaticResource SliderSettingValueTextStyle}" Text="{Binding WidgetOpacityValueText}" />
+                                <Slider
+                                    Maximum="1"
+                                    Minimum="0"
+                                    StepFrequency="0.02"
+                                    Style="{StaticResource InlineMetricSliderStyle}"
+                                    Value="{Binding WidgetOpacity, Mode=TwoWay}"
+                                    ManipulationMode="TranslateX"
+                                    ManipulationStarted="AppearanceSlider_ManipulationStarted"
+                                    ManipulationCompleted="AppearanceSlider_ManipulationCompleted"
+                                    ValueChanged="AppearanceSlider_ValueChanged"
+                                    PointerPressed="AppearanceSlider_PointerPressed"
+                                    PointerReleased="AppearanceSlider_PointerReleased"
+                                    LostFocus="AppearanceSlider_LostFocus" />
+                            </StackPanel>
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
                             svc:Localized.HeaderKey="Settings.TextSize.Title">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE8D2;" />
@@ -480,64 +510,6 @@
                                     PointerPressed="AppearanceSlider_PointerPressed"
                                     PointerReleased="AppearanceSlider_PointerReleased"
                                     LostFocus="AppearanceSlider_LostFocus" />
-                            </StackPanel>
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.ShowHoverButtons.Description"
-                            svc:Localized.HeaderKey="Settings.ShowHoverButtons.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE8A5;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch
-                                MinWidth="0"
-                                IsOn="{Binding ShowHoverButtons, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.DisplayWidgetChrome.Description"
-                            svc:Localized.HeaderKey="Settings.DisplayWidgetChrome.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE7C4;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button
-                                    Command="{Binding ResetDisplayWidgetChromeOverridesCommand}"
-                                    Style="{StaticResource IconActionButtonStyle}"
-                                    svc:Localized.ToolTipKey="Settings.DisplayWidgetChrome.ResetTooltip">
-                                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
-                                </Button>
-                                <ComboBox
-                                    MinWidth="176"
-                                    ItemsSource="{Binding AvailableDisplayWidgetChromeModeDisplayNames}"
-                                    SelectedIndex="{Binding SelectedDisplayWidgetChromeModeIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="DisplayWidgetChromeMode" />
-                            </StackPanel>
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.InteractiveWidgetChrome.Description"
-                            svc:Localized.HeaderKey="Settings.InteractiveWidgetChrome.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE8B7;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button
-                                    Command="{Binding ResetInteractiveWidgetChromeOverridesCommand}"
-                                    Style="{StaticResource IconActionButtonStyle}"
-                                    svc:Localized.ToolTipKey="Settings.InteractiveWidgetChrome.ResetTooltip">
-                                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
-                                </Button>
-                                <ComboBox
-                                    MinWidth="176"
-                                    ItemsSource="{Binding AvailableInteractiveWidgetChromeModeDisplayNames}"
-                                    SelectedIndex="{Binding SelectedInteractiveWidgetChromeModeIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="InteractiveWidgetChromeMode" />
                             </StackPanel>
                         </toolkit:SettingsCard>
 
@@ -585,29 +557,11 @@
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
-                                    svc:Localized.HeaderKey="Settings.Opacity.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE9D2;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
-                                    <StackPanel
-                                        VerticalAlignment="Center"
-                                        Orientation="Horizontal"
-                                        Spacing="8">
-                                        <TextBlock Style="{StaticResource SliderSettingValueTextStyle}" Text="{Binding WidgetOpacityValueText}" />
-                                        <Slider
-                                            Maximum="1"
-                                            Minimum="0"
-                                            StepFrequency="0.02"
-                                            Style="{StaticResource InlineMetricSliderStyle}"
-                                            Value="{Binding WidgetOpacity, Mode=TwoWay}"
-                                            ManipulationMode="TranslateX"
-                                            ManipulationStarted="AppearanceSlider_ManipulationStarted"
-                                            ManipulationCompleted="AppearanceSlider_ManipulationCompleted"
-                                            ValueChanged="AppearanceSlider_ValueChanged"
-                                            PointerPressed="AppearanceSlider_PointerPressed"
-                                            PointerReleased="AppearanceSlider_PointerReleased"
-                                            LostFocus="AppearanceSlider_LostFocus" />
-                                    </StackPanel>
+                                    svc:Localized.DescriptionKey="Settings.ShowHoverButtons.Description"
+                                    svc:Localized.HeaderKey="Settings.ShowHoverButtons.Title">
+                                    <ToggleSwitch
+                                        MinWidth="0"
+                                        IsOn="{Binding ShowHoverButtons, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                             </toolkit:SettingsExpander.Items>
                         </toolkit:SettingsExpander>
@@ -672,6 +626,52 @@
                                 </toolkit:SettingsCard>
                             </toolkit:SettingsExpander.Items>
                         </toolkit:SettingsExpander>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.DisplayWidgetChrome.Description"
+                            svc:Localized.HeaderKey="Settings.DisplayWidgetChrome.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7C4;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    Command="{Binding ResetDisplayWidgetChromeOverridesCommand}"
+                                    Style="{StaticResource IconActionButtonStyle}"
+                                    svc:Localized.ToolTipKey="Settings.DisplayWidgetChrome.ResetTooltip">
+                                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                                </Button>
+                                <ComboBox
+                                    MinWidth="176"
+                                    ItemsSource="{Binding AvailableDisplayWidgetChromeModeDisplayNames}"
+                                    SelectedIndex="{Binding SelectedDisplayWidgetChromeModeIndex, Mode=OneWay}"
+                                    SelectionChanged="SettingsComboBox_SelectionChanged"
+                                    Tag="DisplayWidgetChromeMode" />
+                            </StackPanel>
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.InteractiveWidgetChrome.Description"
+                            svc:Localized.HeaderKey="Settings.InteractiveWidgetChrome.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8B7;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    Command="{Binding ResetInteractiveWidgetChromeOverridesCommand}"
+                                    Style="{StaticResource IconActionButtonStyle}"
+                                    svc:Localized.ToolTipKey="Settings.InteractiveWidgetChrome.ResetTooltip">
+                                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                                </Button>
+                                <ComboBox
+                                    MinWidth="176"
+                                    ItemsSource="{Binding AvailableInteractiveWidgetChromeModeDisplayNames}"
+                                    SelectedIndex="{Binding SelectedInteractiveWidgetChromeModeIndex, Mode=OneWay}"
+                                    SelectionChanged="SettingsComboBox_SelectionChanged"
+                                    Tag="InteractiveWidgetChromeMode" />
+                            </StackPanel>
+                        </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
 
@@ -865,13 +865,8 @@
                                 <toolkit:SettingsCard
                                     ContentAlignment="Vertical"
                                     HorizontalContentAlignment="Stretch"
-                                    svc:Localized.DescriptionKey="Settings.ManagedPath.Description"
-                                    svc:Localized.HeaderKey="Settings.ManagedPath.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE8B7;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
+                                    Padding="20,16">
                                     <StackPanel Spacing="12">
-                                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ManagedPath.QuickCaptureNote" />
                                         <TextBox
                                             IsReadOnly="True"
                                             Text="{Binding ManagedStorageRootPath, Mode=OneWay}"
@@ -941,38 +936,46 @@
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Interaction" />
                     <StackPanel Margin="0,8,0,0" Spacing="4">
                         <toolkit:SettingsCard
-                            ContentAlignment="Vertical"
-                            HorizontalContentAlignment="Stretch"
+                            HorizontalContentAlignment="Right"
                             Description="{Binding GlobalHotkeyDescription}"
                             svc:Localized.HeaderKey="Settings.GlobalHotkey.Title">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE765;" />
                             </toolkit:SettingsCard.HeaderIcon>
-                            <StackPanel Spacing="10">
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding GlobalHotkeyStatusText}" />
+                            <ToggleSwitch
+                                MinWidth="0"
+                                IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            ContentAlignment="Vertical"
+                            HorizontalContentAlignment="Stretch"
+                            svc:Localized.HeaderKey="Settings.GlobalHotkey.CustomTitle">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE765;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <Grid RowSpacing="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock
+                                    Grid.Row="0"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SettingDescriptionTextStyle}"
+                                    Text="{Binding GlobalHotkeyStatusText}" />
                                 <Grid
                                     x:Name="GlobalHotkeyActionsPanel"
+                                    Grid.Row="1"
                                     MinWidth="252"
                                     HorizontalAlignment="Right"
-                                    ColumnSpacing="10"
-                                    RowSpacing="8">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
+                                    ColumnSpacing="10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <ToggleSwitch
-                                        Grid.Row="0"
-                                        Grid.Column="1"
-                                        MinWidth="0"
-                                        HorizontalAlignment="Right"
-                                        IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}" />
                                     <Button
                                         x:Name="GlobalHotkeyCaptureButton"
-                                        Grid.Row="1"
                                         Grid.Column="0"
                                         MinWidth="132"
                                         HorizontalAlignment="Stretch"
@@ -983,7 +986,6 @@
                                         svc:Localized.ToolTipKey="Settings.GlobalHotkey.ChangeTooltip" />
                                     <Button
                                         x:Name="ResetGlobalHotkeyButton"
-                                        Grid.Row="1"
                                         Grid.Column="1"
                                         Click="ResetGlobalHotkeyButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
@@ -994,7 +996,7 @@
                                         </StackPanel>
                                     </Button>
                                 </Grid>
-                            </StackPanel>
+                            </Grid>
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
@@ -1055,9 +1057,11 @@
                     Visibility="Collapsed"
                     Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.FeatureWidgets" />
-                    <StackPanel
-                        x:Name="FeatureWidgetList"
-                        Spacing="4" />
+                    <StackPanel Margin="0,8,0,0" Spacing="4">
+                        <StackPanel
+                            x:Name="FeatureWidgetList"
+                            Spacing="4" />
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel
@@ -1556,7 +1560,11 @@
                             HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.About.Description">
                             <toolkit:SettingsCard.HeaderIcon>
-                                <BitmapIcon UriSource="ms-appx:///Assets/deskbox.svg" />
+                                <ImageIcon>
+                                    <ImageIcon.Source>
+                                        <media:SvgImageSource UriSource="ms-appx:///Assets/deskbox.svg" />
+                                    </ImageIcon.Source>
+                                </ImageIcon>
                             </toolkit:SettingsCard.HeaderIcon>
                             <TextBlock
                                 VerticalAlignment="Center"
@@ -1640,6 +1648,44 @@
                                     <TextBlock svc:Localized.Key="Common.Open" />
                                 </StackPanel>
                             </Button>
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.About.DonationDescription"
+                            svc:Localized.HeaderKey="Settings.About.DonationTitle">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8F2;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <StackPanel
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal"
+                                Spacing="14">
+                                <StackPanel Spacing="6">
+                                    <Image
+                                        Width="100"
+                                        Height="100"
+                                        Source="ms-appx:///Assets/donation-wechat.png"
+                                        Stretch="Uniform"
+                                        VerticalAlignment="Center" />
+                                    <TextBlock
+                                        HorizontalAlignment="Center"
+                                        Style="{StaticResource SettingDescriptionTextStyle}"
+                                        svc:Localized.Key="Settings.About.DonationWechat" />
+                                </StackPanel>
+                                <StackPanel Spacing="6">
+                                    <Image
+                                        Width="100"
+                                        Height="100"
+                                        Source="ms-appx:///Assets/donation-alipay.png"
+                                        Stretch="Uniform"
+                                        VerticalAlignment="Center" />
+                                    <TextBlock
+                                        HorizontalAlignment="Center"
+                                        Style="{StaticResource SettingDescriptionTextStyle}"
+                                        svc:Localized.Key="Settings.About.DonationAlipay" />
+                                </StackPanel>
+                            </StackPanel>
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard

@@ -724,6 +724,21 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         RootGrid.Focus(FocusState.Programmatic);
     }
 
+    private void QuickCaptureViewSegmented_Loaded(object sender, RoutedEventArgs e)
+    {
+        ApplySegmentedLayout();
+    }
+
+    private void QuickCaptureViewSegmented_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplySegmentedLayout();
+    }
+
+    private void ApplySegmentedLayout()
+    {
+        WidgetSegmentedLayoutHelper.ApplyEqualItemWidths(QuickCaptureViewSegmented);
+    }
+
     private void QuickCaptureViewSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         SelectView(GetSelectedSegmentView());
@@ -1148,7 +1163,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             AutomationProperties.SetName(deleteButton, deleteText);
         }
 
-        if (FindVisualChild<Image>(sender, "ImagePreview") is { } imagePreview)
+        if (FindVisualChild<Image>(sender, "ImagePreview") is { } imagePreview && imagePreview.IsLoaded)
         {
             _ = LoadImagePreviewAsync(imagePreview, item);
         }
@@ -1165,25 +1180,60 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private async Task LoadImagePreviewAsync(Image image, QuickCaptureItemViewModel item)
     {
         string itemId = item.Id;
-        image.Source = null;
         if (item.Type != QuickCaptureItemType.Image ||
             string.IsNullOrWhiteSpace(item.ImagePath))
         {
+            image.Tag = null;
+            image.Source = null;
             return;
         }
+
+        string targetKey = $"{item.Id}|{item.ImagePath}";
+        if (string.Equals(image.Tag as string, targetKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        image.Tag = targetKey;
+        image.Source = null;
 
         await Task.Yield();
         if (!string.Equals((image.DataContext as QuickCaptureItemViewModel)?.Id, itemId, StringComparison.Ordinal))
         {
+            if (string.Equals(image.Tag as string, targetKey, StringComparison.Ordinal))
+            {
+                image.Tag = null;
+            }
+
             return;
         }
 
-        image.Source = item.ImagePreviewUri is { } uri
+        string? previewPath = await ViewModel.GetOrCreateImageThumbnailPathAsync(item);
+        if (!string.Equals((image.DataContext as QuickCaptureItemViewModel)?.Id, itemId, StringComparison.Ordinal) ||
+            !string.Equals(image.Tag as string, targetKey, StringComparison.Ordinal))
+        {
+            if (string.Equals(image.Tag as string, targetKey, StringComparison.Ordinal))
+            {
+                image.Tag = null;
+            }
+
+            return;
+        }
+
+        Uri? previewUri = TryCreateImageUri(previewPath) ?? item.ImagePreviewUri;
+        image.Source = previewUri is { } uri
             ? new BitmapImage
             {
-                DecodePixelWidth = 180,
+                DecodePixelWidth = 140,
                 UriSource = uri
             }
+            : null;
+    }
+
+    private static Uri? TryCreateImageUri(string? path)
+    {
+        return !string.IsNullOrWhiteSpace(path) && File.Exists(path) && Uri.TryCreate(path, UriKind.Absolute, out var uri)
+            ? uri
             : null;
     }
 

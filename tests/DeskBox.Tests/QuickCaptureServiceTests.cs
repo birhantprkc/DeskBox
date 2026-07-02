@@ -402,17 +402,21 @@ public sealed class QuickCaptureServiceTests : IDisposable
         var service = CreateService();
         var image = await service.AddRecentClipboardImageAsync([1, 2, 3, 4], QuickCaptureService.DefaultRecentLimit);
         string orphanPath = Path.Combine(_storeRoot, "images", "orphan.png");
+        string orphanThumbnailPath = Path.Combine(_storeRoot, "thumbnails", "orphan.png");
         Directory.CreateDirectory(Path.GetDirectoryName(orphanPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(orphanThumbnailPath)!);
         await File.WriteAllBytesAsync(orphanPath, [9, 9, 9]);
+        await File.WriteAllBytesAsync(orphanThumbnailPath, [8, 8]);
 
         var result = await service.CleanupUnusedImageCacheAsync();
         var info = await service.GetImageCacheInfoAsync();
 
         Assert.NotNull(image);
-        Assert.Equal(1, result.DeletedFileCount);
-        Assert.Equal(3, result.DeletedBytes);
+        Assert.Equal(2, result.DeletedFileCount);
+        Assert.Equal(5, result.DeletedBytes);
         Assert.True(File.Exists(image!.ImagePath));
         Assert.False(File.Exists(orphanPath));
+        Assert.False(File.Exists(orphanThumbnailPath));
         Assert.Equal(1, info.TotalFileCount);
         Assert.Equal(0, info.UnusedFileCount);
     }
@@ -427,6 +431,22 @@ public sealed class QuickCaptureServiceTests : IDisposable
         var info = await service.GetImageCacheInfoAsync();
 
         Assert.Equal(0, info.TotalFileCount);
+    }
+
+    [Fact]
+    public async Task GetOrCreateImageThumbnailPathAsync_ReturnsThumbnailForValidImage()
+    {
+        var service = CreateService();
+        string sourceImagePath = Path.Combine(_tempRoot, "valid-source.png");
+        await File.WriteAllBytesAsync(sourceImagePath, Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYPj/nwEJMDGgAQAAMQIEA3mLB4MAAAAASUVORK5CYII="));
+        var item = await service.AddImageFileItemAsync(sourceImagePath);
+
+        string? thumbnailPath = await service.GetOrCreateImageThumbnailPathAsync(item!.ImagePath);
+
+        Assert.False(string.IsNullOrWhiteSpace(thumbnailPath));
+        Assert.True(File.Exists(thumbnailPath));
+        Assert.StartsWith(Path.Combine(_storeRoot, "thumbnails"), thumbnailPath!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

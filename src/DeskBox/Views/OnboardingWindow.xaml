@@ -13,7 +13,7 @@
         x:Name="RootGrid"
         MinWidth="560"
         MinHeight="440"
-        Padding="48"
+        Padding="40"
         Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -21,7 +21,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid x:Name="TitleBarHost" Height="36" Margin="-48,-48,-48,8" Background="Transparent" />
+        <Grid x:Name="TitleBarHost" Height="36" Margin="-40,-40,-40,6" Background="Transparent" />
 
         <ScrollViewer
             x:Name="ContentScrollViewer"
@@ -33,7 +33,7 @@
             <Grid
                 x:Name="MainContentGrid"
                 Opacity="1"
-                ColumnSpacing="40">
+                ColumnSpacing="32">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -48,7 +48,7 @@
                     Grid.Column="0"
                     MaxWidth="430"
                     VerticalAlignment="Center"
-                    Spacing="18">
+                    Spacing="13">
                     <Grid
                         x:Name="BrandLogoHost"
                         Width="36"
@@ -88,7 +88,7 @@
                         </Border>
                     </Grid>
 
-                <StackPanel Spacing="10">
+                <StackPanel Spacing="8">
                     <TextBlock
                         x:Name="StepEyebrowText"
                         FontSize="13"
@@ -96,36 +96,36 @@
                         svc:Localized.Key="Onboarding.Step1.Eyebrow" />
                     <TextBlock
                         x:Name="StepTitleText"
-                        FontSize="34"
+                        FontSize="31"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                        LineHeight="40"
+                        LineHeight="36"
                         svc:Localized.Key="Onboarding.Step1.Title"
                         TextWrapping="Wrap" />
                     <TextBlock
                         x:Name="StepBodyText"
-                        MaxWidth="400"
-                        FontSize="15"
+                        MaxWidth="370"
+                        FontSize="14"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        LineHeight="24"
+                        LineHeight="21"
                         svc:Localized.Key="Onboarding.Step1.Body"
                         TextWrapping="WrapWholeWords" />
                 </StackPanel>
 
                 <StackPanel
                     x:Name="StepHintPanel"
-                    Spacing="8" />
+                    Spacing="6" />
 
                 <StackPanel
                     x:Name="StepOptionPanel"
-                    Margin="0,4,0,0"
-                    Spacing="10" />
+                    Margin="0,2,0,0"
+                    Spacing="8" />
                 </StackPanel>
 
                 <Grid
                     x:Name="DemoSceneHost"
                     Grid.Column="1"
-                    MinHeight="360"
+                    MinHeight="330"
                     VerticalAlignment="Center">
                     <Border
                         x:Name="DemoDesktop"
@@ -154,7 +154,7 @@
             x:Name="FooterNav"
             Grid.Row="2"
             Opacity="1"
-            Margin="0,32,0,0">
+            Margin="0,24,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -201,8 +201,8 @@
         <Grid
             x:Name="IntroOverlay"
             Grid.RowSpan="3"
-            Margin="-48"
-            Padding="48"
+            Margin="-40"
+            Padding="40"
             Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
             IsHitTestVisible="False">
             <StackPanel

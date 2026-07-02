@@ -4,13 +4,41 @@
 
 ### English
 
-- Changed the project license from MIT to GPL-3.0-only for future source code
-  and releases. Previously published MIT-licensed DeskBox versions remain under
-  the MIT License.
+- No unreleased changes yet.
+
+### 中文
+
+- 暂无未发布变更。
+
+## 1.2.0 - 2026-07-02
+
+### English
+
+- Changed the project license from MIT to GPL-3.0-only for future source code and releases. Previously published MIT-licensed DeskBox versions remain under the MIT License.
+- Completed the first large widget architecture refactor after 1.1.10: widgets now share a `WidgetShell`, content host, content factory, registry, session manager, window factory, and diagnostic path instead of keeping each widget type as a separate window implementation.
+- Introduced the feature-widget foundation used by Todo, Quick Capture, Music, and future content widgets, including content providers, persisted widget kinds, lifecycle handling, positioning, z-order/session behavior, and settings integration.
+- Added the Todo widget as a first-class desktop widget with local storage, task completion, filtering, inline editing, full-screen editing, custom due times, and coverage for store/view-model/content-adapter behavior.
+- Added the Music widget with Windows media session integration, playback controls, playback mode switching, system volume control, responsive waveform styles, compact-card layout, long-title marquee behavior, and optional album-color ambience.
+- Reworked Quick Capture on top of the newer content/widget infrastructure, with more consistent input and editing surfaces, safer recent-content refresh behavior, cached thumbnails for recent image previews, and reduced duplicate preview loading.
+- Unified widget chrome and editing details across file and feature widgets: title bar metrics, title styles, inline editors, full-screen editor surfaces, hover/pressed states, empty states, tooltips, action buttons, segmented controls, and light/dark icon behavior.
+- Reorganized Settings around the new architecture: feature-widget controls, appearance groups, file-widget display options, interaction/global hotkey controls, music rhythm options, Quick Capture preferences, and clearer localized labels.
+- Improved managed-storage and widget lifecycle maintenance, including safer cleanup/restore paths, default managed storage handling, session persistence, and diagnostics around widget windows.
+- Expanded automated coverage for the refactor with tests for content factories, widget registry/session/positioning, content window factory, Todo storage/view models, chrome mode resolution, feature-widget settings, storage cleanup, and Quick Capture thumbnail behavior.
+- Updated release metadata, installer versioning, documentation, and dependency notes for the 1.2.0 build. The installer continues to check for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64.
 
 ### 中文
 
 - 项目授权协议从 MIT 调整为 GPL-3.0-only，适用于后续源码和版本；此前已经按 MIT 发布的 DeskBox 旧版本仍保持 MIT 授权。
+- 完成 1.1.10 之后第一轮大规模格子架构重构：文件格子和功能格子开始共享 `WidgetShell`、内容宿主、内容工厂、注册表、会话管理、窗口工厂和诊断路径，不再让每类格子都维护一套孤立窗口实现。
+- 建立功能格子基础设施，用于承载待办、随记、音乐以及后续内容格子：包括内容 Provider、格子类型持久化、生命周期处理、位置管理、层级/会话行为和设置页集成。
+- 新增待办格子作为一等桌面格子：支持本地存储、完成状态、筛选、行内编辑、全屏编辑、自定义结束时间，并补充存储、ViewModel 和内容适配层测试。
+- 新增音乐格子：接入 Windows 媒体会话，支持播放控制、播放模式切换、系统音量控制、自适应频谱、紧凑卡片布局、长歌名循环滚动和可选封面氛围取色。
+- 将随记迁移到新的内容/格子基础上，统一输入和编辑体验，优化最近内容刷新，给最近图片生成缩略图缓存，并减少重复预览加载。
+- 统一文件格子和功能格子的外壳与编辑细节：标题栏尺寸、标题样式、行内编辑、全屏编辑层、悬停/按下状态、空状态、tooltip、操作按钮、分段控件以及浅色/深色图标行为。
+- 按新架构重新整理设置页：功能格子开关、外观分组、文件格子显示、交互/全局快捷键、音乐频谱、随记偏好和本地化标签都做了重新归类和清理。
+- 强化收纳目录与格子生命周期维护：包括更安全的清理/恢复路径、默认收纳路径处理、格子会话持久化，以及窗口诊断能力。
+- 扩展自动化测试覆盖：新增内容工厂、格子注册/会话/定位、内容窗口工厂、待办存储和 ViewModel、标题栏模式解析、功能格子设置、收纳清理和随记缩略图相关测试。
+- 更新 1.2.0 发布元数据、安装器版本、文档和依赖说明。安装器继续检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64，缺少时可引导安装。
 
 ## 1.1.10 - 2026-06-29
 

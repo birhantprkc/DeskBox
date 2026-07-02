@@ -1126,7 +1126,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         SettingsService.MusicRhythmStyleSoftWave,
         SettingsService.MusicRhythmStyleGlassSpectrum,
         SettingsService.MusicRhythmStyleDotPulse,
-        SettingsService.MusicRhythmStyleLineSpectrum
+        SettingsService.MusicRhythmStyleLineSpectrum,
+        SettingsService.MusicRhythmStyleStackedEqualizer
     ];
 
     public string[] AvailableMusicRhythmStyleDisplayNames => _cachedMusicRhythmStyleDisplayNames ??= AvailableMusicRhythmStyles.Select(GetMusicRhythmStyleDisplayName).ToArray();
@@ -1685,6 +1686,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SettingsService.MusicRhythmStyleGlassSpectrum => _localizationService.T("Settings.Music.RhythmStyle.GlassSpectrum"),
             SettingsService.MusicRhythmStyleDotPulse => _localizationService.T("Settings.Music.RhythmStyle.DotPulse"),
             SettingsService.MusicRhythmStyleLineSpectrum => _localizationService.T("Settings.Music.RhythmStyle.LineSpectrum"),
+            SettingsService.MusicRhythmStyleStackedEqualizer => _localizationService.T("Settings.Music.RhythmStyle.StackedEqualizer"),
             _ => _localizationService.T("Settings.Music.RhythmStyle.SoftWave")
         };
     }
