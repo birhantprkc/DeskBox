@@ -16,27 +16,30 @@ const navItems = [
 ];
 
 function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark" | null>(null);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const saved = localStorage.getItem("deskbox_theme") as "light" | "dark" | null;
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const nextTheme = saved ?? (prefersDark ? "dark" : "light");
-
-    requestAnimationFrame(() => {
-      setTheme(nextTheme);
-      document.documentElement.setAttribute("data-theme", nextTheme);
-    });
+    if (saved) {
+      setTheme(saved);
+      document.documentElement.setAttribute("data-theme", saved);
+    } else {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setTheme(prefersDark ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", prefersDark ? "dark" : "light");
+    }
   }, []);
 
   const toggle = () => {
-    const next = theme === "dark" ? "light" : "dark";
+    const next = theme === "light" ? "dark" : "light";
     setTheme(next);
     localStorage.setItem("deskbox_theme", next);
     document.documentElement.setAttribute("data-theme", next);
   };
 
-  if (!theme) return <div className="w-9 h-9" />;
+  if (!mounted) return <div className="w-9 h-9" />;
 
   return (
     <button

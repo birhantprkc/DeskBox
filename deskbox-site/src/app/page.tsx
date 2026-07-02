@@ -23,18 +23,6 @@ const MapIcon = () => (
   </svg>
 );
 
-const CheckIcon = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M19.5 4.5H4.5C3.67157 4.5 3 5.17157 3 6V19.5C3 20.3284 3.67157 21 4.5 21H19.5C20.3284 21 21 20.3284 21 19.5V6C21 5.17157 20.3284 4.5 19.5 4.5ZM10.6 16.2L6.9 12.5L8.15 11.25L10.6 13.7L16.15 8.15L17.4 9.4L10.6 16.2Z" fill="currentColor" opacity="0.9"/>
-  </svg>
-);
-
-const MusicIcon = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M18 3V14.5C18 16.43 16.21 18 14 18C11.79 18 10 16.43 10 14.5C10 12.57 11.79 11 14 11C14.73 11 15.42 11.17 16 11.48V7H8V17.5C8 19.43 6.21 21 4 21C1.79 21 0 19.43 0 17.5C0 15.57 1.79 14 4 14C4.73 14 5.42 14.17 6 14.48V3H18Z" fill="currentColor" opacity="0.9"/>
-  </svg>
-);
-
 function useGitHubStats() {
   const [stars, setStars] = useState(850);
   const [downloads, setDownloads] = useState(12000);
@@ -48,10 +36,8 @@ function useGitHubStats() {
       if (cached) {
         const { stars: s, downloads: d, ts } = JSON.parse(cached);
         if (Date.now() - ts < cacheTTL) {
-          requestAnimationFrame(() => {
-            setStars(s);
-            setDownloads(d);
-          });
+          setStars(s);
+          setDownloads(d);
           return;
         }
       }
@@ -175,36 +161,34 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
 }
 
 const scenarios = [
-  { Icon: FolderIcon, title: "文件收纳", desc: "把截图、下载内容、临时资料收进真实文件夹，桌面不再堆满图标。" },
-  { Icon: MapIcon, title: "常用目录", desc: "把已有项目文件夹映射成桌面格子，不移动原文件，打开和拖拽更直接。" },
-  { Icon: BookIcon, title: "随手记录", desc: "保存文本、链接、图片和最近复制内容，临时素材不用在剪贴板里来回找。" },
-  { Icon: CheckIcon, title: "桌面轻任务", desc: "把小待办贴在桌面边上，快速输入、勾选完成，也能设置自定义结束时间。" },
-  { Icon: MusicIcon, title: "音乐控制", desc: "在桌面格子里控制播放、切换模式、调系统音量，并显示自适应频谱。" },
+  { Icon: FolderIcon, title: "办公桌整理", desc: "把散落在桌面的文档、表格、快捷方式收进不同格子，需要时一键唤起。" },
+  { Icon: BookIcon, title: "学习资料管理", desc: "课程资料、笔记、参考文档按科目分格，不再翻文件夹找文件。" },
+  { Icon: MapIcon, title: "项目文件归档", desc: "把已有项目文件夹映射为桌面格子，不移动文件，原地管理。" },
 ];
 
 const workflowSteps = [
-  { step: "01", title: "下载安装", desc: "下载 DeskBox 1.2.0 安装包，缺少 .NET 8 或 Windows App Runtime 时安装器会提示安装。" },
-  { step: "02", title: "创建格子", desc: "创建收纳格子、映射已有文件夹，或开启随记、待办、音乐等功能格子。" },
-  { step: "03", title: "放入内容", desc: "拖入文件、保存临时文字和图片、添加轻待办，桌面上的零散内容有了固定位置。" },
-  { step: "04", title: "按需唤起", desc: "通过托盘或全局快捷键显示/隐藏格子，也可以按喜好调整主题、字号和标题样式。" },
+  { step: "01", title: "安装启动", desc: "下载安装包，双击运行。无需复杂配置，开箱即用。" },
+  { step: "02", title: "创建格子", desc: "右键桌面或按 F7，一键创建收纳格子。支持自定义大小和位置。" },
+  { step: "03", title: "拖入文件", desc: "把桌面文件直接拖进格子，按类型自动分类，也可以手动排序。" },
+  { step: "04", title: "随时唤起", desc: "F7 全局快捷键一键呼出，全屏应用下也能使用。拖拽内容到其他应用。" },
 ];
 
 const techHighlights = [
-  { icon: "⚡", title: "WinUI 3 原生", desc: "基于 WinUI 3 和 Windows App SDK，尽量贴近 Windows 11 的原生质感。" },
-  { icon: "🚀", title: ".NET 8 驱动", desc: "使用 .NET 8 构建，安装器会检测并安装所需运行时依赖。" },
-  { icon: "🧩", title: "格子架构重构", desc: "1.2.0 重构了共享外壳、内容宿主、注册表、会话和窗口工厂，后续扩展更稳。" },
-  { icon: "🎵", title: "系统媒体会话", desc: "音乐格子接入 Windows 媒体会话，支持播放控制、播放模式和系统音量。" },
-  { icon: "🖼️", title: "图片缩略图缓存", desc: "随记最近图片使用缩略图预览，减少大量图片场景下的卡顿和内存压力。" },
-  { icon: "🔓", title: "GPLv3 开源", desc: "从 1.2.0 起后续版本使用 GPL-3.0-only，个人用户继续免费开放使用。" },
+  { icon: "⚡", title: "WinUI 3 原生", desc: "基于最新 WinUI 3 框架，完美适配 Windows 11 Fluent Design，原生性能体验。" },
+  { icon: "🚀", title: ".NET 8 驱动", desc: "使用 .NET 8 构建，启动速度快，内存占用低，后台常驻不卡顿。" },
+  { icon: "🔓", title: "完全开源", desc: "MIT 协议开源，代码透明可审计。欢迎社区贡献，共同改进。" },
+  { icon: "🎨", title: "Fluent Design", desc: "遵循微软 Fluent Design 设计语言，圆角、透明、动效，与系统浑然一体。" },
+  { icon: "📦", title: "轻量无依赖", desc: "安装包仅 21 MB，运行时自动安装，不捆绑任何第三方软件。" },
+  { icon: "🔧", title: "自动修复", desc: "内置拖拽诊断工具，一键修复 Windows 10/11 常见的拖拽兼容性问题。" },
 ];
 
 const faqs = [
-  { question: "DeskBox 是免费的吗？", answer: "面向个人用户免费开放使用。1.2.0 起后续源码和版本使用 GPL-3.0-only；此前 MIT 版本仍保持原授权。" },
-  { question: "支持 Windows 10 吗？", answer: "目前主要推荐 Windows 11。Windows 10 不是完整验证目标，一些视觉效果、系统能力和窗口行为可能会打折。" },
-  { question: "安装后需要联网吗？", answer: "应用本身是本地工具。安装时如果缺少 .NET 8 Runtime 或 Windows App Runtime，安装器可以联网下载安装依赖。" },
-  { question: "文件放在格子里会被移动吗？", answer: "收纳格子会把文件移动到真实收纳文件夹；文件夹映射只展示已有目录，不移动原文件。" },
-  { question: "随记会上传剪贴板或图片吗？", answer: "不会。随记和最近复制内容都保存在本机；图片文字识别使用 Windows OCR 能力。" },
-  { question: "音乐格子能替代播放器吗？", answer: "不能。它只负责桌面上的顺手控制，依赖播放器对 Windows 系统媒体控制的支持。" },
+  { question: "DeskBox 是免费的吗？", answer: "完全免费，MIT 开源协议。你可以自由使用、修改和分发。" },
+  { question: "支持 Windows 10 吗？", answer: "支持。推荐 Windows 11 以获得最佳体验，但 Windows 10 (1809+) 也能正常运行。" },
+  { question: "安装后需要联网吗？", answer: "不需要。DeskBox 是纯本地应用，所有数据存储在你的电脑上，不会上传任何信息。" },
+  { question: "和腾讯桌面整理有什么区别？", answer: "DeskBox 完全开源免费，无广告无捆绑。使用原生 WinUI 3 框架，性能更好，界面更现代。" },
+  { question: "文件放在格子里会被移动吗？", answer: "收纳格子会移动文件，但文件夹映射功能不会。你可以选择适合自己的方式。" },
+  { question: "支持多显示器吗？", answer: "已在规划中，格子可以在多个显示器间自由移动。查看路线图了解详情。" },
 ];
 
 export default function Home() {
@@ -212,8 +196,8 @@ export default function Home() {
   const stats = [
     { value: downloads, suffix: "+", label: "累计下载" },
     { value: stars, suffix: "+", label: "GitHub Stars" },
-    { value: 5, suffix: "", label: "格子类型" },
-    { value: 23, suffix: " MB", label: "安装包大小" },
+    { value: 40, suffix: "+", label: "功能特性" },
+    { value: 21, suffix: " MB", label: "安装包大小" },
   ];
   return (
     <div className="min-h-screen">
@@ -227,7 +211,7 @@ export default function Home() {
               <span className="text-3xl font-semibold tracking-tight">DeskBox</span>
             </div>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-[1.05]">
-              <CharByChar text="把桌面琐事" delay={0.3} /><br />
+              <CharByChar text="把桌面文件" delay={0.3} /><br />
               <CharByChar text="收进格子里" delay={0.7} className="text-[var(--accent)]" />
             </h1>
             <motion.p
@@ -236,7 +220,7 @@ export default function Home() {
               transition={{ duration: 0.5, delay: 1.2 }}
               className="text-xl text-[var(--secondary)] mb-10 max-w-xl mx-auto leading-relaxed"
             >
-              DeskBox 1.2.0 是面向 Windows 11 的轻量桌面整理工具。用文件、随记、待办和音乐格子，把零散内容放回桌面边上。
+              Windows 11 桌面整理工具。创建格子收纳文件、映射文件夹、管理剪贴板。
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -253,8 +237,8 @@ export default function Home() {
               transition={{ duration: 0.5, delay: 1.6 }}
               className="text-sm text-[var(--secondary)] mt-6"
             >
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[var(--accent-light)] text-[var(--accent)] font-medium text-xs mr-2">v1.2.0</span>
-              Windows 11 推荐 · GPLv3 开源
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[var(--accent-light)] text-[var(--accent)] font-medium text-xs mr-2">v1.1.4</span>
+              Windows 11/10 · 免费开源
             </motion.p>
           </motion.div>
         </div>
@@ -399,16 +383,16 @@ export default function Home() {
         <div className="max-w-5xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold mb-3"><CharByChar text="核心功能" /></h2>
-            <p className="text-[var(--secondary)] text-lg">从文件收纳扩展到完整的桌面功能格子</p>
+            <p className="text-[var(--secondary)] text-lg">简洁高效，专注于桌面文件整理</p>
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-6">
             {[
-              { icon: "📦", title: "收纳格子", desc: "拖入文件后移动到真实收纳目录，桌面不再堆满图标" },
-              { icon: "📁", title: "文件夹映射", desc: "把已有目录展示到桌面，不移动原文件位置" },
-              { icon: "📋", title: "随记", desc: "保存文本、链接、截图和最近复制内容，图片预览更轻" },
-              { icon: "✅", title: "待办格子", desc: "快速输入轻任务，支持筛选、编辑和自定义结束时间" },
-              { icon: "🎵", title: "音乐格子", desc: "控制播放、切换播放模式、调整系统音量和显示频谱" },
-              { icon: "🎨", title: "外观设置", desc: "主题、透明度、文字大小、标题样式和封面氛围可调" },
+              { icon: "📦", title: "收纳格子", desc: "拖拽文件入格，支持排序、搜索、批量操作" },
+              { icon: "📁", title: "文件夹映射", desc: "将已有文件夹映射为格子，不移动文件" },
+              { icon: "📋", title: "随记", desc: "自动记录剪贴板，文本、链接、截图随时调用" },
+              { icon: "⌨️", title: "全局快捷键", desc: "F7 一键唤起，全屏应用下也能使用" },
+              { icon: "🎨", title: "外观定制", desc: "明暗主题、透明度、圆角、动画全部可调" },
+              { icon: "🔧", title: "拖拽诊断", desc: "一键修复 Win10/11 拖拽兼容性问题" },
             ].map((f, i) => (
               <motion.div
                 key={i}
@@ -456,8 +440,8 @@ export default function Home() {
         <div className="max-w-3xl mx-auto text-center">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
             <h2 className="text-3xl font-bold mb-3"><CharByChar text="免费下载" /></h2>
-            <p className="text-[var(--secondary)] mb-8">23.3 MB · Windows 11 推荐 · 运行时依赖自动安装</p>
-            <Link href="/download" className="fluent-button fluent-button-primary-shimmer text-lg px-10 py-4">下载 DeskBox v1.2.0</Link>
+            <p className="text-[var(--secondary)] mb-8">21 MB · Windows 11/10 · 运行时依赖自动安装</p>
+            <Link href="/download" className="fluent-button fluent-button-primary-shimmer text-lg px-10 py-4">下载 DeskBox v1.1.4</Link>
           </motion.div>
         </div>
       </section>

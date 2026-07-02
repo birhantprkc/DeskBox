@@ -8,7 +8,7 @@ const techStack = [
   { name: "WinUI 3", desc: "原生 UI 框架" },
   { name: ".NET 8", desc: "高性能运行时" },
   { name: "C#", desc: "开发语言" },
-  { name: "Windows App SDK", desc: "系统能力基础" },
+  { name: "AI 驱动", desc: "MiMo + Codex" },
 ];
 
 export default function AboutPage() {
@@ -18,7 +18,7 @@ export default function AboutPage() {
         {/* Hero */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center mb-20">
           <h1 className="text-4xl sm:text-5xl font-bold mb-4"><CharByChar text="关于 DeskBox" /></h1>
-          <p className="text-[var(--secondary)] text-lg max-w-2xl mx-auto">一个面向 Windows 11 的轻量桌面格子工具</p>
+          <p className="text-[var(--secondary)] text-lg max-w-2xl mx-auto">一个由产品经理发起、用 AI 构建的 Windows 桌面整理工具</p>
         </motion.div>
 
         {/* Origin Story - Full Width */}
@@ -36,9 +36,9 @@ export default function AboutPage() {
             <h2 className="text-2xl font-bold">为什么做这个</h2>
           </div>
           <div className="text-[var(--secondary)] space-y-4 text-[15px] leading-relaxed">
-            <p>Windows 发展了这么多年，桌面始终是用户最高频使用的界面。文件、截图、临时资料、待办和正在播放的音乐，经常都围绕桌面发生。</p>
-            <p>DeskBox 的目标不是替换桌面，也不是把桌面做成另一个复杂系统，而是在原生桌面上补一层更克制的整理能力。</p>
-            <p><strong className="text-[var(--foreground)]">1.2.0 之后，DeskBox 已经从文件收纳工具扩展成文件格子、随记、待办和音乐格子的桌面小组件体系。</strong></p>
+            <p>Windows 发展了这么多年，桌面始终是用户最高频使用的界面。文件一多，桌面就变成垃圾场——这是每个 Windows 用户都经历过的痛点。</p>
+            <p>微软从来没有认真解决过这个问题。市面上的整理工具要么太重，要么改变了原有的使用习惯。</p>
+            <p>于是我自己动手做了一个。<strong className="text-[var(--foreground)]">DeskBox 不会替换你的桌面，只是在上面加一层更好用的整理能力。</strong></p>
           </div>
         </motion.div>
 
@@ -58,8 +58,8 @@ export default function AboutPage() {
               <h2 className="text-xl font-bold">技术选择</h2>
             </div>
             <div className="text-[var(--secondary)] text-sm space-y-3 leading-relaxed">
-              <p>选择 <strong className="text-[var(--foreground)]">WinUI 3 + .NET 8 + Windows App SDK</strong>，是因为桌面工具应该尽量像系统的一部分，而不是一个外来的壳。</p>
-              <p>能使用 Windows 原生能力时，DeskBox 会优先使用原生能力，比如 Windows OCR、媒体会话、主题色、托盘和拖拽。</p>
+              <p>选择 <strong className="text-[var(--foreground)]">WinUI 3 + .NET 8</strong>，因为桌面工具就该像系统的一部分，而不是外挂。</p>
+              <p>圆角、透明、动画这些现代 UI 效果，同时保持极低的资源占用——这是 Electron 或其他跨平台方案做不到的。</p>
             </div>
             <div className="grid grid-cols-2 gap-3 mt-5">
               {techStack.map((t) => (
@@ -82,12 +82,12 @@ export default function AboutPage() {
               <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </div>
-            <h2 className="text-xl font-bold">关于系统支持</h2>
+              <h2 className="text-xl font-bold">关于 Win10</h2>
             </div>
             <div className="text-[var(--secondary)] text-sm space-y-3 leading-relaxed">
-              <p>DeskBox 目前主要推荐在 Windows 11 上使用。</p>
-              <p>Windows 10 不是完整验证目标，部分视觉效果、系统能力、拖拽和窗口行为可能会打折。</p>
-              <p>后续会继续观察兼容空间，但<strong className="text-[var(--foreground)]">不会为了兼容而牺牲 Windows 11 上的原生体验</strong>。</p>
+              <p>目前 DeskBox 在 Win10 上只能使用基础功能，外观定制暂时不可用。</p>
+              <p>原因是 WinUI 3 的部分 API 在 Win10 上不支持，强行适配会牺牲稳定性和性能。</p>
+              <p>后续会探索兼容方案，但<strong className="text-[var(--foreground)]">不会为了兼容而降低整体体验</strong>。</p>
             </div>
           </motion.div>
         </div>
@@ -114,7 +114,7 @@ export default function AboutPage() {
           <div className="mt-6 pt-6 border-t border-[var(--card-border)]">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="text-sm text-[var(--secondary)]">
-                <span className="font-medium text-[var(--foreground)]">开源协议：</span>GPL-3.0-only · 个人用户免费开放使用 · 旧版 MIT 授权不追溯
+                <span className="font-medium text-[var(--foreground)]">开源协议：</span>MIT · 完全免费 · 转载或二次开发请注明出处
               </div>
               <div className="flex gap-3">
                 <a href="https://github.com/Tianyu199509/DeskBox" target="_blank" rel="noopener noreferrer" className="fluent-button text-sm py-2 px-5 inline-flex items-center gap-2">

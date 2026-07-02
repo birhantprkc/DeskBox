@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { CharByChar } from "@/components/CharByChar";
 
 const versions = [
-  { version: "1.2.0", date: "2026-07-02", size: "23.3 MB" },
   { version: "1.1.10", date: "2026-06-29", size: "21.7 MB" },
   { version: "1.1.9", date: "2026-06-29", size: "21.7 MB" },
   { version: "1.1.8", date: "2026-06-29", size: "21.7 MB" },
@@ -29,23 +28,21 @@ export default function DownloadPage() {
       <div className="max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center mb-16">
           <h1 className="text-4xl font-bold mb-4"><CharByChar text="下载 DeskBox" /></h1>
-          <p className="text-[var(--secondary)]">免费开放给个人用户 · Windows 11 推荐</p>
+          <p className="text-[var(--secondary)]">免费开源 · Windows 11/10</p>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }} className="fluent-card text-center mb-12 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)]" />
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--accent-light)] text-[var(--accent)] text-sm font-medium mb-4">最新版本</div>
-          <h2 className="text-3xl font-bold mb-2">DeskBox v1.2.0</h2>
-          <p className="text-[var(--secondary)] mb-3">发布日期：2026-07-02 · 23.3 MB</p>
-          <p className="text-[var(--secondary)] text-xs mb-6 break-all">SHA256：CD46906468A11F03D17879E8FDEC3C4A67A539148B9F2F07BEC140CEDFB99F9F</p>
-          <a href="https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.0/DeskBox_Setup_1.2.0_x64.exe" className="fluent-button fluent-button-primary-shimmer text-lg px-8 py-3 inline-block">下载 x64 安装包</a>
+          <h2 className="text-3xl font-bold mb-2">DeskBox v1.1.10</h2>
+          <p className="text-[var(--secondary)] mb-6">发布日期：2026-06-29 · 21.7 MB</p>
+          <a href="https://github.com/Tianyu199509/DeskBox/releases/download/v1.1.10/DeskBox_Setup_1.1.10_x64.exe" className="fluent-button fluent-button-primary-shimmer text-lg px-8 py-3 inline-block">下载 x64 安装包</a>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="fluent-card mb-12">
           <h3 className="text-xl font-semibold mb-4">系统要求</h3>
           <ul className="space-y-3 text-[var(--secondary)]">
-            <li className="flex items-center gap-2"><svg className="w-4 h-4 text-emerald-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>Windows 11（推荐）</li>
+            <li className="flex items-center gap-2"><svg className="w-4 h-4 text-emerald-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>Windows 11（推荐）或 Windows 10</li>
             <li className="flex items-center gap-2"><svg className="w-4 h-4 text-emerald-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>.NET 8 Runtime x64（安装器自动下载）</li>
             <li className="flex items-center gap-2"><svg className="w-4 h-4 text-emerald-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>Windows App Runtime 2.1.3（安装器自动下载）</li>
-            <li className="flex items-center gap-2"><svg className="w-4 h-4 text-amber-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.19-1.458-1.516-2.625L8.485 2.495ZM10 5.25a.75.75 0 01.75.75v4a.75.75 0 01-1.5 0V6a.75.75 0 01.75-.75Zm0 8a1 1 0 100-2 1 1 0 000 2Z" clipRule="evenodd" /></svg>Windows 10 未完整验证，部分视觉和系统能力可能受限</li>
           </ul>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}>

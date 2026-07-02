@@ -13,7 +13,7 @@ export function Footer() {
                 <Image src="/deskbox-logo-static.svg" alt="DeskBox" width={28} height={28} />
                 <span className="font-semibold text-lg tracking-tight">DeskBox</span>
               </div>
-              <p className="text-[var(--secondary)] text-sm leading-relaxed">轻量级 Windows 11 桌面整理工具，用桌面格子收纳文件、记录随记、管理待办和控制音乐。</p>
+              <p className="text-[var(--secondary)] text-sm leading-relaxed">轻量级 Windows 11 桌面整理工具，用桌面格子帮你收纳文件、映射文件夹、管理剪贴板。</p>
             </div>
             <div>
               <h3 className="font-semibold mb-4 text-sm uppercase tracking-wider text-[var(--secondary)]">产品</h3>

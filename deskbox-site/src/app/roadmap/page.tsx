@@ -20,11 +20,11 @@ const phases: { phase: string; label: string; color: string; icon: React.ReactNo
       </svg>
     ),
     items: [
-      { title: "统一 WidgetShell", desc: "抽取通用外壳，新增格子只写内容", tag: "已完成" },
-      { title: "注册表 / 工厂", desc: "格子类型集中管理", tag: "已完成" },
-      { title: "随记迁移", desc: "迁移到新的内容格子体系", tag: "已完成" },
-      { title: "文件格子视觉收口", desc: "保持拖拽、框选和重命名稳定", tag: "已完成" },
-      { title: "会话状态管理", desc: "F7 / 托盘 / 置顶统一管理", tag: "已完成" },
+      { title: "统一 WidgetShell", desc: "抽取通用外壳，新增格子只写内容", tag: "进行中" },
+      { title: "注册表 / 工厂", desc: "格子类型集中管理" },
+      { title: "随记迁移", desc: "验证 Shell 架构" },
+      { title: "文件格子迁移", desc: "保持原有拖拽行为" },
+      { title: "会话状态管理", desc: "F7 / 托盘 / 置顶统一管理" },
     ],
   },
   {
@@ -37,11 +37,10 @@ const phases: { phase: string; label: string; color: string; icon: React.ReactNo
       </svg>
     ),
     items: [
-      { title: "待办格子", desc: "桌面轻任务和自定义结束时间", tag: "已完成" },
-      { title: "音乐格子", desc: "Windows 媒体会话和系统音量", tag: "已完成" },
-      { title: "随记图片优化", desc: "最近图片缩略图缓存", tag: "已完成" },
-      { title: "系统监控", desc: "CPU / 内存 / 网络轻量展示" },
       { title: "天气格子", desc: "定位 + 手动选城市" },
+      { title: "系统监控", desc: "CPU / 内存 / 网络" },
+      { title: "音乐控制", desc: "Windows 系统媒体会话" },
+      { title: "独立 Todo", desc: "不并入随记" },
       { title: "标签系统", desc: "内部索引，不写入文件" },
     ],
   },
