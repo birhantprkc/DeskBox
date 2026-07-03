@@ -1,8 +1,8 @@
 # DeskBox Current Architecture
 
-Last updated: 2026-06-30
+Last updated: 2026-07-03
 
-This document describes the current architecture after the phase-1 widget foundation work. It is intended as the short, current-state handoff for future maintenance. Historical notes remain in the other architecture documents.
+This document describes the current architecture after the 1.2.0 widget foundation work. It is intended as the short, current-state handoff for future maintenance. Historical plans and checkpoints live under the archive folders.
 
 ## Current Goal
 
@@ -12,7 +12,7 @@ The current rule is:
 
 - Reuse shared shell, content, animation, menu, settings, and lifecycle helpers where stable.
 - Keep high-risk legacy behavior in place until it can be migrated in small steps.
-- Do not add new large widget features until the shared foundation is stable enough to avoid copying logic.
+- New feature widgets should use the shared content-window path unless they have a proven reason to own a dedicated host.
 
 ## Widget Types
 
@@ -22,13 +22,13 @@ Current production widget categories:
 
 - `File`: file organizer / mapped folder widgets.
 - `QuickCapture`: the note and clipboard widget, still using a dedicated window.
-- `Todo`: first content-type feature widget using `ContentWidgetWindow`.
+- `Todo`: content-type feature widget using `ContentWidgetWindow`.
+- `Music`: content-type feature widget using `ContentWidgetWindow` and Windows media sessions.
 
 Planned placeholder kinds:
 
 - `Weather`
 - `Tags`
-- `Music`
 - `SystemMonitor`
 
 Legacy value:
@@ -67,7 +67,7 @@ Core widget foundation:
 Window creation routing:
 
 - `WidgetWindowProvider` inside `WidgetManager`: maps a creatable `WidgetKind` to the correct host-window creation path.
-- Current providers: File -> `WidgetWindow`, QuickCapture -> `QuickCaptureWidgetWindow`, Todo -> `ContentWidgetWindow`.
+- Current providers: File -> `WidgetWindow`, QuickCapture -> `QuickCaptureWidgetWindow`, Todo/Music -> `ContentWidgetWindow`.
 - The provider layer is intentionally thin. It centralizes dispatch but does not move host-specific implementation bodies yet.
 
 Shared shell and window helpers:
@@ -83,7 +83,7 @@ Current windows:
 
 - `src/DeskBox/Views/WidgetWindow.xaml.cs`: file widgets.
 - `src/DeskBox/Views/QuickCaptureWidgetWindow.xaml.cs`: QuickCapture / note widget.
-- `src/DeskBox/Views/ContentWidgetWindow.xaml.cs`: Todo and future content widgets.
+- `src/DeskBox/Views/ContentWidgetWindow.xaml.cs`: Todo, Music, and future content widgets.
 
 Current Todo implementation:
 
@@ -94,14 +94,25 @@ Current Todo implementation:
 - `src/DeskBox/Services/TodoWidgetStore.cs`
 - `src/DeskBox/Services/TodoWidgetContentProvider.cs`
 
+Current Music implementation:
+
+- `src/DeskBox/Controls/WidgetContents/MusicWidgetContent.xaml`
+- `src/DeskBox/Controls/WidgetContents/MusicWidgetContent.xaml.cs`
+- `src/DeskBox/Controls/WidgetContents/MusicWidgetContentAdapter.cs`
+- `src/DeskBox/ViewModels/MusicWidgetViewModel.cs`
+- `src/DeskBox/ViewModels/MusicBarViewModel.cs`
+- `src/DeskBox/Services/MusicSessionService.cs`
+- `src/DeskBox/Services/MusicVolumeService.cs`
+- `src/DeskBox/Services/MusicWidgetContentProvider.cs`
+
 ## WidgetRegistry
 
 `WidgetRegistry` answers whether a kind is known, implemented, creatable, and available in the current session.
 
 Current behavior:
 
-- `File`, `QuickCapture`, and `Todo` are creatable/implemented.
-- `Weather`, `Tags`, `Music`, and `SystemMonitor` are known but not user-creatable.
+- `File`, `QuickCapture`, `Todo`, and `Music` are creatable/implemented.
+- `Weather`, `Tags`, and `SystemMonitor` are known but not user-creatable.
 - Feature widget availability is checked through `FeatureWidgetSettings`.
 
 Do not use ad hoc `if` checks in new UI entry points when `WidgetRegistry` can answer the question.
@@ -133,6 +144,7 @@ Current descriptor entry points:
 Current providers:
 
 - `TodoWidgetContentProvider`: creates real Todo content.
+- `MusicWidgetContentProvider`: creates real Music content.
 - `PlaceholderWidgetContentProvider`: creates placeholder content for planned kinds.
 
 Current contract:
@@ -194,12 +206,12 @@ Current shared pieces used by QuickCapture:
 Current production user:
 
 - Todo
+- Music
 
 Future likely users:
 
 - Weather
 - SystemMonitor
-- Music
 - Tags, if it is implemented as a content widget
 
 Content widgets should prefer this host instead of adding a new dedicated window.
@@ -289,13 +301,14 @@ Current feature kinds:
 
 - `QuickCapture`
 - `Todo`
+- `Music`
 
 Settings are stored in:
 
 - generic `FeatureWidgetEnabledStates`
 - legacy mirrored fields: `QuickCaptureEnabled`, `TodoEnabled`
 
-The legacy fields are kept for compatibility. Do not add new standalone fields such as `WeatherEnabled` or `MusicEnabled`; use the feature state bag instead.
+The legacy fields are kept for compatibility. Do not add new standalone fields such as `WeatherEnabled`, `TagsEnabled`, or `SystemMonitorEnabled`; use the feature state bag instead.
 
 ## WidgetManager
 
@@ -327,8 +340,8 @@ Current state:
 
 - The feature widget list is generated from `SettingsViewModel.FeatureWidgetEntries`.
 - Feature entries are derived from `WidgetContentFactory.GetFeatureWidgetEntryDescriptors()`.
-- Available feature widgets, such as QuickCapture and Todo, show toggles.
-- Planned feature widgets, such as Weather, Tags, Music, and SystemMonitor, are shown as descriptor-driven read-only rows with status text instead of disabled hand-written UI.
+- Available feature widgets, such as QuickCapture, Todo, and Music, show toggles.
+- Planned feature widgets, such as Weather, Tags, and SystemMonitor, are shown as descriptor-driven read-only rows with status text instead of disabled hand-written UI.
 - Toggle state flows through `FeatureWidgetSettings` and `WidgetManager.SetFeatureWidgetEnabledAsync(...)`.
 
 Global appearance settings should contain settings shared by all widgets:
@@ -351,7 +364,7 @@ File-widget display settings should contain only file-widget display details:
 - extension display
 - list details
 
-Do not place Todo, Weather, Tags, Music, or SystemMonitor business settings inside file-widget display settings.
+Do not place Todo, QuickCapture, Music, Weather, Tags, or SystemMonitor business settings inside file-widget display settings.
 
 ## Menus
 
@@ -381,6 +394,12 @@ Todo data:
 
 - `%LocalAppData%/DeskBox/data/widgets/{widgetId}/todo.json`
 
+QuickCapture data:
+
+- `%LocalAppData%/DeskBox/data/quick-capture/quick-capture.json`
+- `%LocalAppData%/DeskBox/data/quick-capture/images/...`
+- `%LocalAppData%/DeskBox/data/quick-capture/thumbnails/...`
+
 Uninstalling the app may remove binaries but should not be assumed to remove `%LocalAppData%/DeskBox`. This is user data.
 
 ## Adding A New Content Widget
@@ -404,7 +423,7 @@ Recommended sequence:
 
 ## Suggested Feature Order
 
-Lowest-risk next feature widget:
+Lowest-risk next feature widget after 1.2.0:
 
 - `SystemMonitor` with CPU, memory, and network only.
 
@@ -419,7 +438,6 @@ Then:
 
 - `Weather`: location permission plus manual city selection.
 - `Tags`: internal DeskBox index only, no file metadata writes.
-- `Music`: Windows system media session only.
 
 Last:
 
@@ -460,7 +478,8 @@ Result:
 
 After changes to Shell, windows, manager, settings, or menus, test at least:
 
-- App starts and restores File, QuickCapture, and Todo widgets.
+- App starts and restores File, QuickCapture, Todo, and Music widgets.
+- Music widget restores, reads Windows media session state, and keeps system volume control usable.
 - F7 shows/hides all expected widgets.
 - Tray left-click behavior is correct.
 - Tray right-click menu font is correct.

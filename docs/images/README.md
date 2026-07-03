@@ -13,7 +13,7 @@ archive/                     Older screenshots kept for reference
 
 ## Naming Rules
 
-- Use lowercase kebab-case: `settings-general.png`, `onboarding-step-1.png`.
+- Use lowercase kebab-case: `settings-general-1-2.png`, `todo-widget.png`.
 - Avoid spaces, dates, temporary capture names, and non-ASCII characters in file or folder names.
 - Put localized screenshots under `screenshots/zh-cn/` or `screenshots/en-us/`.
 - Keep product-wide assets under `brand/`.
@@ -22,10 +22,14 @@ archive/                     Older screenshots kept for reference
 ## Current Examples
 
 ```text
-brand/product-cover-1280x720.png
+brand/product-cover-zh-cn-1280x720.png
+brand/product-cover-en-us-1280x720.png
 brand/logo-200.png
-screenshots/zh-cn/widget-light.png
-screenshots/zh-cn/settings-storage.png
-screenshots/en-us/settings-general.png
-screenshots/en-us/onboarding-step-1.png
+screenshots/zh-cn/desktop-light.png
+screenshots/zh-cn/todo-widget.png
+screenshots/zh-cn/music-widget.png
+screenshots/zh-cn/settings-general-1-2.png
+screenshots/en-us/desktop-light.png
+screenshots/en-us/file-widget.png
+screenshots/en-us/settings-feature-widgets-1-2.png
 ```

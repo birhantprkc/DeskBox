@@ -42,3 +42,7 @@ deskbox-site/out/
 
 # Local backup patches
 backups/
+
+# Local WeChat article drafts
+docs/wechat/*.md
+docs/wechat/*_wechat.html
