@@ -15,20 +15,19 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.2.0
+Current release: 1.2.1
 
-- [DeskBox_Setup_1.2.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.0/DeskBox_Setup_1.2.0_x64.exe)
+- [DeskBox_Setup_1.2.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.1/DeskBox_Setup_1.2.1_x64.exe)
 
 The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.2.0
+## What's New In 1.2.1
 
-- Rebuilt the widget architecture around shared shell, content host, content factory, registry, session, positioning, diagnostics, and window-factory services.
-- Added the feature-widget foundation for Todo, Quick Capture, Music, and future content widgets.
-- Added the Todo widget with local task storage, completion state, filters, inline editing, full-screen editing, and custom due times.
-- Added the Music widget with Windows media session integration, playback controls, playback mode switching, system volume control, responsive waveform styles, compact layout, and optional album-color ambience.
-- Migrated Quick Capture onto the newer widget/content infrastructure and added cached thumbnails for recent image previews.
-- Reorganized Settings around the new architecture and expanded automated tests for widget factories, registry/session/positioning, Todo, storage cleanup, and Quick Capture image handling.
+- Improved widget positioning across monitor changes, DPI changes, external display plug/unplug, and 1080p-to-4K display swaps.
+- Added configurable widget title icons for desktop widgets: color, filled mono, line mono, hidden, and localized text-label modes. Color is the default for new installs and reset settings.
+- Added title-style selection to the file widget blank-area context menu, so file widgets can be adjusted without opening the title-bar menu.
+- Refined Settings defaults and reset behavior so new installs and restored preferences now use the same animation and title-icon defaults.
+- Cleaned up Quick Capture default-view normalization and expanded tests for settings defaults and monitor-aware widget positioning.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -127,7 +126,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.2.0_x64.exe
+Output\DeskBox_Setup_1.2.1_x64.exe
 ```
 
 ## Project Structure

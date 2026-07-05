@@ -15,20 +15,19 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.2.0
+当前版本：1.2.1
 
-- [DeskBox_Setup_1.2.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.0/DeskBox_Setup_1.2.0_x64.exe)
+- [DeskBox_Setup_1.2.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.1/DeskBox_Setup_1.2.1_x64.exe)
 
 安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
 ## 最新更新
 
-- 重构格子架构：文件格子和功能格子开始共享外壳、内容宿主、内容工厂、注册表、会话、定位、诊断和窗口工厂等基础服务。
-- 建立功能格子基础设施，用于承载待办、随记、音乐以及后续更多内容格子。
-- 新增待办格子：支持本地任务存储、完成状态、筛选、行内编辑、全屏编辑和自定义结束时间。
-- 新增音乐格子：接入 Windows 媒体会话，支持播放控制、播放模式切换、系统音量控制、自适应频谱、紧凑布局和可选封面氛围取色。
-- 随记迁移到新的格子/内容体系，并为最近图片预览增加缩略图缓存，减少图片较多时的卡顿和内存压力。
-- 按新架构重新整理设置页，并扩展格子工厂、注册/会话/定位、待办、收纳清理和随记图片处理相关测试。
+- 优化多屏和 DPI 场景下的格子定位：插拔外接显示器、切换缩放、1080p 更换 4K 显示器时，格子会按当前屏幕重新恢复到可见位置。
+- 新增桌面格子标题图标模式：彩色、面性单色、线性单色、隐藏和多语言文字标签。新安装和恢复默认设置都默认使用彩色图标。
+- 文件格子空白区域右键菜单新增标题样式选择，不需要只依赖标题栏菜单调整。
+- 统一新安装默认值和恢复默认设置：动效、标题图标等外观偏好保持一致。
+- 整理随记默认视图归一化逻辑，并补充设置默认值、多屏定位相关自动化测试。
 
 完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -125,7 +124,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.2.0_x64.exe
+Output\DeskBox_Setup_1.2.1_x64.exe
 ```
 
 ## 项目结构

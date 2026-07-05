@@ -10,6 +10,28 @@
 
 - 暂无未发布变更。
 
+## 1.2.1 - 2026-07-05
+
+### English
+
+- Improved monitor-aware widget positioning for display topology changes, DPI changes, external display plug/unplug, and 1080p-to-4K display swaps. Visible widgets now restore against the current monitor work area, while hidden widgets are rechecked before being shown.
+- Added configurable desktop widget title icons with color, filled mono, line mono, hidden, and localized text-label modes. Color icons are now the default for both new installs and restored default preferences.
+- Added title-style selection to the file widget blank-area context menu, matching the existing title-bar menu behavior.
+- Refined Settings organization by moving the widget title icon preference under Appearance -> Window appearance details.
+- Aligned new-user defaults, reset defaults, and invalid-value fallbacks for animation and title-icon preferences. The default widget animation is now consistently `SlideFade`.
+- Moved Quick Capture default-view normalization into the Quick Capture settings normalization path.
+- Expanded automated coverage for settings defaults, widget title icon defaults, Quick Capture default-view normalization, and monitor-aware widget positioning.
+
+### 中文
+
+- 优化多屏和 DPI 场景下的格子定位：显示器拓扑变化、缩放变化、外接屏插拔、1080p 更换 4K 显示器时，格子会基于当前屏幕工作区重新恢复；隐藏格子在重新显示前也会重新校验位置。
+- 新增桌面格子标题图标配置，支持彩色、面性单色、线性单色、隐藏和多语言文字标签模式。新安装和恢复默认设置都默认使用彩色图标。
+- 文件格子空白区域右键菜单新增标题样式选择，和标题栏菜单使用同一套行为。
+- 设置页继续整理：将格子标题图标偏好收进「外观 -> 窗口外观细节」。
+- 对齐新用户默认值、恢复默认值和无效值兜底逻辑：动效和标题图标默认值保持一致，默认格子动效统一为 `SlideFade`。
+- 将随记默认视图归一化逻辑挪回随记设置归一化路径，避免后续维护混淆。
+- 扩展自动化测试覆盖：设置默认值、格子标题图标默认值、随记默认视图归一化，以及多屏感知的格子定位。
+
 ## 1.2.0 - 2026-07-02
 
 ### English

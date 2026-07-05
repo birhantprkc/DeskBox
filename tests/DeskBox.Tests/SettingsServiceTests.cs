@@ -282,6 +282,58 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.False(service.Settings.Widgets[1].Metadata.ContainsKey(WidgetChromeModeNames.MetadataKey));
     }
 
+    [Fact]
+    public async Task LoadAsync_NormalizesWidgetTitleIconMode()
+    {
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            """
+            {
+              "widgetTitleIconMode": "Badge"
+            }
+            """);
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(SettingsService.WidgetTitleIconModeColor, service.Settings.WidgetTitleIconMode);
+    }
+
+    [Fact]
+    public void ApplyDefaultPreferences_MatchesNewUserAppearanceDefaults()
+    {
+        var newUserDefaults = new AppSettings();
+        var restoredDefaults = new AppSettings
+        {
+            WidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade,
+            WidgetTitleIconMode = SettingsService.WidgetTitleIconModeHidden
+        };
+
+        SettingsService.ApplyDefaultPreferences(restoredDefaults);
+
+        Assert.Equal(SettingsService.WidgetAnimationEffectSlideFade, newUserDefaults.WidgetAnimationEffect);
+        Assert.Equal(newUserDefaults.WidgetAnimationEffect, restoredDefaults.WidgetAnimationEffect);
+        Assert.Equal(SettingsService.WidgetTitleIconModeColor, newUserDefaults.WidgetTitleIconMode);
+        Assert.Equal(newUserDefaults.WidgetTitleIconMode, restoredDefaults.WidgetTitleIconMode);
+    }
+
+    [Fact]
+    public async Task LoadAsync_NormalizesQuickCaptureDefaultView()
+    {
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            """
+            {
+              "quickCaptureDefaultView": "Timeline"
+            }
+            """);
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(SettingsService.QuickCaptureDefaultViewRecords, service.Settings.QuickCaptureDefaultView);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempRoot))

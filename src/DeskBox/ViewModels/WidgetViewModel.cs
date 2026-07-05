@@ -42,6 +42,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private string? _mappedFolderPath;
     private double _widgetOpacity;
     private string _iconGlyph = string.Empty;
+    private string _titleIconKind = WidgetTitleIconKindNames.ManagedStorage;
     private Visibility _iconViewVisibility;
     private Visibility _listViewVisibility;
     private Visibility _loadingVisibility;
@@ -125,6 +126,12 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     {
         get => _iconGlyph;
         set => SetProperty(ref _iconGlyph, value);
+    }
+
+    public string TitleIconKind
+    {
+        get => _titleIconKind;
+        set => SetProperty(ref _titleIconKind, value);
     }
 
     public Visibility IconViewVisibility
@@ -354,6 +361,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         bool isManagedStorage = FollowsDefaultStoragePath;
 
         IconGlyph = isManagedStorage ? "\uE8B7" : "\uE71B";
+        TitleIconKind = WidgetTitleIconKindNames.FromFileWidget(isManagedStorage);
         TopAddButtonVisibility = Visibility.Visible;
         IconViewVisibility = ViewMode == ViewMode.Icon ? Visibility.Visible : Visibility.Collapsed;
         ListViewVisibility = ViewMode == ViewMode.List ? Visibility.Visible : Visibility.Collapsed;

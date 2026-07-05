@@ -53,7 +53,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private Grid TitleBarGrid => QuickCaptureShell.TitleBar;
     private Border BackgroundPlate => QuickCaptureShell.BackgroundSurface;
     private Border HeaderDivider => QuickCaptureShell.Divider;
-    private FontIcon TitleIcon => QuickCaptureShell.TitleIconElement;
+    private WidgetTitleIcon TitleIcon => QuickCaptureShell.TitleIconElement;
     private TextBlock TitleText => QuickCaptureShell.TitleTextElement;
     private StackPanel RightActionButtons => QuickCaptureShell.RightActionButtonHost;
     private Button MoreButton => QuickCaptureShell.MoreActionButton;
@@ -81,6 +81,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private bool _hasMovedTitleBarDrag;
     private bool _focusRootAfterDragClick;
     private bool _isResizing;
+    private bool _isApplyingBounds;
     private string _resizeDirection = string.Empty;
     private Win32Helper.POINT _initialCursorPt;
     private Windows.Graphics.PointInt32 _initialWindowPos;
@@ -101,6 +102,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private long _statusToastGeneration;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _topMostSafetyTimer;
+    private WidgetDisplayChangeWatcher? _displayChangeWatcher;
     private DateTime _lastElevateForInteractionUtc = DateTime.MinValue;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;
     private MenuFlyout? _pendingDeleteConfirmFlyout;
@@ -135,6 +137,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _chromeModeResolver = new WidgetChromeModeResolver(settingsService);
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
+        QuickCaptureShell.TitleGlyph = "\uE70F";
+        QuickCaptureShell.TitleIconKind = WidgetTitleIconKindNames.QuickCapture;
         QuickCaptureShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
 
         _hWnd = WindowNative.GetWindowHandle(this);
@@ -516,6 +520,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         Activated += QuickCaptureWidgetWindow_Activated;
 
         _appWindow.Changed += AppWindow_Changed;
+        _displayChangeWatcher = new WidgetDisplayChangeWatcher(_hWnd, DispatcherQueue, RestoreBoundsAfterDisplayChange);
 
         foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
         {
@@ -540,6 +545,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             _localizationService.LanguageChanged -= OnLanguageChanged;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
             _appWindow.Changed -= AppWindow_Changed;
+            _displayChangeWatcher?.Dispose();
+            _displayChangeWatcher = null;
             _autoRestoreTimer?.Stop();
             _autoRestoreTimer = null;
             _topMostSafetyTimer?.Stop();
@@ -560,6 +567,52 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
                 }
             }
         };
+    }
+
+    public void RestoreBoundsForCurrentTopology()
+    {
+        _ = TryRestoreBoundsForCurrentTopology(allowHidden: true);
+    }
+
+    private bool TryRestoreBoundsForCurrentTopology(bool allowHidden)
+    {
+        if (_isClosing ||
+            _isHideAnimationRunning)
+        {
+            return true;
+        }
+
+        if (!allowHidden && !Visible)
+        {
+            return true;
+        }
+
+        if (
+            _isDragging ||
+            _isResizing ||
+            _trayAnimation.IsApplyingBounds)
+        {
+            return false;
+        }
+
+        var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(ViewModel.Config);
+        var position = _appWindow.Position;
+        var size = _appWindow.Size;
+        if (position.X == bounds.X &&
+            position.Y == bounds.Y &&
+            size.Width == bounds.Width &&
+            size.Height == bounds.Height)
+        {
+            return true;
+        }
+
+        ApplyWindowBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, persist: false, updateConfig: false);
+        return true;
+    }
+
+    private bool RestoreBoundsAfterDisplayChange()
+    {
+        return TryRestoreBoundsForCurrentTopology(allowHidden: false);
     }
 
     private void ApplyLocalizedText()
@@ -596,7 +649,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (_trayAnimation.IsApplyingBounds)
+        if (_isApplyingBounds || _trayAnimation.IsApplyingBounds || (!_isDragging && !_isResizing))
         {
             return;
         }
@@ -605,7 +658,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         {
             var pos = _appWindow.Position;
             var size = _appWindow.Size;
-            ViewModel.UpdateBounds(pos.X, pos.Y, size.Width, size.Height, persist: false);
+            UpdateConfigBoundsFromPhysical(pos.X, pos.Y, size.Width, size.Height, persist: false);
         }
     }
 
@@ -2773,7 +2826,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         var pos = _appWindow.Position;
         var size = _appWindow.Size;
         CapturePositionAnchor(pos.X, pos.Y, size.Width, size.Height);
-        ViewModel.UpdateBounds(pos.X, pos.Y, size.Width, size.Height, persist: true);
+        UpdateConfigBoundsFromPhysical(pos.X, pos.Y, size.Width, size.Height, persist: true);
         if (!hasMoved && _focusRootAfterDragClick)
         {
             RootGrid.Focus(FocusState.Programmatic);
@@ -2822,26 +2875,31 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         int newHeight = _initialWindowSize.Height;
         int newX = _initialWindowPos.X;
         int newY = _initialWindowPos.Y;
+        var minSize = GetPhysicalMinimumWindowSize(
+            _initialWindowPos.X,
+            _initialWindowPos.Y,
+            _initialWindowSize.Width,
+            _initialWindowSize.Height);
 
         if (_resizeDirection.Contains("Right", StringComparison.Ordinal))
         {
-            newWidth = Math.Max(MinWidth, _initialWindowSize.Width + deltaX);
+            newWidth = Math.Max(minSize.Width, _initialWindowSize.Width + deltaX);
         }
         else if (_resizeDirection.Contains("Left", StringComparison.Ordinal))
         {
             int rightEdge = _initialWindowPos.X + _initialWindowSize.Width;
-            newWidth = Math.Max(MinWidth, _initialWindowSize.Width - deltaX);
+            newWidth = Math.Max(minSize.Width, _initialWindowSize.Width - deltaX);
             newX = rightEdge - newWidth;
         }
 
         if (_resizeDirection.Contains("Bottom", StringComparison.Ordinal))
         {
-            newHeight = Math.Max(MinHeight, _initialWindowSize.Height + deltaY);
+            newHeight = Math.Max(minSize.Height, _initialWindowSize.Height + deltaY);
         }
         else if (_resizeDirection.Contains("Top", StringComparison.Ordinal))
         {
             int bottomEdge = _initialWindowPos.Y + _initialWindowSize.Height;
-            newHeight = Math.Max(MinHeight, _initialWindowSize.Height - deltaY);
+            newHeight = Math.Max(minSize.Height, _initialWindowSize.Height - deltaY);
             newY = bottomEdge - newHeight;
         }
 
@@ -2861,7 +2919,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         var pos = _appWindow.Position;
         var size = _appWindow.Size;
         CapturePositionAnchor(pos.X, pos.Y, size.Width, size.Height);
-        ViewModel.UpdateBounds(pos.X, pos.Y, size.Width, size.Height, persist: true);
+        UpdateConfigBoundsFromPhysical(pos.X, pos.Y, size.Width, size.Height, persist: true);
         e.Handled = true;
     }
 
@@ -3026,14 +3084,39 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _topMostSafetyTimer.Start();
     }
 
-    private void ApplyWindowBounds(int x, int y, int width, int height, bool persist)
+    private void ApplyWindowBounds(int x, int y, int width, int height, bool persist, bool updateConfig = true)
     {
-        _appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, width, height));
-        ViewModel.UpdateBounds(x, y, width, height, persist: false);
+        var minSize = GetPhysicalMinimumWindowSize(x, y, width, height);
+        width = Math.Max(minSize.Width, width);
+        height = Math.Max(minSize.Height, height);
+
+        _isApplyingBounds = true;
+        try
+        {
+            _appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, width, height));
+        }
+        finally
+        {
+            _isApplyingBounds = false;
+        }
+
         if (persist)
         {
-            ViewModel.UpdateBounds(x, y, width, height, persist: true);
+            CapturePositionAnchor(x, y, width, height);
+            UpdateConfigBoundsFromPhysical(x, y, width, height, persist: true);
+            return;
         }
+
+        if (updateConfig)
+        {
+            UpdateConfigBoundsFromPhysical(x, y, width, height, persist: false);
+        }
+    }
+
+    private Windows.Graphics.SizeInt32 GetPhysicalMinimumWindowSize(int x, int y, int width, int height)
+    {
+        return WidgetPositioningService.GetPhysicalMinimumSizeForBounds(
+            new Windows.Graphics.RectInt32(x, y, Math.Max(1, width), Math.Max(1, height)));
     }
 
     private void ShowConfirmMenu(FrameworkElement anchor, string title, string actionText, Func<Task> confirmedAction)
@@ -3060,7 +3143,19 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     {
         var bounds = new Windows.Graphics.RectInt32(x, y, width, height);
         var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        ViewModel.Config.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
         WidgetPositioningService.CaptureAnchor(ViewModel.Config, bounds, workArea);
+    }
+
+    private void UpdateConfigBoundsFromPhysical(int x, int y, int width, int height, bool persist)
+    {
+        var bounds = new Windows.Graphics.RectInt32(x, y, width, height);
+        var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        WidgetPositioningService.UpdateConfigFromPhysicalBounds(ViewModel.Config, bounds, workArea);
+        if (persist)
+        {
+            _settingsService.UpdateWidget(ViewModel.Config, notifySubscribers: false);
+        }
     }
 
     private void ApplyWindowCornerPreference()
@@ -3232,7 +3327,9 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         BackgroundPlate.Background = new SolidColorBrush(surfaceColor);
         HeaderDivider.Background = new SolidColorBrush(dividerColor);
         BackgroundPlate.BorderBrush = new SolidColorBrush(borderColor);
-        TitleIcon.Foreground = new SolidColorBrush(iconForeground);
+        QuickCaptureShell.TitleIconAccentColor = iconForeground;
+        QuickCaptureShell.TitleIconKind = WidgetTitleIconKindNames.QuickCapture;
+        QuickCaptureShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;
         EmptyStateIcon.Foreground = new SolidColorBrush(secondaryForeground);
         ApplySearchVisualStyle(isDark, accentColor);
         ApplyEditOverlayStyle(isDark, accentColor);
@@ -3292,7 +3389,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         QuickCaptureShell.ChromeMode = chromeMode;
         QuickCaptureShell.SetTitleBarPadding(WidgetTitleBarMetricsCalculator.CreateOuterPadding(chromeMode));
-        TitleIcon.FontSize = metrics.TitleIconSize;
+        TitleIcon.IconSize = metrics.TitleIconSize;
         TitleText.FontSize = metrics.TitleTextSize;
 
         WidgetTitleBarMetricsCalculator.ApplyActionButton(MoreButton, metrics);

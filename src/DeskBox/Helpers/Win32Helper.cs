@@ -724,6 +724,20 @@ public static partial class Win32Helper
         public uint dwFlags;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFOEX
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string szDevice;
+    }
+
+    public readonly record struct MonitorWorkAreaInfo(RECT Monitor, RECT WorkArea, string DeviceName);
+
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
@@ -733,9 +747,25 @@ public static partial class Win32Helper
     [LibraryImport("user32.dll")]
     public static partial IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
 
+    private enum MonitorDpiType
+    {
+        EffectiveDpi = 0
+    }
+
+    [LibraryImport("shcore.dll")]
+    private static partial int GetDpiForMonitor(
+        IntPtr hmonitor,
+        MonitorDpiType dpiType,
+        out uint dpiX,
+        out uint dpiY);
+
     [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfoEx(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
     public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
 
@@ -779,21 +809,76 @@ public static partial class Win32Helper
         return true;
     }
 
+    public static double GetDpiScaleForPoint(int x, int y)
+    {
+        var point = new POINT
+        {
+            X = x,
+            Y = y
+        };
+        IntPtr handle = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+        if (handle == IntPtr.Zero)
+        {
+            return 1.0;
+        }
+
+        try
+        {
+            int hr = GetDpiForMonitor(handle, MonitorDpiType.EffectiveDpi, out uint dpiX, out _);
+            return hr == 0 && dpiX > 0
+                ? dpiX / 96.0
+                : 1.0;
+        }
+        catch (DllNotFoundException)
+        {
+            return 1.0;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return 1.0;
+        }
+    }
+
     public static IReadOnlyList<(RECT Monitor, RECT WorkArea)> GetMonitorWorkAreas()
     {
-        var areas = new List<(RECT Monitor, RECT WorkArea)>();
+        return GetMonitorWorkAreaInfos()
+            .Select(area => (area.Monitor, area.WorkArea))
+            .ToList();
+    }
+
+    public static IReadOnlyList<MonitorWorkAreaInfo> GetMonitorWorkAreaInfos()
+    {
+        var areas = new List<MonitorWorkAreaInfo>();
         EnumDisplayMonitors(
             IntPtr.Zero,
             IntPtr.Zero,
             (IntPtr hMonitor, IntPtr _, ref RECT _, IntPtr _) =>
             {
-                var info = new MONITORINFO
+                var info = new MONITORINFOEX
                 {
-                    cbSize = Marshal.SizeOf<MONITORINFO>()
+                    cbSize = Marshal.SizeOf<MONITORINFOEX>(),
+                    szDevice = string.Empty
                 };
-                if (GetMonitorInfo(hMonitor, ref info))
+                if (GetMonitorInfoEx(hMonitor, ref info))
                 {
-                    areas.Add((info.rcMonitor, info.rcWork));
+                    areas.Add(new MonitorWorkAreaInfo(
+                        info.rcMonitor,
+                        info.rcWork,
+                        info.szDevice ?? string.Empty));
+                }
+                else
+                {
+                    var fallbackInfo = new MONITORINFO
+                    {
+                        cbSize = Marshal.SizeOf<MONITORINFO>()
+                    };
+                    if (GetMonitorInfo(hMonitor, ref fallbackInfo))
+                    {
+                        areas.Add(new MonitorWorkAreaInfo(
+                            fallbackInfo.rcMonitor,
+                            fallbackInfo.rcWork,
+                            string.Empty));
+                    }
                 }
 
                 return true;

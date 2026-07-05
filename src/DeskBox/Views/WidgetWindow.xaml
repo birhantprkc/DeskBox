@@ -110,10 +110,12 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <FontIcon
-                            x:Name="TitleIcon"
+                        <controls:WidgetTitleIcon
+                            x:Name="FileTitleIcon"
                             Glyph="{Binding IconGlyph}"
-                            FontSize="16"
+                            IconSize="16"
+                            IconKind="{Binding TitleIconKind}"
+                            LabelText="{Binding Name}"
                             Margin="0,0,8,0"
                             VerticalAlignment="Center" />
 

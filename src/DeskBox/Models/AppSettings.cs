@@ -120,7 +120,7 @@ public class AppSettings
     /// <summary>
     /// Animation effect used when desktop widgets show or hide.
     /// </summary>
-    public string WidgetAnimationEffect { get; set; } = "Fade";
+    public string WidgetAnimationEffect { get; set; } = "SlideFade";
 
     /// <summary>
     /// Animation speed preset used when desktop widgets show or hide.
@@ -150,6 +150,12 @@ public class AppSettings
     /// Valid values: <c>"Standard"</c>, <c>"Compact"</c>, <c>"Overlay"</c>, <c>"Hidden"</c>.
     /// </summary>
     public string InteractiveWidgetChromeMode { get; set; } = "Standard";
+
+    /// <summary>
+    /// Title icon presentation for widget title bars.
+    /// Valid values: <c>"FilledMono"</c>, <c>"LineMono"</c>, <c>"Color"</c>, <c>"Hidden"</c>, <c>"TextLabel"</c>.
+    /// </summary>
+    public string WidgetTitleIconMode { get; set; } = "Color";
 
     /// <summary>Whether to double click to open files.</summary>
     public bool DoubleClickToOpen { get; set; } = true;

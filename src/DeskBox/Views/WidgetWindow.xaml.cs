@@ -62,6 +62,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private bool _isDragging;
     private bool _hasMovedTitleBarDrag;
     private bool _isResizing;
+    private bool _isApplyingBounds;
     private string _resizeDirection = string.Empty;
     private Win32Helper.POINT _initialCursorPt;
     private Windows.Graphics.PointInt32 _initialWindowPos;
@@ -115,6 +116,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private bool _areItemTransitionsSuppressed;
     private DispatcherQueueTimer? _autoRestoreTimer;
     private DispatcherQueueTimer? _topMostSafetyTimer;
+    private WidgetDisplayChangeWatcher? _displayChangeWatcher;
     private bool _isFileDropSubclassInstalled;
     private TransitionCollection? _savedGridItemTransitions;
     private TransitionCollection? _savedListItemTransitions;
@@ -287,6 +289,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         Activated += WidgetWindow_Activated;
 
         _appWindow.Changed += AppWindow_Changed;
+        _displayChangeWatcher = new WidgetDisplayChangeWatcher(_hWnd, DispatcherQueue, RestoreBoundsAfterDisplayChange);
 
         foreach (var child in ResizeGrid.Children)
         {
@@ -305,6 +308,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             _localizationService.LanguageChanged -= OnLanguageChanged;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
             _appWindow.Changed -= AppWindow_Changed;
+            _displayChangeWatcher?.Dispose();
+            _displayChangeWatcher = null;
             _autoRestoreTimer?.Stop();
             _autoRestoreTimer = null;
             RemoveFileDropSubclass();
@@ -325,6 +330,52 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         };
     }
 
+    public void RestoreBoundsForCurrentTopology()
+    {
+        _ = TryRestoreBoundsForCurrentTopology(allowHidden: true);
+    }
+
+    private bool TryRestoreBoundsForCurrentTopology(bool allowHidden)
+    {
+        if (_isClosing ||
+            _isHideAnimationRunning)
+        {
+            return true;
+        }
+
+        if (!allowHidden && !Visible)
+        {
+            return true;
+        }
+
+        if (
+            _isDragging ||
+            _isResizing ||
+            _trayAnimation.IsApplyingBounds)
+        {
+            return false;
+        }
+
+        var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(ViewModel.Config);
+        var position = _appWindow.Position;
+        var size = _appWindow.Size;
+        if (position.X == bounds.X &&
+            position.Y == bounds.Y &&
+            size.Width == bounds.Width &&
+            size.Height == bounds.Height)
+        {
+            return true;
+        }
+
+        ApplyWindowBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, persist: false, updateConfig: false);
+        return true;
+    }
+
+    private bool RestoreBoundsAfterDisplayChange()
+    {
+        return TryRestoreBoundsForCurrentTopology(allowHidden: false);
+    }
+
     private void OnLanguageChanged()
     {
         ApplyLocalizedText();
@@ -332,7 +383,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (_trayAnimation.IsApplyingBounds)
+        if (_isApplyingBounds || _trayAnimation.IsApplyingBounds || (!_isDragging && !_isResizing))
         {
             return;
         }
@@ -341,7 +392,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         {
             var pos = _appWindow.Position;
             var size = _appWindow.Size;
-            ViewModel.UpdateBounds(pos.X, pos.Y, size.Width, size.Height, persist: false);
+            UpdateConfigBoundsFromPhysical(pos.X, pos.Y, size.Width, size.Height, persist: false);
         }
     }
 
@@ -1041,22 +1092,58 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _isInlineFlyoutOpen = false;
     }
 
-    private void ApplyWindowBounds(int x, int y, int width, int height, bool persist)
+    private void ApplyWindowBounds(int x, int y, int width, int height, bool persist, bool updateConfig = true)
     {
-        _appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, width, height));
-        ViewModel.UpdateBounds(x, y, width, height, persist: false);
+        var minSize = GetPhysicalMinimumWindowSize(x, y, width, height);
+        width = Math.Max(minSize.Width, width);
+        height = Math.Max(minSize.Height, height);
+
+        _isApplyingBounds = true;
+        try
+        {
+            _appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, width, height));
+        }
+        finally
+        {
+            _isApplyingBounds = false;
+        }
 
         if (persist)
         {
-            ViewModel.UpdateBounds(x, y, width, height, persist: true);
+            CapturePositionAnchor(x, y, width, height);
+            UpdateConfigBoundsFromPhysical(x, y, width, height, persist: true);
+            return;
         }
+
+        if (updateConfig)
+        {
+            UpdateConfigBoundsFromPhysical(x, y, width, height, persist: false);
+        }
+    }
+
+    private Windows.Graphics.SizeInt32 GetPhysicalMinimumWindowSize(int x, int y, int width, int height)
+    {
+        return WidgetPositioningService.GetPhysicalMinimumSizeForBounds(
+            new Windows.Graphics.RectInt32(x, y, Math.Max(1, width), Math.Max(1, height)));
     }
 
     private void CapturePositionAnchor(int x, int y, int width, int height)
     {
         var bounds = new Windows.Graphics.RectInt32(x, y, width, height);
         var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        ViewModel.Config.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
         WidgetPositioningService.CaptureAnchor(ViewModel.Config, bounds, workArea);
+    }
+
+    private void UpdateConfigBoundsFromPhysical(int x, int y, int width, int height, bool persist)
+    {
+        var bounds = new Windows.Graphics.RectInt32(x, y, width, height);
+        var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        WidgetPositioningService.UpdateConfigFromPhysicalBounds(ViewModel.Config, bounds, workArea);
+        if (persist)
+        {
+            _settingsService.UpdateWidget(ViewModel.Config, notifySubscribers: false);
+        }
     }
 
     private void OnSettingsChanged()
@@ -1324,7 +1411,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         BackgroundPlate.Background = new SolidColorBrush(backgroundColor);
         BackgroundPlate.BorderBrush = new SolidColorBrush(borderColor);
         HeaderDivider.Background = new SolidColorBrush(dividerColor);
-        TitleIcon.Foreground = new SolidColorBrush(iconForeground);
+        FileTitleIcon.AccentColor = iconForeground;
+        FileTitleIcon.Mode = _settingsService.Settings.WidgetTitleIconMode;
+        FileWidgetShell.TitleIconAccentColor = iconForeground;
+        FileWidgetShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;
         TitleEditBox.Background = new SolidColorBrush(editorBackground);
         TitleEditBox.BorderBrush = new SolidColorBrush(editorBorder);
         TitleEditBox.Foreground = new SolidColorBrush(isDark ? Colors.White : Colors.Black);
@@ -1387,13 +1477,20 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         FileWidgetShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
         FileWidgetShell.ShowAddButton = ViewModel.TopAddButtonVisibility == Visibility.Visible;
         FileWidgetShell.TitleGlyph = ViewModel.IconGlyph;
+        FileWidgetShell.TitleIconKind = ViewModel.TitleIconKind;
+        FileWidgetShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;
+        FileWidgetShell.TitleIconElement.LabelText = ViewModel.Name;
         FileWidgetShell.SetTitleBarPadding(WidgetTitleBarMetricsCalculator.CreateOuterPadding(chromeMode));
         FileWidgetShell.TitleBarContent = chromeMode is WidgetChromeMode.Overlay or WidgetChromeMode.Hidden
             ? null
             : TitleBarGrid;
         ApplyLegacyTitleActionButtonVisibility(chromeMode);
 
-        TitleIcon.FontSize = metrics.TitleIconSize;
+        FileTitleIcon.IconSize = metrics.TitleIconSize;
+        FileTitleIcon.Glyph = ViewModel.IconGlyph;
+        FileTitleIcon.IconKind = ViewModel.TitleIconKind;
+        FileTitleIcon.LabelText = ViewModel.Name;
+        FileTitleIcon.Mode = _settingsService.Settings.WidgetTitleIconMode;
         TitleText.FontSize = metrics.TitleTextSize;
         TitleEditBox.FontSize = Math.Max(metrics.TitleTextSize - 1, 11);
 
@@ -1731,6 +1828,13 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         if (e.PropertyName is nameof(WidgetViewModel.IsLoading))
         {
+            UpdateEmptyState();
+        }
+        else if (e.PropertyName is nameof(WidgetViewModel.TitleIconKind)
+            or nameof(WidgetViewModel.IconGlyph)
+            or nameof(WidgetViewModel.FollowsDefaultStoragePath))
+        {
+            ApplyTitleBarLayout();
             UpdateEmptyState();
         }
         else if (e.PropertyName is nameof(WidgetViewModel.WidgetOpacity) or nameof(WidgetViewModel.MappedFolderPath))
@@ -4063,7 +4167,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             var finalPosition = _appWindow.Position;
             var finalSize = _appWindow.Size;
             CapturePositionAnchor(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height);
-            ViewModel.UpdateBounds(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+            UpdateConfigBoundsFromPhysical(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
             ReleaseInteractionLayer("file-drag-ended");
         }
 
@@ -4171,6 +4275,14 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         };
         listView.Click += SetListView_Click;
         flyout.Items.Add(listView);
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
+            ViewModel.Config,
+            _chromeDescriptor,
+            _localizationService,
+            SetChromeModeOverride));
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
@@ -5086,26 +5198,31 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         int newHeight = _initialWindowSize.Height;
         int newX = _initialWindowPos.X;
         int newY = _initialWindowPos.Y;
+        var minSize = GetPhysicalMinimumWindowSize(
+            _initialWindowPos.X,
+            _initialWindowPos.Y,
+            _initialWindowSize.Width,
+            _initialWindowSize.Height);
 
         if (_resizeDirection.Contains("Right"))
         {
-            newWidth = Math.Max(MinWidth, _initialWindowSize.Width + deltaX);
+            newWidth = Math.Max(minSize.Width, _initialWindowSize.Width + deltaX);
         }
         else if (_resizeDirection.Contains("Left"))
         {
             int rightEdge = _initialWindowPos.X + _initialWindowSize.Width;
-            newWidth = Math.Max(MinWidth, _initialWindowSize.Width - deltaX);
+            newWidth = Math.Max(minSize.Width, _initialWindowSize.Width - deltaX);
             newX = rightEdge - newWidth;
         }
 
         if (_resizeDirection.Contains("Bottom"))
         {
-            newHeight = Math.Max(MinHeight, _initialWindowSize.Height + deltaY);
+            newHeight = Math.Max(minSize.Height, _initialWindowSize.Height + deltaY);
         }
         else if (_resizeDirection.Contains("Top"))
         {
             int bottomEdge = _initialWindowPos.Y + _initialWindowSize.Height;
-            newHeight = Math.Max(MinHeight, _initialWindowSize.Height - deltaY);
+            newHeight = Math.Max(minSize.Height, _initialWindowSize.Height - deltaY);
             newY = bottomEdge - newHeight;
         }
 
@@ -5126,7 +5243,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         var finalPosition = _appWindow.Position;
         var finalSize = _appWindow.Size;
         CapturePositionAnchor(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height);
-        ViewModel.UpdateBounds(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+        UpdateConfigBoundsFromPhysical(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
         ReleaseInteractionLayer("file-resize-ended");
         e.Handled = true;
     }
@@ -5360,7 +5477,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return false;
         }
 
-        return IsWithin(source, TitleText) || IsWithin(source, TitleIcon);
+        return IsWithin(source, TitleText) || IsWithin(source, FileTitleIcon);
     }
 
     private bool IsTitleBarDoubleClick(Win32Helper.POINT currentPoint)

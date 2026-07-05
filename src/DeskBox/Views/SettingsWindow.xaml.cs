@@ -25,6 +25,7 @@ public sealed partial class SettingsWindow : Window
     private const int DefaultWindowHeight = 760;
     private const int MinWindowWidth = 800;
     private const int MinWindowHeight = 560;
+    private const int WindowWorkAreaMargin = 48;
     private const double ContentMaxWidth = 760;
     private const double PageSidePadding = 20;
     private const double RowStackContentThreshold = 620;
@@ -114,7 +115,7 @@ public sealed partial class SettingsWindow : Window
         _appWindow = AppWindow.GetFromWindowId(windowId);
         AppBranding.ApplyWindowIcon(_appWindow);
         InstallMinimumSizeHook();
-        _appWindow.Resize(new Windows.Graphics.SizeInt32(DefaultWindowWidth, DefaultWindowHeight));
+        ApplyInitialWindowBounds(windowId);
 
         if (_appWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -122,11 +123,6 @@ public sealed partial class SettingsWindow : Window
             presenter.IsMaximizable = true;
             presenter.IsMinimizable = true;
         }
-
-        var workArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
-        _appWindow.Move(new Windows.Graphics.PointInt32(
-            workArea.X + Math.Max(0, (_appWindow.Size.Width < workArea.Width ? (workArea.Width - _appWindow.Size.Width) / 2 : 0)),
-            workArea.Y + Math.Max(0, (_appWindow.Size.Height < workArea.Height ? (workArea.Height - _appWindow.Size.Height) / 2 : 0))));
 
         _themeService.TrackWindow(this);
         _themeService.AppearanceChanged += OnAppearanceChanged;
@@ -371,6 +367,9 @@ public sealed partial class SettingsWindow : Window
                 break;
             case "InteractiveWidgetChromeMode":
                 ViewModel.SelectedInteractiveWidgetChromeMode = ViewModel.AvailableInteractiveWidgetChromeModes[combo.SelectedIndex];
+                break;
+            case "WidgetTitleIconMode":
+                ViewModel.SelectedWidgetTitleIconMode = ViewModel.AvailableWidgetTitleIconModes[combo.SelectedIndex];
                 break;
             case "QuickCaptureDefaultView":
                 ViewModel.SelectedQuickCaptureDefaultView = ViewModel.AvailableQuickCaptureDefaultViews[combo.SelectedIndex];
@@ -1826,7 +1825,7 @@ public sealed partial class SettingsWindow : Window
     {
         return Content is FrameworkElement root && root.ActualWidth > 0
             ? root.ActualWidth
-            : _appWindow.Size.Width;
+            : _appWindow.Size.Width / GetCurrentDpiScale();
     }
 
     private void UpdateResponsiveLayout(double width, bool preferMeasuredContentWidth = true)
@@ -1980,6 +1979,49 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    private void ApplyInitialWindowBounds(Microsoft.UI.WindowId windowId)
+    {
+        var workArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
+        double scale = GetCurrentDpiScale();
+        int desiredWidth = ToPhysicalPixels(DefaultWindowWidth, scale);
+        int desiredHeight = ToPhysicalPixels(DefaultWindowHeight, scale);
+        int minWidth = ToPhysicalPixels(MinWindowWidth, scale);
+        int minHeight = ToPhysicalPixels(MinWindowHeight, scale);
+        int workAreaMargin = ToPhysicalPixels(WindowWorkAreaMargin, scale);
+
+        int width = Math.Clamp(
+            desiredWidth,
+            minWidth,
+            Math.Max(minWidth, workArea.Width - workAreaMargin));
+        int height = Math.Clamp(
+            desiredHeight,
+            minHeight,
+            Math.Max(minHeight, workArea.Height - workAreaMargin));
+
+        _appWindow.Resize(new Windows.Graphics.SizeInt32(width, height));
+        _appWindow.Move(new Windows.Graphics.PointInt32(
+            workArea.X + Math.Max(0, (workArea.Width - width) / 2),
+            workArea.Y + Math.Max(0, (workArea.Height - height) / 2)));
+    }
+
+    private double GetCurrentDpiScale()
+    {
+        double xamlScale = SettingsRoot.XamlRoot?.RasterizationScale ?? 0;
+        if (xamlScale > 0)
+        {
+            return xamlScale;
+        }
+
+        uint dpi = GetDpiForWindow(_hWnd);
+        return dpi > 0 ? dpi / 96.0 : 1.0;
+    }
+
+    private static int ToPhysicalPixels(int logicalPixels, double scale)
+    {
+        double normalizedScale = double.IsFinite(scale) && scale > 0 ? scale : 1.0;
+        return Math.Max(1, (int)Math.Round(logicalPixels * normalizedScale, MidpointRounding.AwayFromZero));
+    }
+
     private void InstallMinimumSizeHook()
     {
         _isSubclassInstalled = Win32Helper.SetWindowSubclass(_hWnd, _windowSubclassProc, SettingsWindowSubclassId, UIntPtr.Zero);
@@ -2007,8 +2049,9 @@ public sealed partial class SettingsWindow : Window
         if (message == WmGetMinMaxInfo)
         {
             var minMaxInfo = Marshal.PtrToStructure<MinMaxInfo>(lParam);
-            minMaxInfo.MinTrackSize.X = Math.Max(minMaxInfo.MinTrackSize.X, MinWindowWidth);
-            minMaxInfo.MinTrackSize.Y = Math.Max(minMaxInfo.MinTrackSize.Y, MinWindowHeight);
+            double scale = GetCurrentDpiScale();
+            minMaxInfo.MinTrackSize.X = Math.Max(minMaxInfo.MinTrackSize.X, ToPhysicalPixels(MinWindowWidth, scale));
+            minMaxInfo.MinTrackSize.Y = Math.Max(minMaxInfo.MinTrackSize.Y, ToPhysicalPixels(MinWindowHeight, scale));
             Marshal.StructureToPtr(minMaxInfo, lParam, false);
             return IntPtr.Zero;
         }
@@ -2037,6 +2080,9 @@ public sealed partial class SettingsWindow : Window
         public NativePoint MinTrackSize;
         public NativePoint MaxTrackSize;
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
 
     private sealed record SettingsSectionRoute(
         string Tag,

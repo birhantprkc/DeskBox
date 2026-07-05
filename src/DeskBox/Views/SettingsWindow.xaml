@@ -563,6 +563,21 @@
                                         MinWidth="0"
                                         IsOn="{Binding ShowHoverButtons, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.WidgetTitleIcon.Description"
+                                    svc:Localized.HeaderKey="Settings.WidgetTitleIcon.Title">
+                                    <toolkit:SettingsCard.HeaderIcon>
+                                        <FontIcon Glyph="&#xE8A5;" />
+                                    </toolkit:SettingsCard.HeaderIcon>
+                                    <ComboBox
+                                        MinWidth="176"
+                                        ItemsSource="{Binding AvailableWidgetTitleIconModeDisplayNames}"
+                                        SelectedIndex="{Binding SelectedWidgetTitleIconModeIndex, Mode=OneWay}"
+                                        SelectionChanged="SettingsComboBox_SelectionChanged"
+                                        Tag="WidgetTitleIconMode" />
+                                </toolkit:SettingsCard>
                             </toolkit:SettingsExpander.Items>
                         </toolkit:SettingsExpander>
 
@@ -672,6 +687,7 @@
                                     Tag="InteractiveWidgetChromeMode" />
                             </StackPanel>
                         </toolkit:SettingsCard>
+
                     </StackPanel>
                 </StackPanel>
 

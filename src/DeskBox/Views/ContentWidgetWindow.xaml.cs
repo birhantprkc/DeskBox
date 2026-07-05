@@ -85,6 +85,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         _titleViewModel = new ContentWidgetTitleViewModel(_config);
         ContentWidgetShell.DataContext = _titleViewModel;
         ContentWidgetShell.TitleGlyph = descriptor.DefaultGlyph;
+        ContentWidgetShell.TitleIconKind = WidgetTitleIconKindNames.FromWidgetKind(_config.WidgetKind);
         ContentWidgetShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
         ContentWidgetShell.IsTitleEditable = true;
 
@@ -115,6 +116,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
     private bool _restoreDesktopLayerWhenIdle;
     private DateTime _lastElevateForInteractionUtc = DateTime.MinValue;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _topMostSafetyTimer;
+    private WidgetDisplayChangeWatcher? _displayChangeWatcher;
 
     public new bool Visible
     {
@@ -359,6 +361,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         _settingsService.SettingsChanged += OnSettingsChanged;
         Activated += ContentWidgetWindow_Activated;
         _appWindow.Changed += AppWindow_Changed;
+        _displayChangeWatcher = new WidgetDisplayChangeWatcher(_hWnd, DispatcherQueue, RestoreBoundsAfterDisplayChange);
         ContentWidgetShell.RightTapped += ContentWidgetShell_RightTapped;
         ContentWidgetShell.TitleDoubleTapped += ContentWidgetShell_TitleDoubleTapped;
 
@@ -381,6 +384,8 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
             App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;
             _settingsService.SettingsChanged -= OnSettingsChanged;
             _appWindow.Changed -= AppWindow_Changed;
+            _displayChangeWatcher?.Dispose();
+            _displayChangeWatcher = null;
             ContentWidgetShell.RightTapped -= ContentWidgetShell_RightTapped;
             ContentWidgetShell.TitleDoubleTapped -= ContentWidgetShell_TitleDoubleTapped;
             DisposeAcrylicController();
@@ -396,6 +401,52 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
                 }
             }
         };
+    }
+
+    public void RestoreBoundsForCurrentTopology()
+    {
+        _ = TryRestoreBoundsForCurrentTopology(allowHidden: true);
+    }
+
+    private bool TryRestoreBoundsForCurrentTopology(bool allowHidden)
+    {
+        if (_isClosing ||
+            _isHideAnimationRunning)
+        {
+            return true;
+        }
+
+        if (!allowHidden && !Visible)
+        {
+            return true;
+        }
+
+        if (
+            _isDragging ||
+            _isResizing ||
+            _trayAnimation.IsApplyingBounds)
+        {
+            return false;
+        }
+
+        var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(_config);
+        var position = _appWindow.Position;
+        var size = _appWindow.Size;
+        if (position.X == bounds.X &&
+            position.Y == bounds.Y &&
+            size.Width == bounds.Width &&
+            size.Height == bounds.Height)
+        {
+            return true;
+        }
+
+        ApplyWindowBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, persist: false, updateConfig: false);
+        return true;
+    }
+
+    private bool RestoreBoundsAfterDisplayChange()
+    {
+        return TryRestoreBoundsForCurrentTopology(allowHidden: false);
     }
 
     private void ContentWidgetWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -432,7 +483,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (_isApplyingBounds || _trayAnimation.IsApplyingBounds)
+        if (_isApplyingBounds || _trayAnimation.IsApplyingBounds || (!_isDragging && !_isResizing))
         {
             return;
         }
@@ -470,7 +521,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
             chromeMode);
 
         ContentWidgetShell.ChromeMode = chromeMode;
-        ContentWidgetShell.TitleIconElement.FontSize = metrics.TitleIconSize;
+        ContentWidgetShell.TitleIconElement.IconSize = metrics.TitleIconSize;
         ContentWidgetShell.TitleTextElement.FontSize = metrics.TitleTextSize;
 
         WidgetTitleBarMetricsCalculator.ApplyActionButton(ContentWidgetShell.AddActionButton, metrics);
@@ -683,10 +734,11 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         App.LogVerbose(_diagnostics.FormatTrayWindowMessage(message));
     }
 
-    private void ApplyWindowBounds(int x, int y, int width, int height, bool persist)
+    private void ApplyWindowBounds(int x, int y, int width, int height, bool persist, bool updateConfig = true)
     {
-        width = Math.Max(MinWidth, width);
-        height = Math.Max(MinHeight, height);
+        var minSize = GetPhysicalMinimumWindowSize(x, y, width, height);
+        width = Math.Max(minSize.Width, width);
+        height = Math.Max(minSize.Height, height);
         _isApplyingBounds = true;
         try
         {
@@ -697,15 +749,29 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
             _isApplyingBounds = false;
         }
 
-        UpdateConfigBounds(x, y, width, height, persist);
+        if (persist)
+        {
+            UpdateConfigBounds(x, y, width, height, persist: true);
+            return;
+        }
+
+        if (updateConfig)
+        {
+            UpdateConfigBounds(x, y, width, height, persist: false);
+        }
+    }
+
+    private SizeInt32 GetPhysicalMinimumWindowSize(int x, int y, int width, int height)
+    {
+        return WidgetPositioningService.GetPhysicalMinimumSizeForBounds(
+            new RectInt32(x, y, Math.Max(1, width), Math.Max(1, height)));
     }
 
     private void UpdateConfigBounds(int x, int y, int width, int height, bool persist)
     {
-        _config.X = x;
-        _config.Y = y;
-        _config.Width = width;
-        _config.Height = height;
+        var bounds = new RectInt32(x, y, width, height);
+        var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        WidgetPositioningService.UpdateConfigFromPhysicalBounds(_config, bounds, workArea);
         if (persist)
         {
             CapturePositionAnchor(x, y, width, height);
@@ -718,6 +784,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
     {
         var bounds = new RectInt32(x, y, width, height);
         var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        _config.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
         WidgetPositioningService.CaptureAnchor(_config, bounds, workArea);
     }
 
@@ -876,7 +943,8 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         ContentWidgetShell.BackgroundSurface.Background = new SolidColorBrush(surfaceColor);
         ContentWidgetShell.BackgroundSurface.BorderBrush = new SolidColorBrush(borderColor);
         ContentWidgetShell.Divider.Background = new SolidColorBrush(dividerColor);
-        ContentWidgetShell.TitleIconElement.Foreground = new SolidColorBrush(iconForeground);
+        ContentWidgetShell.TitleIconAccentColor = iconForeground;
+        ContentWidgetShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;
     }
 
     private static Windows.UI.Color BuildFrostedSurfaceColor(
@@ -1061,26 +1129,31 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         int newHeight = _initialWindowSize.Height;
         int newX = _initialWindowPos.X;
         int newY = _initialWindowPos.Y;
+        var minSize = GetPhysicalMinimumWindowSize(
+            _initialWindowPos.X,
+            _initialWindowPos.Y,
+            _initialWindowSize.Width,
+            _initialWindowSize.Height);
 
         if (_resizeDirection.Contains("Right"))
         {
-            newWidth = Math.Max(MinWidth, _initialWindowSize.Width + deltaX);
+            newWidth = Math.Max(minSize.Width, _initialWindowSize.Width + deltaX);
         }
         else if (_resizeDirection.Contains("Left"))
         {
             int rightEdge = _initialWindowPos.X + _initialWindowSize.Width;
-            newWidth = Math.Max(MinWidth, _initialWindowSize.Width - deltaX);
+            newWidth = Math.Max(minSize.Width, _initialWindowSize.Width - deltaX);
             newX = rightEdge - newWidth;
         }
 
         if (_resizeDirection.Contains("Bottom"))
         {
-            newHeight = Math.Max(MinHeight, _initialWindowSize.Height + deltaY);
+            newHeight = Math.Max(minSize.Height, _initialWindowSize.Height + deltaY);
         }
         else if (_resizeDirection.Contains("Top"))
         {
             int bottomEdge = _initialWindowPos.Y + _initialWindowSize.Height;
-            newHeight = Math.Max(MinHeight, _initialWindowSize.Height - deltaY);
+            newHeight = Math.Max(minSize.Height, _initialWindowSize.Height - deltaY);
             newY = bottomEdge - newHeight;
         }
 

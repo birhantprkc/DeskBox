@@ -43,6 +43,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedWidgetAnimationEasingIntensity = SettingsService.WidgetAnimationEasingStandard;
     private string _selectedDisplayWidgetChromeMode = SettingsService.WidgetChromeModeOverlay;
     private string _selectedInteractiveWidgetChromeMode = SettingsService.WidgetChromeModeStandard;
+    private string _selectedWidgetTitleIconMode = SettingsService.WidgetTitleIconModeColor;
     private string _selectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
     private string _selectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
     private string _selectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
@@ -75,6 +76,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string[]? _cachedWidgetAnimationEasingIntensityDisplayNames;
     private string[]? _cachedDisplayWidgetChromeModeDisplayNames;
     private string[]? _cachedInteractiveWidgetChromeModeDisplayNames;
+    private string[]? _cachedWidgetTitleIconModeDisplayNames;
     private string[]? _cachedQuickCaptureDefaultViewDisplayNames;
     private string[]? _cachedTodoNewTaskPositionDisplayNames;
     private string[]? _cachedTodoDefaultFilterDisplayNames;
@@ -402,6 +404,31 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string SelectedInteractiveWidgetChromeModeText => GetWidgetChromeModeDisplayName(SelectedInteractiveWidgetChromeMode);
     public int SelectedInteractiveWidgetChromeModeIndex => Array.IndexOf(AvailableInteractiveWidgetChromeModes, _selectedInteractiveWidgetChromeMode);
+
+    public string SelectedWidgetTitleIconMode
+    {
+        get => _selectedWidgetTitleIconMode;
+        set
+        {
+            if (!SetProperty(ref _selectedWidgetTitleIconMode, NormalizeWidgetTitleIconModeSetting(value)))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetTitleIconMode = _selectedWidgetTitleIconMode;
+            SaveAppearanceChange();
+            OnPropertyChanged(nameof(SelectedWidgetTitleIconModeText));
+            OnPropertyChanged(nameof(SelectedWidgetTitleIconModeIndex));
+        }
+    }
+
+    public string SelectedWidgetTitleIconModeText => GetWidgetTitleIconModeDisplayName(SelectedWidgetTitleIconMode);
+    public int SelectedWidgetTitleIconModeIndex => Array.IndexOf(AvailableWidgetTitleIconModes, _selectedWidgetTitleIconMode);
 
     [RelayCommand]
     public void ResetDisplayWidgetChromeOverrides()
@@ -1094,6 +1121,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string[] AvailableDisplayWidgetChromeModeDisplayNames => _cachedDisplayWidgetChromeModeDisplayNames ??= AvailableDisplayWidgetChromeModes.Select(GetWidgetChromeModeDisplayName).ToArray();
     public string[] AvailableInteractiveWidgetChromeModeDisplayNames => _cachedInteractiveWidgetChromeModeDisplayNames ??= AvailableInteractiveWidgetChromeModes.Select(GetWidgetChromeModeDisplayName).ToArray();
 
+    public string[] AvailableWidgetTitleIconModes { get; } =
+    [
+        SettingsService.WidgetTitleIconModeFilledMono,
+        SettingsService.WidgetTitleIconModeLineMono,
+        SettingsService.WidgetTitleIconModeColor,
+        SettingsService.WidgetTitleIconModeHidden,
+        SettingsService.WidgetTitleIconModeTextLabel
+    ];
+
+    public string[] AvailableWidgetTitleIconModeDisplayNames => _cachedWidgetTitleIconModeDisplayNames ??= AvailableWidgetTitleIconModes.Select(GetWidgetTitleIconModeDisplayName).ToArray();
+
     public string[] AvailableQuickCaptureDefaultViews { get; } =
     [
         SettingsService.QuickCaptureDefaultViewRecords,
@@ -1402,6 +1440,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _selectedWidgetAnimationEasingIntensity = NormalizeWidgetAnimationEasingIntensity(settings.WidgetAnimationEasingIntensity);
         _selectedDisplayWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.DisplayWidgetChromeMode, WidgetChromeMode.Overlay);
         _selectedInteractiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
+        _selectedWidgetTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
         _iconSize = settings.IconSize;
         _textSize = settings.TextSize;
         _layoutDensityScale = settings.LayoutDensityScale;
@@ -1498,6 +1537,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SelectedWidgetAnimationEasingIntensity = SettingsService.WidgetAnimationEasingStandard;
             SelectedDisplayWidgetChromeMode = SettingsService.WidgetChromeModeOverlay;
             SelectedInteractiveWidgetChromeMode = SettingsService.WidgetChromeModeStandard;
+            SelectedWidgetTitleIconMode = SettingsService.WidgetTitleIconModeColor;
             WidgetOpacity = SettingsService.DefaultWidgetOpacity;
             IconSize = SettingsService.DefaultIconSize;
             TextSize = SettingsService.DefaultTextSize;
@@ -1649,6 +1689,18 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         };
     }
 
+    public string GetWidgetTitleIconModeDisplayName(string mode)
+    {
+        return NormalizeWidgetTitleIconModeSetting(mode) switch
+        {
+            SettingsService.WidgetTitleIconModeLineMono => _localizationService.T("Settings.WidgetTitleIcon.LineMono"),
+            SettingsService.WidgetTitleIconModeColor => _localizationService.T("Settings.WidgetTitleIcon.Color"),
+            SettingsService.WidgetTitleIconModeHidden => _localizationService.T("Settings.WidgetTitleIcon.Hidden"),
+            SettingsService.WidgetTitleIconModeTextLabel => _localizationService.T("Settings.WidgetTitleIcon.TextLabel"),
+            _ => _localizationService.T("Settings.WidgetTitleIcon.FilledMono")
+        };
+    }
+
     public string GetQuickCaptureDefaultViewDisplayName(string view)
     {
         return NormalizeQuickCaptureDefaultView(view) switch
@@ -1733,6 +1785,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         bool showHoverButtons = settings.ShowHoverButtons;
         string displayWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.DisplayWidgetChromeMode, WidgetChromeMode.Overlay);
         string interactiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
+        string widgetTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
         string todoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
         string todoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);
         string managedStorageRootPath = SettingsService.NormalizeManagedStorageRootPath(settings.DefaultManagedStorageRootPath);
@@ -1836,6 +1889,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 SelectedInteractiveWidgetChromeMode = interactiveWidgetChromeMode;
             }
 
+            if (!string.Equals(SelectedWidgetTitleIconMode, widgetTitleIconMode, StringComparison.Ordinal))
+            {
+                SelectedWidgetTitleIconMode = widgetTitleIconMode;
+            }
+
             if (!string.Equals(SelectedTodoNewTaskPosition, todoNewTaskPosition, StringComparison.Ordinal))
             {
                 SelectedTodoNewTaskPosition = todoNewTaskPosition;
@@ -1863,6 +1921,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeIndex));
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeText));
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeIndex));
+        OnPropertyChanged(nameof(SelectedWidgetTitleIconModeText));
+        OnPropertyChanged(nameof(SelectedWidgetTitleIconModeIndex));
         OnPropertyChanged(nameof(QuickCaptureStatusText));
         OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
         OnPropertyChanged(nameof(FeatureWidgetEntries));
@@ -1903,6 +1963,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _cachedWidgetAnimationEasingIntensityDisplayNames = null;
         _cachedDisplayWidgetChromeModeDisplayNames = null;
         _cachedInteractiveWidgetChromeModeDisplayNames = null;
+        _cachedWidgetTitleIconModeDisplayNames = null;
         _cachedQuickCaptureDefaultViewDisplayNames = null;
         _cachedTodoNewTaskPositionDisplayNames = null;
         _cachedTodoDefaultFilterDisplayNames = null;
@@ -1917,6 +1978,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AvailableWidgetAnimationEasingIntensityDisplayNames));
         OnPropertyChanged(nameof(AvailableDisplayWidgetChromeModeDisplayNames));
         OnPropertyChanged(nameof(AvailableInteractiveWidgetChromeModeDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetTitleIconModeDisplayNames));
         OnPropertyChanged(nameof(AvailableQuickCaptureDefaultViewDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoNewTaskPositionDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoDefaultFilterDisplayNames));
@@ -1944,6 +2006,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeIndex));
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeText));
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeIndex));
+        OnPropertyChanged(nameof(SelectedWidgetTitleIconModeText));
+        OnPropertyChanged(nameof(SelectedWidgetTitleIconModeIndex));
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewText));
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewIndex));
         OnPropertyChanged(nameof(SelectedTodoNewTaskPositionText));
@@ -2083,6 +2147,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private static string NormalizeWidgetChromeModeSetting(string? mode, WidgetChromeMode fallback)
     {
         return SettingsService.NormalizeWidgetChromeModeSetting(mode, fallback);
+    }
+
+    private static string NormalizeWidgetTitleIconModeSetting(string? mode)
+    {
+        return SettingsService.NormalizeWidgetTitleIconModeSetting(mode);
     }
 
     private static string NormalizeTodoNewTaskPosition(string? position)

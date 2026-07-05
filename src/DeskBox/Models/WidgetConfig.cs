@@ -8,6 +8,8 @@ namespace DeskBox.Models;
 /// </summary>
 public class WidgetConfig
 {
+    public const int CurrentBoundsCoordinateVersion = 1;
+
     /// <summary>Unique identifier for this widget instance.</summary>
     public string Id { get; set; } = Guid.NewGuid().ToString();
 
@@ -17,10 +19,10 @@ public class WidgetConfig
     /// <summary>Whether the title is the default (not user-customized). Default titles follow language changes.</summary>
     public bool IsDefaultTitle { get; set; } = true;
 
-    /// <summary>Screen X position in device-independent pixels.</summary>
+    /// <summary>Last resolved screen X position in physical pixels.</summary>
     public double X { get; set; } = 100;
 
-    /// <summary>Screen Y position in device-independent pixels.</summary>
+    /// <summary>Last resolved screen Y position in physical pixels.</summary>
     public double Y { get; set; } = 100;
 
     /// <summary>
@@ -29,19 +31,25 @@ public class WidgetConfig
     /// </summary>
     public string? PositionAnchor { get; set; }
 
-    /// <summary>Horizontal distance from the selected anchor edge.</summary>
+    /// <summary>Horizontal distance from the selected anchor edge in logical pixels.</summary>
     public double PositionMarginX { get; set; }
 
-    /// <summary>Vertical distance from the selected anchor edge.</summary>
+    /// <summary>Vertical distance from the selected anchor edge in logical pixels.</summary>
     public double PositionMarginY { get; set; }
 
     /// <summary>Work area signature of the monitor where the widget was last positioned.</summary>
     public string? PositionMonitorKey { get; set; }
 
-    /// <summary>Widget width in device-independent pixels.</summary>
+    /// <summary>Win32 monitor device name where the widget was last positioned, used before the legacy work area signature.</summary>
+    public string? PositionMonitorDeviceName { get; set; }
+
+    /// <summary>Bounds coordinate model version. Version 0 is legacy physical pixels; version 1 stores size and anchor margins in logical pixels.</summary>
+    public int BoundsCoordinateVersion { get; set; }
+
+    /// <summary>Widget width in logical pixels.</summary>
     public double Width { get; set; } = 300;
 
-    /// <summary>Widget height in device-independent pixels.</summary>
+    /// <summary>Widget height in logical pixels.</summary>
     public double Height { get; set; } = 400;
 
     /// <summary>Widget content type.</summary>

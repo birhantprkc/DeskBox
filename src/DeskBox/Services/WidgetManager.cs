@@ -53,6 +53,7 @@ internal interface IDesktopWidgetWindow
     bool Visible { get; }
     Windows.Foundation.Rect AnimationBounds { get; }
     void ApplyAppearancePreview();
+    void RestoreBoundsForCurrentTopology();
     void SetTrayAnimationOffsetOverride(double? offsetX, double? offsetY);
     void PrepareTrayShowAnimation();
     void ShowPreparedAtDesktopLayer(bool persistVisibility = true);
@@ -503,6 +504,7 @@ public sealed class WidgetManager
             MappedFolderPath = folderPath,
             FollowsDefaultStoragePath = true,
             ManagedFolderName = managedFolderName,
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
             Width = _settingsService.Settings.DefaultWidgetWidth,
             Height = _settingsService.Settings.DefaultWidgetHeight
         };
@@ -527,6 +529,7 @@ public sealed class WidgetManager
             {
                 Name = _localizationService.T("QuickCapture.Name"),
                 WidgetKind = WidgetKind.QuickCapture,
+                BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
                 Width = _settingsService.Settings.DefaultWidgetWidth,
                 Height = _settingsService.Settings.DefaultWidgetHeight
             };
@@ -570,6 +573,7 @@ public sealed class WidgetManager
         {
             Name = name,
             WidgetKind = WidgetKind.Todo,
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
             Width = Math.Max(_settingsService.Settings.DefaultWidgetWidth, 320),
             Height = Math.Max(_settingsService.Settings.DefaultWidgetHeight, 420)
         };
@@ -629,6 +633,7 @@ public sealed class WidgetManager
         {
             Name = GetDefaultFeatureWidgetTitle(kind, descriptor),
             WidgetKind = kind,
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
             Width = kind == WidgetKind.Music
                 ? 380
                 : Math.Max(_settingsService.Settings.DefaultWidgetWidth, 320),
@@ -674,6 +679,7 @@ public sealed class WidgetManager
                         widgetKind,
                         new WidgetContentFactory(_localizationService).GetDescriptor(widgetKind)),
                     WidgetKind = widgetKind,
+                    BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
                     Width = _settingsService.Settings.DefaultWidgetWidth,
                     Height = _settingsService.Settings.DefaultWidgetHeight
                 }, revealAfterCreate: true);
@@ -730,6 +736,7 @@ public sealed class WidgetManager
             Name = folderName,
             WidgetKind = WidgetKind.File,
             MappedFolderPath = folderPath,
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
             Width = _settingsService.Settings.DefaultWidgetWidth,
             Height = _settingsService.Settings.DefaultWidgetHeight
         };
@@ -766,6 +773,7 @@ public sealed class WidgetManager
         {
             if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))
             {
+                quickCaptureEntry.Window.RestoreBoundsForCurrentTopology();
                 if (reveal)
                 {
                     quickCaptureEntry.Window.RevealFromTray(autoRestoreOnReveal);
@@ -783,6 +791,7 @@ public sealed class WidgetManager
             var quickCaptureWindow = (QuickCaptureWidgetWindow)await CreateRegisteredWidgetFromConfigAsync(
                 config,
                 keepPreparedForAnimation: !reveal);
+            quickCaptureWindow.RestoreBoundsForCurrentTopology();
             if (reveal)
             {
                 quickCaptureWindow.RevealFromTray(autoRestoreOnReveal);
@@ -810,6 +819,7 @@ public sealed class WidgetManager
 
         if (_widgets.TryGetValue(widgetId, out var entry))
         {
+            entry.Window.RestoreBoundsForCurrentTopology();
             if (reveal)
             {
                 entry.Window.RevealFromTray(autoRestoreOnReveal);
@@ -825,6 +835,7 @@ public sealed class WidgetManager
         }
 
         var window = await CreateWidgetFromConfigAsync(config, keepPreparedForAnimation: !reveal);
+        window.RestoreBoundsForCurrentTopology();
         if (reveal)
         {
             window.RevealFromTray(autoRestoreOnReveal);
@@ -843,6 +854,7 @@ public sealed class WidgetManager
     {
         if (_contentWidgets.TryGetValue(config.Id, out var contentWindow))
         {
+            contentWindow.RestoreBoundsForCurrentTopology();
             contentWindow.PrepareTrayShowAnimation();
             if (reveal)
             {
@@ -862,6 +874,7 @@ public sealed class WidgetManager
             config,
             keepPreparedForAnimation: !reveal,
             revealAfterCreate: reveal);
+        createdWindow.RestoreBoundsForCurrentTopology();
         if (!reveal)
         {
             createdWindow.PrepareTrayShowAnimation();
@@ -1260,6 +1273,7 @@ public sealed class WidgetManager
             if (_quickCaptureWidgets.TryGetValue(config.Id, out var existingQuickCapture))
             {
                 App.LogVerbose($"[TrayBatch] Prepare useLoaded widget={FormatWidget(config)} {FormatHostWindow(existingQuickCapture.Window)}");
+                existingQuickCapture.Window.RestoreBoundsForCurrentTopology();
                 if (!existingQuickCapture.Window.Visible)
                 {
                     existingQuickCapture.Window.PrepareTrayShowAnimation();
@@ -1288,6 +1302,7 @@ public sealed class WidgetManager
                 if (_contentWidgets.TryGetValue(config.Id, out var existingContent))
                 {
                     App.LogVerbose($"[TrayBatch] Prepare useLoaded content widget={FormatWidget(config)} {FormatHostWindow(existingContent)}");
+                    existingContent.RestoreBoundsForCurrentTopology();
                     if (!existingContent.Visible)
                     {
                         existingContent.PrepareTrayShowAnimation();
@@ -1310,6 +1325,7 @@ public sealed class WidgetManager
         if (_widgets.TryGetValue(config.Id, out var existing))
         {
             App.LogVerbose($"[TrayBatch] Prepare useLoaded widget={FormatWidget(config)} {FormatHostWindow(existing.Window)}");
+            existing.Window.RestoreBoundsForCurrentTopology();
             if (!existing.Window.Visible)
             {
                 existing.Window.PrepareTrayShowAnimation();
@@ -1594,6 +1610,7 @@ public sealed class WidgetManager
                 MappedFolderPath = normalizedPath,
                 FollowsDefaultStoragePath = true,
                 ManagedFolderName = folderName,
+                BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
                 Width = _settingsService.Settings.DefaultWidgetWidth,
                 Height = _settingsService.Settings.DefaultWidgetHeight,
                 IsVisible = true,
@@ -3169,6 +3186,8 @@ public sealed class WidgetManager
         config.PositionMarginX = 0;
         config.PositionMarginY = 0;
         config.PositionMonitorKey = null;
+        config.PositionMonitorDeviceName = null;
+        config.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
         (config.Width, config.Height) = GetDefaultFeatureWidgetSize(kind);
         config.ViewMode = ViewMode.Icon;
         config.IsVisible = isEnabled;
@@ -3829,21 +3848,29 @@ public sealed class WidgetManager
         int height = (int)Math.Round(Math.Max(SettingsService.MinWidgetHeight, config.Height));
         int x = (int)Math.Round(config.X);
         int y = (int)Math.Round(config.Y);
+        double previousX = config.X;
+        double previousY = config.Y;
+        double previousWidth = config.Width;
+        double previousHeight = config.Height;
         string? previousAnchor = config.PositionAnchor;
         double previousMarginX = config.PositionMarginX;
         double previousMarginY = config.PositionMarginY;
         string? previousMonitorKey = config.PositionMonitorKey;
+        string? previousMonitorDeviceName = config.PositionMonitorDeviceName;
+        int previousBoundsCoordinateVersion = config.BoundsCoordinateVersion;
 
         var area = DisplayArea.GetFromRect(
             new Windows.Graphics.RectInt32(x, y, width, height),
             DisplayAreaFallback.Nearest);
         var workArea = area.WorkArea;
         var availableWorkAreas = WidgetPositioningService.GetAvailableWorkAreas();
+        WidgetPositioningService.EnsureCurrentBoundsCoordinateVersion(config, workArea, availableWorkAreas);
 
-        var safeBounds = WidgetPositioningService.ResolveBounds(config, workArea, availableWorkAreas);
-        var selectedWorkArea = WidgetPositioningService.SelectWorkArea(config, workArea, availableWorkAreas);
+        var safeBounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(config);
+        var selectedWorkArea = DisplayArea.GetFromRect(safeBounds, DisplayAreaFallback.Nearest).WorkArea;
         bool shouldCaptureAnchor = string.IsNullOrWhiteSpace(config.PositionAnchor) ||
                                    string.IsNullOrWhiteSpace(config.PositionMonitorKey) ||
+                                   string.IsNullOrWhiteSpace(config.PositionMonitorDeviceName) ||
                                    string.Equals(
                                        config.PositionMonitorKey,
                                        WidgetPositioningService.CreateMonitorKey(selectedWorkArea),
@@ -3853,25 +3880,25 @@ public sealed class WidgetManager
             WidgetPositioningService.CaptureAnchor(config, safeBounds, selectedWorkArea);
         }
 
+        WidgetPositioningService.UpdateConfigFromPhysicalBounds(config, safeBounds, selectedWorkArea);
+
         bool changed =
-            Math.Abs(config.Width - safeBounds.Width) > double.Epsilon ||
-            Math.Abs(config.Height - safeBounds.Height) > double.Epsilon ||
-            Math.Abs(config.X - safeBounds.X) > double.Epsilon ||
-            Math.Abs(config.Y - safeBounds.Y) > double.Epsilon ||
+            Math.Abs(config.Width - previousWidth) > double.Epsilon ||
+            Math.Abs(config.Height - previousHeight) > double.Epsilon ||
+            Math.Abs(config.X - previousX) > double.Epsilon ||
+            Math.Abs(config.Y - previousY) > double.Epsilon ||
+            previousBoundsCoordinateVersion != config.BoundsCoordinateVersion ||
             !string.Equals(config.PositionAnchor, previousAnchor, StringComparison.Ordinal) ||
             Math.Abs(config.PositionMarginX - previousMarginX) > double.Epsilon ||
             Math.Abs(config.PositionMarginY - previousMarginY) > double.Epsilon ||
-            !string.Equals(config.PositionMonitorKey, previousMonitorKey, StringComparison.Ordinal);
+            !string.Equals(config.PositionMonitorKey, previousMonitorKey, StringComparison.Ordinal) ||
+            !string.Equals(config.PositionMonitorDeviceName, previousMonitorDeviceName, StringComparison.OrdinalIgnoreCase);
 
         if (!changed)
         {
             return;
         }
 
-        config.Width = safeBounds.Width;
-        config.Height = safeBounds.Height;
-        config.X = safeBounds.X;
-        config.Y = safeBounds.Y;
         _settingsService.UpdateWidget(config, notifySubscribers: false);
     }
 

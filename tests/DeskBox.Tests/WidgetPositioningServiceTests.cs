@@ -6,6 +6,32 @@ namespace DeskBox.Tests;
 
 public sealed class WidgetPositioningServiceTests
 {
+    private static RectInt32 ResolveAtScale(
+        WidgetConfig config,
+        RectInt32 fallbackWorkArea,
+        double scale,
+        params RectInt32[] availableWorkAreas)
+    {
+        return WidgetPositioningService.ResolveBoundsForTest(
+            config,
+            fallbackWorkArea,
+            availableWorkAreas.Select(workArea => (workArea, (string?)null)).ToList(),
+            _ => scale);
+    }
+
+    private static RectInt32 ResolveWithMonitors(
+        WidgetConfig config,
+        RectInt32 fallbackWorkArea,
+        IReadOnlyList<(RectInt32 WorkArea, string? DeviceName)> availableWorkAreas,
+        double scale)
+    {
+        return WidgetPositioningService.ResolveBoundsForTest(
+            config,
+            fallbackWorkArea,
+            availableWorkAreas,
+            _ => scale);
+    }
+
     [Fact]
     public void CaptureAnchor_UsesNearestCornerMargins()
     {
@@ -36,7 +62,7 @@ public sealed class WidgetPositioningServiceTests
         };
         var largerWorkArea = new RectInt32(0, 0, 3840, 2080);
 
-        var bounds = WidgetPositioningService.ResolveBounds(config, largerWorkArea);
+        var bounds = ResolveAtScale(config, largerWorkArea, 1.0);
 
         Assert.Equal(3500, bounds.X);
         Assert.Equal(80, bounds.Y);
@@ -57,7 +83,7 @@ public sealed class WidgetPositioningServiceTests
         };
         var workArea = new RectInt32(100, 50, 1600, 900);
 
-        var bounds = WidgetPositioningService.ResolveBounds(config, workArea);
+        var bounds = ResolveAtScale(config, workArea, 1.0);
 
         Assert.Equal(1356, bounds.X);
         Assert.Equal(674, bounds.Y);
@@ -75,7 +101,7 @@ public sealed class WidgetPositioningServiceTests
         };
         var laptopWorkArea = new RectInt32(0, 0, 1920, 1040);
 
-        var bounds = WidgetPositioningService.ResolveBounds(config, laptopWorkArea);
+        var bounds = ResolveAtScale(config, laptopWorkArea, 1.0);
 
         Assert.Equal(32, bounds.X);
         Assert.Equal(32, bounds.Y);
@@ -96,12 +122,138 @@ public sealed class WidgetPositioningServiceTests
             PositionMonitorKey = WidgetPositioningService.CreateMonitorKey(savedMonitor)
         };
 
-        var bounds = WidgetPositioningService.ResolveBounds(
-            config,
-            primaryMonitor,
-            [primaryMonitor, savedMonitor]);
+        var bounds = ResolveAtScale(config, primaryMonitor, 1.0, primaryMonitor, savedMonitor);
 
         Assert.Equal(4150, bounds.X);
         Assert.Equal(60, bounds.Y);
+    }
+
+    [Fact]
+    public void ResolveBounds_UsesLogicalSizeAndMarginsOnHighDpiMonitor()
+    {
+        var workArea = new RectInt32(0, 0, 2560, 1400);
+        var config = new WidgetConfig
+        {
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+            Width = 300,
+            Height = 200,
+            PositionAnchor = WidgetPositionAnchors.RightBottom,
+            PositionMarginX = 40,
+            PositionMarginY = 20
+        };
+
+        var bounds = ResolveAtScale(config, workArea, 1.5);
+
+        Assert.Equal(2050, bounds.X);
+        Assert.Equal(1070, bounds.Y);
+        Assert.Equal(450, bounds.Width);
+        Assert.Equal(300, bounds.Height);
+    }
+
+    [Fact]
+    public void ResolveBounds_ReflowsHiddenWidgetToFallbackMonitorWhenSavedMonitorIsMissing()
+    {
+        var savedExternalMonitor = new RectInt32(1920, 0, 2560, 1400);
+        var laptopWorkArea = new RectInt32(0, 0, 1536, 824);
+        var config = new WidgetConfig
+        {
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+            X = 4200,
+            Y = 900,
+            Width = 300,
+            Height = 200,
+            PositionAnchor = WidgetPositionAnchors.RightBottom,
+            PositionMarginX = 16,
+            PositionMarginY = 24,
+            PositionMonitorKey = WidgetPositioningService.CreateMonitorKey(savedExternalMonitor)
+        };
+
+        var bounds = ResolveAtScale(config, laptopWorkArea, 1.25, laptopWorkArea);
+
+        Assert.Equal(1141, bounds.X);
+        Assert.Equal(544, bounds.Y);
+        Assert.Equal(375, bounds.Width);
+        Assert.Equal(250, bounds.Height);
+    }
+
+    [Fact]
+    public void EnsureCurrentBoundsCoordinateVersion_MigratesLegacyPhysicalSizeToLogicalSize()
+    {
+        var workArea = new RectInt32(0, 0, 2560, 1400);
+        var config = new WidgetConfig
+        {
+            X = 120,
+            Y = 90,
+            Width = 450,
+            Height = 300
+        };
+
+        bool migrated = WidgetPositioningService.EnsureCurrentBoundsCoordinateVersionForTest(
+            config,
+            workArea,
+            [(workArea, null)],
+            _ => 1.5);
+
+        Assert.True(migrated);
+        Assert.Equal(WidgetConfig.CurrentBoundsCoordinateVersion, config.BoundsCoordinateVersion);
+        Assert.Equal(120, config.X);
+        Assert.Equal(90, config.Y);
+        Assert.Equal(300d, config.Width, precision: 3);
+        Assert.Equal(200d, config.Height, precision: 3);
+        Assert.Equal(WidgetPositionAnchors.LeftTop, config.PositionAnchor);
+        Assert.Equal(80d, config.PositionMarginX, precision: 3);
+        Assert.Equal(60d, config.PositionMarginY, precision: 3);
+    }
+
+    [Fact]
+    public void ResolveBounds_PrefersMonitorDeviceNameOverLegacyWorkAreaKey()
+    {
+        var primaryMonitor = new RectInt32(0, 0, 1920, 1040);
+        var externalMonitor = new RectInt32(1920, 0, 2560, 1400);
+        var config = new WidgetConfig
+        {
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+            Width = 300,
+            Height = 200,
+            PositionAnchor = WidgetPositionAnchors.LeftTop,
+            PositionMarginX = 10,
+            PositionMarginY = 20,
+            PositionMonitorKey = WidgetPositioningService.CreateMonitorKey(primaryMonitor),
+            PositionMonitorDeviceName = @"\\.\DISPLAY2"
+        };
+
+        var bounds = ResolveWithMonitors(
+            config,
+            primaryMonitor,
+            [
+                (primaryMonitor, @"\\.\DISPLAY1"),
+                (externalMonitor, @"\\.\DISPLAY2")
+            ],
+            1.0);
+
+        Assert.Equal(1930, bounds.X);
+        Assert.Equal(20, bounds.Y);
+        Assert.Equal(300, bounds.Width);
+        Assert.Equal(200, bounds.Height);
+    }
+
+    [Fact]
+    public void UpdateConfigFromPhysicalBounds_StoresLogicalSizeForCurrentDpi()
+    {
+        var workArea = new RectInt32(0, 0, 2560, 1400);
+        var config = new WidgetConfig();
+        var physicalBounds = new RectInt32(180, 120, 450, 300);
+
+        WidgetPositioningService.UpdateConfigFromPhysicalBoundsForTest(
+            config,
+            physicalBounds,
+            workArea,
+            _ => 1.5);
+
+        Assert.Equal(WidgetConfig.CurrentBoundsCoordinateVersion, config.BoundsCoordinateVersion);
+        Assert.Equal(180, config.X);
+        Assert.Equal(120, config.Y);
+        Assert.Equal(300d, config.Width, precision: 3);
+        Assert.Equal(200d, config.Height, precision: 3);
     }
 }

@@ -1,5 +1,6 @@
 using DeskBox.Contracts;
 using DeskBox.Services;
+using DeskBox.Helpers;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -27,7 +28,28 @@ public sealed partial class WidgetShell : UserControl
             nameof(TitleGlyph),
             typeof(string),
             typeof(WidgetShell),
-            new PropertyMetadata("\uE8A5"));
+            new PropertyMetadata("\uE8A5", OnTitleIconAppearanceChanged));
+
+    public static readonly DependencyProperty TitleIconModeProperty =
+        DependencyProperty.Register(
+            nameof(TitleIconMode),
+            typeof(string),
+            typeof(WidgetShell),
+            new PropertyMetadata(WidgetTitleIconModeNames.Color, OnTitleIconAppearanceChanged));
+
+    public static readonly DependencyProperty TitleIconKindProperty =
+        DependencyProperty.Register(
+            nameof(TitleIconKind),
+            typeof(string),
+            typeof(WidgetShell),
+            new PropertyMetadata(WidgetTitleIconKindNames.Default, OnTitleIconAppearanceChanged));
+
+    public static readonly DependencyProperty TitleIconAccentColorProperty =
+        DependencyProperty.Register(
+            nameof(TitleIconAccentColor),
+            typeof(Color),
+            typeof(WidgetShell),
+            new PropertyMetadata(AccentColorHelper.DefaultAccentColor, OnTitleIconAppearanceChanged));
 
     public static readonly DependencyProperty OverlayTitleProperty =
         DependencyProperty.Register(
@@ -130,6 +152,24 @@ public sealed partial class WidgetShell : UserControl
         set => SetValue(TitleGlyphProperty, value);
     }
 
+    public string TitleIconMode
+    {
+        get => (string)GetValue(TitleIconModeProperty);
+        set => SetValue(TitleIconModeProperty, value);
+    }
+
+    public string TitleIconKind
+    {
+        get => (string)GetValue(TitleIconKindProperty);
+        set => SetValue(TitleIconKindProperty, value);
+    }
+
+    public Color TitleIconAccentColor
+    {
+        get => (Color)GetValue(TitleIconAccentColorProperty);
+        set => SetValue(TitleIconAccentColorProperty, value);
+    }
+
     public string OverlayTitle
     {
         get => (string)GetValue(OverlayTitleProperty);
@@ -175,7 +215,7 @@ public sealed partial class WidgetShell : UserControl
     public Grid TitleBar => TitleBarGrid;
     public Border BackgroundSurface => BackgroundPlate;
     public Border Divider => HeaderDivider;
-    public FontIcon TitleIconElement => TitleIcon;
+    public WidgetTitleIcon TitleIconElement => TitleIcon;
     public TextBlock TitleTextElement => TitleText;
     public ContentPresenter TitleEditorPresenterElement => TitleEditorPresenter;
     public StackPanel RightActionButtonHost => RightActionButtons;
@@ -311,6 +351,14 @@ public sealed partial class WidgetShell : UserControl
     }
 
     private static void OnOverlayTitleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is WidgetShell shell)
+        {
+            shell.Bindings.Update();
+        }
+    }
+
+    private static void OnTitleIconAppearanceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is WidgetShell shell)
         {

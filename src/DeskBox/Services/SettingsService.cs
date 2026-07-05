@@ -52,6 +52,11 @@ public sealed class SettingsService
     public const string WidgetChromeModeCompact = WidgetChromeModeNames.Compact;
     public const string WidgetChromeModeOverlay = WidgetChromeModeNames.Overlay;
     public const string WidgetChromeModeHidden = WidgetChromeModeNames.Hidden;
+    public const string WidgetTitleIconModeFilledMono = WidgetTitleIconModeNames.FilledMono;
+    public const string WidgetTitleIconModeLineMono = WidgetTitleIconModeNames.LineMono;
+    public const string WidgetTitleIconModeColor = WidgetTitleIconModeNames.Color;
+    public const string WidgetTitleIconModeHidden = WidgetTitleIconModeNames.Hidden;
+    public const string WidgetTitleIconModeTextLabel = WidgetTitleIconModeNames.TextLabel;
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
     public const string LanguageSystem = "System";
@@ -132,6 +137,7 @@ public sealed class SettingsService
         settings.WidgetAnimationEasingIntensity = WidgetAnimationEasingStandard;
         settings.DisplayWidgetChromeMode = WidgetChromeModeOverlay;
         settings.InteractiveWidgetChromeMode = WidgetChromeModeStandard;
+        settings.WidgetTitleIconMode = WidgetTitleIconModeColor;
         settings.WidgetOpacity = DefaultWidgetOpacity;
         settings.IconSize = DefaultIconSize;
         settings.TextSize = DefaultTextSize;
@@ -470,6 +476,13 @@ public sealed class SettingsService
             changed = true;
         }
 
+        string normalizedTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
+        if (!string.Equals(settings.WidgetTitleIconMode, normalizedTitleIconMode, StringComparison.Ordinal))
+        {
+            settings.WidgetTitleIconMode = normalizedTitleIconMode;
+            changed = true;
+        }
+
         double normalizedIconSize = NormalizeIconSize(settings.IconSize);
         if (Math.Abs(settings.IconSize - normalizedIconSize) > 0.0001)
         {
@@ -593,6 +606,11 @@ public sealed class SettingsService
     public static string NormalizeWidgetChromeModeSetting(string? value, WidgetChromeMode fallback)
     {
         return WidgetChromeModeNames.NormalizeSettingValue(value, fallback);
+    }
+
+    public static string NormalizeWidgetTitleIconModeSetting(string? value)
+    {
+        return WidgetTitleIconModeNames.NormalizeSettingValue(value);
     }
 
     public static string NormalizeMusicRhythmStyle(string? value)
@@ -844,6 +862,15 @@ public sealed class SettingsService
             changed = true;
         }
 
+        if (settings.QuickCaptureDefaultView is not (
+            QuickCaptureDefaultViewRecords or
+            QuickCaptureDefaultViewPinned or
+            QuickCaptureDefaultViewRecent))
+        {
+            settings.QuickCaptureDefaultView = QuickCaptureDefaultViewRecords;
+            changed = true;
+        }
+
         return changed;
     }
 
@@ -864,15 +891,6 @@ public sealed class SettingsService
             TodoDefaultFilterCompleted))
         {
             settings.TodoDefaultFilter = TodoDefaultFilterAll;
-            changed = true;
-        }
-
-        if (settings.QuickCaptureDefaultView is not (
-            QuickCaptureDefaultViewRecords or
-            QuickCaptureDefaultViewPinned or
-            QuickCaptureDefaultViewRecent))
-        {
-            settings.QuickCaptureDefaultView = QuickCaptureDefaultViewRecords;
             changed = true;
         }
 
