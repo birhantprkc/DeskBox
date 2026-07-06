@@ -736,7 +736,9 @@ public static partial class Win32Helper
         public string szDevice;
     }
 
-    public readonly record struct MonitorWorkAreaInfo(RECT Monitor, RECT WorkArea, string DeviceName);
+    private const uint MonitorInfoPrimary = 0x00000001;
+
+    public readonly record struct MonitorWorkAreaInfo(RECT Monitor, RECT WorkArea, string DeviceName, bool IsPrimary);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -864,7 +866,8 @@ public static partial class Win32Helper
                     areas.Add(new MonitorWorkAreaInfo(
                         info.rcMonitor,
                         info.rcWork,
-                        info.szDevice ?? string.Empty));
+                        info.szDevice ?? string.Empty,
+                        (info.dwFlags & MonitorInfoPrimary) == MonitorInfoPrimary));
                 }
                 else
                 {
@@ -877,7 +880,8 @@ public static partial class Win32Helper
                         areas.Add(new MonitorWorkAreaInfo(
                             fallbackInfo.rcMonitor,
                             fallbackInfo.rcWork,
-                            string.Empty));
+                            string.Empty,
+                            (fallbackInfo.dwFlags & MonitorInfoPrimary) == MonitorInfoPrimary));
                     }
                 }
 

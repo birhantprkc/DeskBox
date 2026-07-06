@@ -1,0 +1,307 @@
+# DeskBox 双通道开发与打包操作手册
+
+日期：2026-07-06
+
+本文档用于后续开发、调试和发布 DeskBox 时区分两个发布通道：
+
+- 官网/GitHub 版，也称 Direct 版。
+- Microsoft Store 版，也称 Store 版。
+
+两个通道共用大部分业务代码，但更新方式、开机自启、安装包形态、关于页入口、商店政策约束和本地验证方式不同。后续新增功能时，默认需要确认它在两个通道下的行为是否一致，或者是否需要显式分流。
+
+## 一、通道总览
+
+| 项目 | Direct 官网版 | Microsoft Store 版 |
+| --- | --- | --- |
+| 默认构建通道 | 是 | 否，需要显式传入 `DeskBoxDistribution=Store` |
+| 安装形态 | Inno Setup 安装包 | MSIX / Partner Center |
+| 更新方式 | 应用内更新 + `DeskBox.Updater.exe` + Inno 覆盖安装 | `Windows.Services.Store.StoreContext` + Microsoft Store 更新 |
+| 开机自启 | HKCU Run 注册表 | MSIX `StartupTask` |
+| 包身份 | 无 package identity | 有 package identity |
+| 数据路径 | 当前继续使用 DeskBox 自有本地数据目录 | 首版 Store 也继续使用相同数据目录，避免用户切换通道后数据丢失 |
+| 关于页渠道文案 | `官网版` | `Microsoft Store` |
+| 捐赠二维码 | 显示 | 隐藏 |
+| 国内网盘入口 | 可显示 | 不作为独立卡片显示，更新失败时只提供合适提示 |
+| Updater 产物 | 构建并复制 | 不构建、不打包 |
+| 运行时依赖 | 安装器检测 .NET / Windows App Runtime | Store 包建议自包含 .NET，Windows App Runtime 由包依赖或 Store 处理 |
+
+当前项目使用的关键 MSBuild 属性：
+
+```xml
+<DeskBoxDistribution Condition="'$(DeskBoxDistribution)' == ''">Direct</DeskBoxDistribution>
+<DefineConstants Condition="'$(DeskBoxDistribution)' == 'Store'">$(DefineConstants);DESKBOX_STORE</DefineConstants>
+```
+
+规则：
+
+- 不传 `DeskBoxDistribution` 时，一律是 Direct。
+- 传 `-p:DeskBoxDistribution=Store` 时，启用 Store 编译常量和 MSIX 相关配置。
+- 不要在业务代码里到处写 `#if DESKBOX_STORE`。优先通过 `AppDistributionService`、`IAppUpdateService`、`IStartupService` 等服务边界分流。
+
+## 二、开发时怎么跑
+
+### 2.1 日常开发优先跑 Direct
+
+日常 UI、格子、设置、文件、待办、随记、音乐等功能开发，默认跑 Direct 版即可。
+
+```powershell
+dotnet build .\src\DeskBox\DeskBox.csproj `
+  -c Debug `
+  -p:Platform=x64 `
+  -p:RuntimeIdentifier=win-x64 `
+  -v:minimal
+```
+
+预期：
+
+- 关于页版本行显示 `官网版`。
+- 捐赠二维码显示。
+- 应用内更新使用 Direct 下载/安装逻辑。
+- 开机自启走注册表。
+- 输出目录包含 `DeskBox.Updater.exe`。
+
+### 2.2 Store 编译检查
+
+Store 通道要至少做一次编译检查，确认 Store 专用服务和资源没有编译错误。
+
+```powershell
+dotnet build .\src\DeskBox\DeskBox.csproj `
+  -c Debug `
+  -p:Platform=x64 `
+  -p:RuntimeIdentifier=win-x64 `
+  -p:DeskBoxDistribution=Store `
+  -v:minimal
+```
+
+注意：
+
+- 未打包的 Store Debug 输出不一定能直接运行。
+- 如果直接运行普通 `DeskBox.exe` 出现 Windows App Runtime 初始化异常，优先按 MSIX 方式验证。
+- Store 更新、Store 开机自启、package identity 相关能力必须在 MSIX 安装后测试。
+
+### 2.3 Store 本地真实验证
+
+Store 通道的真实验证方式是构建 MSIX，然后安装运行。
+
+```powershell
+.\scripts\build-store-msix.ps1 `
+  -Configuration Release `
+  -Platform x64
+```
+
+默认输出：
+
+```text
+artifacts\store-msix\
+```
+
+如果只是本地验证，可以使用临时证书签名。正式提交 Store 时必须使用 Partner Center 对应的包身份和发布流程。
+
+本地安装后启动方式：
+
+```powershell
+$pkg = Get-AppxPackage DeskBox.Desktop
+Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!App"
+```
+
+预期：
+
+- 进程路径在 `C:\Program Files\WindowsApps\...`。
+- 关于页版本行显示 `Microsoft Store`。
+- 捐赠二维码隐藏。
+- `DeskBox.Updater.exe` 不在包内。
+- Store 更新入口显示为商店更新逻辑。
+- 开机自启走 `StartupTask`。
+
+## 三、打包流程
+
+### 3.1 发版前公共步骤
+
+两个通道发布前都要做：
+
+1. 更新版本号。
+   - `src/DeskBox/DeskBox.csproj`
+   - `src/DeskBox/Package.appxmanifest`
+   - Inno 脚本中的版本信息
+   - README / CHANGELOG 中的版本说明
+
+2. 跑基础构建和测试。
+
+```powershell
+dotnet build .\src\DeskBox\DeskBox.csproj `
+  -c Debug `
+  -p:Platform=x64 `
+  -p:RuntimeIdentifier=win-x64 `
+  -v:minimal
+
+dotnet test .\DeskBox.sln `
+  -c Debug `
+  -p:Platform=x64 `
+  -p:RuntimeIdentifier=win-x64 `
+  -v:minimal
+```
+
+3. 检查 Git 范围。
+   - 可以提交：`src/`、`installer/`、`scripts/`、`tests/`、`docs/architecture/`、README、CHANGELOG。
+   - 不要提交：`.codex-temp/`、`artifacts/`、`bin/`、`obj/`、本地签名 MSIX、`.cer`、`.pfx`、临时截图和本地草稿。
+   - 网站 `deskbox-site/` 是否提交要单独决定，不要混进应用发版提交里。
+
+### 3.2 Direct 官网版打包
+
+Direct 版继续走现有 Inno 链路。
+
+关键要求：
+
+- `DeskBoxDistribution` 保持默认 `Direct`。
+- 需要构建并复制 `DeskBox.Updater.exe`。
+- 安装器需要检测 `.NET 10` 和 Windows App Runtime 2.2。
+- 应用内更新 manifest 指向 Direct 安装包。
+- 关于页保留官网、GitHub、捐赠等入口。
+
+验收清单：
+
+- 干净机器能安装并启动。
+- 覆盖安装旧版本后数据保留。
+- 应用内检查更新、下载、安装、重启链路正常。
+- 缺少运行时时，安装器提示和引导正确。
+- 开机自启开关有效。
+- 托盘、快捷键、多屏/DPI、文件拖拽、系统音量等底层能力正常。
+
+### 3.3 Microsoft Store 版打包
+
+Store 版必须显式传入 Store 通道：
+
+```powershell
+.\scripts\build-store-msix.ps1 `
+  -Configuration Release `
+  -Platform x64
+```
+
+如果要签名：
+
+```powershell
+.\scripts\build-store-msix.ps1 `
+  -Configuration Release `
+  -Platform x64 `
+  -SignPackage `
+  -PackageCertificateKeyFile "path\to\DeskBox.pfx"
+```
+
+上架前必须替换 `src\DeskBox\Package.appxmanifest` 中的占位信息：
+
+- `Identity Name`
+- `Publisher`
+- `PublisherDisplayName`
+- 必要时同步 Store logo、tile、splash、隐私链接和应用说明。
+
+验收清单：
+
+- 包内没有 `DeskBox.Updater.exe`。
+- 包内没有 `Assets\donation-wechat.png` 和 `Assets\donation-alipay.png`。
+- 关于页显示 `Microsoft Store`。
+- 捐赠二维码隐藏。
+- 更新入口使用 Store 文案和 StoreContext 逻辑。
+- `StartupTask` 声明存在，开机自启设置不写注册表。
+- 运行 Windows App Certification Kit。
+- Partner Center 包身份和 manifest 完全一致。
+
+检查 MSIX 内是否误带资源：
+
+```powershell
+$msix = "path\to\DeskBox_版本_x64.msix"
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead($msix)
+$zip.Entries | Where-Object {
+  $_.FullName -like "*DeskBox.Updater*" -or
+  $_.FullName -like "*donation-*"
+} | Select-Object FullName
+$zip.Dispose()
+```
+
+## 四、新功能开发规则
+
+新增功能时，先问四个问题：
+
+1. 这个功能是否涉及安装、更新、开机自启、文件系统、系统权限、Store 政策？
+2. Direct 和 Store 是否应该表现一致？
+3. 如果不一致，分流应该放在服务层还是 ViewModel 层？
+4. 是否需要为两个通道分别写验证步骤？
+
+推荐做法：
+
+- 更新相关只通过 `IAppUpdateService`。
+- 开机自启只通过 `IStartupService`。
+- 通道判断只通过 `AppDistributionService`。
+- 数据目录只通过 `DeskBoxDataPathService` 或现有统一数据入口。
+- UI 尽量绑定 ViewModel 暴露的 `Visibility`、文案、命令，不在 XAML 里写复杂通道判断。
+- Store 禁止或不适合出现的入口，优先在 ViewModel 层隐藏，并在 MSIX 包资源层二次移除。
+
+不要做：
+
+- 不要在多个页面散落 `#if DESKBOX_STORE`。
+- 不要让 Store 版引用 `DeskBox.Updater`。
+- 不要在 Store 包里带捐赠二维码、外部支付引导等可能触碰政策的资源。
+- 不要在 Store 首版随意迁移数据目录。
+- 不要用未打包 exe 验证 Store 更新和 StartupTask。
+
+## 五、常见场景判断
+
+### 5.1 为什么 Store Debug 版直接运行会退出？
+
+Store 通道启用 MSIX / Windows App Runtime 相关能力后，普通未打包 exe 不一定具备完整运行环境。遇到 `REGDB_E_CLASSNOTREG` 或 Windows App Runtime 初始化错误时，不要先怀疑业务代码，先改用 MSIX 安装后验证。
+
+### 5.2 为什么官网版还能看到捐赠二维码？
+
+这是预期行为。官网版不受 Store 支付政策约束，保留捐赠入口。只有 Store 通道需要隐藏。
+
+### 5.3 本地签名证书怎么处理？
+
+本地测试证书只用于开发机安装 MSIX，不要提交到仓库，不要用于正式发布。
+
+如果后续需要清理本地测试包：
+
+```powershell
+Get-AppxPackage DeskBox.Desktop | Remove-AppxPackage
+```
+
+如果需要清理本地测试证书，先确认 thumbprint，再删除：
+
+```powershell
+Get-ChildItem Cert:\CurrentUser\My,Cert:\CurrentUser\Root,Cert:\CurrentUser\TrustedPeople,
+  Cert:\LocalMachine\Root,Cert:\LocalMachine\TrustedPeople |
+  Where-Object { $_.Subject -eq "CN=DeskBox" } |
+  Select-Object Subject, Thumbprint, NotAfter
+```
+
+删除本机证书需要管理员权限，操作前要确认不是正式证书。
+
+### 5.4 网站和应用发版要不要一起提交？
+
+默认不要混在一起。
+
+建议：
+
+- 应用代码、安装器、Store 包、更新服务走一个提交。
+- 官网内容、截图、SEO、下载页走另一个提交。
+- 微信文章、公众号草稿、本地截图不进 Git。
+
+## 六、推荐发布顺序
+
+一次完整发版建议按这个顺序：
+
+1. 完成业务开发。
+2. Direct Debug 自测。
+3. Store 编译检查。
+4. 跑测试。
+5. Direct Release / Inno 打包。
+6. Store MSIX 打包。
+7. 检查 Direct 安装包和 Store MSIX 包内容。
+8. 在干净机器或虚拟机验证 Direct 安装。
+9. 在本机或测试机安装 MSIX 验证 Store 版。
+10. 更新 README / CHANGELOG。
+11. 清理 Git 提交范围。
+12. 提交应用代码。
+13. 发布 GitHub Release / Direct 安装包。
+14. Store 包走 Partner Center 提交流程。
+
+这个顺序的核心是：先确认代码，再确认两个通道的包，最后再更新公开文档和发版。

@@ -4,6 +4,7 @@ obj/
 artifacts/
 Output/
 TestResults/
+.codex-temp/
 
 *.log
 stdout.txt
@@ -16,6 +17,12 @@ build_*.txt
 *.pdb
 *.exe
 *.dll
+*.msix
+*.msixbundle
+*.msixupload
+*.appxsym
+*.cer
+*.pfx
 
 /彩色.svg
 /白色.svg
@@ -46,3 +53,7 @@ backups/
 # Local WeChat article drafts
 docs/wechat/*.md
 docs/wechat/*_wechat.html
+docs/wechat/*.png
+docs/wechat/*.jpg
+docs/wechat/*.jpeg
+docs/wechat/*.webp

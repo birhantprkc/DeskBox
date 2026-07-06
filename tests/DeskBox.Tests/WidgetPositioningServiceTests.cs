@@ -32,6 +32,32 @@ public sealed class WidgetPositioningServiceTests
             _ => scale);
     }
 
+    private static RectInt32 ResolveWithPrimaryMonitors(
+        WidgetConfig config,
+        RectInt32 fallbackWorkArea,
+        IReadOnlyList<(RectInt32 WorkArea, string? DeviceName, bool IsPrimary)> availableWorkAreas,
+        double scale)
+    {
+        return WidgetPositioningService.ResolveBoundsForTestWithPrimary(
+            config,
+            fallbackWorkArea,
+            availableWorkAreas,
+            _ => scale);
+    }
+
+    private static bool EnsureCurrentBoundsCoordinateVersionWithPrimaryMonitors(
+        WidgetConfig config,
+        RectInt32 fallbackWorkArea,
+        IReadOnlyList<(RectInt32 WorkArea, string? DeviceName, bool IsPrimary)> availableWorkAreas,
+        double scale)
+    {
+        return WidgetPositioningService.EnsureCurrentBoundsCoordinateVersionForTestWithPrimary(
+            config,
+            fallbackWorkArea,
+            availableWorkAreas,
+            _ => scale);
+    }
+
     [Fact]
     public void CaptureAnchor_UsesNearestCornerMargins()
     {
@@ -129,6 +155,102 @@ public sealed class WidgetPositioningServiceTests
     }
 
     [Fact]
+    public void ResolveBounds_FollowsCurrentPrimaryWhenCapturedOnPrimaryMonitor()
+    {
+        var formerPrimaryLaptop = new RectInt32(-1536, 0, 1536, 824);
+        var currentPrimaryExternal = new RectInt32(0, 0, 2560, 1400);
+        var config = new WidgetConfig
+        {
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+            Width = 300,
+            Height = 200,
+            PositionAnchor = WidgetPositionAnchors.RightBottom,
+            PositionMarginX = 16,
+            PositionMarginY = 24,
+            PositionMonitorKey = "0:0:1536:824",
+            PositionMonitorDeviceName = @"\\.\DISPLAY1",
+            PositionMonitorWasPrimary = true
+        };
+
+        var bounds = ResolveWithPrimaryMonitors(
+            config,
+            formerPrimaryLaptop,
+            [
+                (formerPrimaryLaptop, @"\\.\DISPLAY1", false),
+                (currentPrimaryExternal, @"\\.\DISPLAY2", true)
+            ],
+            1.0);
+
+        Assert.Equal(2244, bounds.X);
+        Assert.Equal(1176, bounds.Y);
+        Assert.Equal(300, bounds.Width);
+        Assert.Equal(200, bounds.Height);
+    }
+
+    [Fact]
+    public void ResolveBounds_KeepsSecondaryMonitorWhenCapturedOffPrimaryMonitor()
+    {
+        var secondaryLaptop = new RectInt32(-1536, 0, 1536, 824);
+        var currentPrimaryExternal = new RectInt32(0, 0, 2560, 1400);
+        var config = new WidgetConfig
+        {
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+            Width = 300,
+            Height = 200,
+            PositionAnchor = WidgetPositionAnchors.RightBottom,
+            PositionMarginX = 16,
+            PositionMarginY = 24,
+            PositionMonitorKey = "0:0:1536:824",
+            PositionMonitorDeviceName = @"\\.\DISPLAY1",
+            PositionMonitorWasPrimary = false
+        };
+
+        var bounds = ResolveWithPrimaryMonitors(
+            config,
+            currentPrimaryExternal,
+            [
+                (secondaryLaptop, @"\\.\DISPLAY1", false),
+                (currentPrimaryExternal, @"\\.\DISPLAY2", true)
+            ],
+            1.0);
+
+        Assert.Equal(-316, bounds.X);
+        Assert.Equal(600, bounds.Y);
+        Assert.Equal(300, bounds.Width);
+        Assert.Equal(200, bounds.Height);
+    }
+
+    [Fact]
+    public void ResolveBounds_TreatsLegacyOriginMonitorAsPrimaryForSmartMode()
+    {
+        var secondaryLaptop = new RectInt32(-1536, 0, 1536, 824);
+        var currentPrimaryExternal = new RectInt32(0, 0, 2560, 1400);
+        var config = new WidgetConfig
+        {
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+            Width = 300,
+            Height = 200,
+            PositionAnchor = WidgetPositionAnchors.RightBottom,
+            PositionMarginX = 16,
+            PositionMarginY = 24,
+            PositionMonitorKey = "0:0:1536:824",
+            PositionMonitorDeviceName = @"\\.\DISPLAY1"
+        };
+
+        var bounds = ResolveWithPrimaryMonitors(
+            config,
+            secondaryLaptop,
+            [
+                (secondaryLaptop, @"\\.\DISPLAY1", false),
+                (currentPrimaryExternal, @"\\.\DISPLAY2", true)
+            ],
+            1.0);
+
+        Assert.Equal(2244, bounds.X);
+        Assert.Equal(1176, bounds.Y);
+    }
+
+    [Fact]
     public void ResolveBounds_UsesLogicalSizeAndMarginsOnHighDpiMonitor()
     {
         var workArea = new RectInt32(0, 0, 2560, 1400);
@@ -177,6 +299,39 @@ public sealed class WidgetPositioningServiceTests
     }
 
     [Fact]
+    public void EnsureCurrentBoundsCoordinateVersion_MigratesLegacyPrimaryWidgetToCurrentPrimary()
+    {
+        var secondaryLaptop = new RectInt32(-1536, 0, 1536, 824);
+        var currentPrimaryExternal = new RectInt32(0, 0, 2560, 1400);
+        var config = new WidgetConfig
+        {
+            Width = 300,
+            Height = 200,
+            PositionAnchor = WidgetPositionAnchors.RightBottom,
+            PositionMarginX = 16,
+            PositionMarginY = 24,
+            PositionMonitorKey = "0:0:1536:824",
+            PositionMonitorDeviceName = @"\\.\DISPLAY1"
+        };
+
+        bool migrated = EnsureCurrentBoundsCoordinateVersionWithPrimaryMonitors(
+            config,
+            secondaryLaptop,
+            [
+                (secondaryLaptop, @"\\.\DISPLAY1", false),
+                (currentPrimaryExternal, @"\\.\DISPLAY2", true)
+            ],
+            1.0);
+
+        Assert.True(migrated);
+        Assert.Equal(WidgetConfig.CurrentBoundsCoordinateVersion, config.BoundsCoordinateVersion);
+        Assert.Equal(2244, config.X);
+        Assert.Equal(1176, config.Y);
+        Assert.Equal(@"\\.\DISPLAY2", config.PositionMonitorDeviceName);
+        Assert.True(config.PositionMonitorWasPrimary);
+        Assert.Equal(WidgetPositioningService.CreateMonitorKey(currentPrimaryExternal), config.PositionMonitorKey);
+    }
+    [Fact]
     public void EnsureCurrentBoundsCoordinateVersion_MigratesLegacyPhysicalSizeToLogicalSize()
     {
         var workArea = new RectInt32(0, 0, 2560, 1400);
@@ -219,7 +374,8 @@ public sealed class WidgetPositioningServiceTests
             PositionMarginX = 10,
             PositionMarginY = 20,
             PositionMonitorKey = WidgetPositioningService.CreateMonitorKey(primaryMonitor),
-            PositionMonitorDeviceName = @"\\.\DISPLAY2"
+            PositionMonitorDeviceName = @"\\.\DISPLAY2",
+            PositionMonitorWasPrimary = false
         };
 
         var bounds = ResolveWithMonitors(

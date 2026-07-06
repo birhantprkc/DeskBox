@@ -43,6 +43,10 @@ public class WidgetConfig
     /// <summary>Win32 monitor device name where the widget was last positioned, used before the legacy work area signature.</summary>
     public string? PositionMonitorDeviceName { get; set; }
 
+    /// <summary>Whether the monitor was primary when this widget position was captured. Primary widgets follow the current primary monitor.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? PositionMonitorWasPrimary { get; set; }
+
     /// <summary>Bounds coordinate model version. Version 0 is legacy physical pixels; version 1 stores size and anchor margins in logical pixels.</summary>
     public int BoundsCoordinateVersion { get; set; }
 

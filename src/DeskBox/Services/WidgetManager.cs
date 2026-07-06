@@ -3857,20 +3857,22 @@ public sealed class WidgetManager
         double previousMarginY = config.PositionMarginY;
         string? previousMonitorKey = config.PositionMonitorKey;
         string? previousMonitorDeviceName = config.PositionMonitorDeviceName;
+        bool? previousMonitorWasPrimary = config.PositionMonitorWasPrimary;
         int previousBoundsCoordinateVersion = config.BoundsCoordinateVersion;
 
         var area = DisplayArea.GetFromRect(
             new Windows.Graphics.RectInt32(x, y, width, height),
             DisplayAreaFallback.Nearest);
         var workArea = area.WorkArea;
-        var availableWorkAreas = WidgetPositioningService.GetAvailableWorkAreas();
-        WidgetPositioningService.EnsureCurrentBoundsCoordinateVersion(config, workArea, availableWorkAreas);
+        WidgetPositioningService.EnsureCurrentBoundsCoordinateVersionForCurrentTopology(config, workArea);
 
         var safeBounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(config);
         var selectedWorkArea = DisplayArea.GetFromRect(safeBounds, DisplayAreaFallback.Nearest).WorkArea;
         bool shouldCaptureAnchor = string.IsNullOrWhiteSpace(config.PositionAnchor) ||
                                    string.IsNullOrWhiteSpace(config.PositionMonitorKey) ||
                                    string.IsNullOrWhiteSpace(config.PositionMonitorDeviceName) ||
+                                   !config.PositionMonitorWasPrimary.HasValue ||
+                                   config.PositionMonitorWasPrimary == true ||
                                    string.Equals(
                                        config.PositionMonitorKey,
                                        WidgetPositioningService.CreateMonitorKey(selectedWorkArea),
@@ -3892,7 +3894,8 @@ public sealed class WidgetManager
             Math.Abs(config.PositionMarginX - previousMarginX) > double.Epsilon ||
             Math.Abs(config.PositionMarginY - previousMarginY) > double.Epsilon ||
             !string.Equals(config.PositionMonitorKey, previousMonitorKey, StringComparison.Ordinal) ||
-            !string.Equals(config.PositionMonitorDeviceName, previousMonitorDeviceName, StringComparison.OrdinalIgnoreCase);
+            !string.Equals(config.PositionMonitorDeviceName, previousMonitorDeviceName, StringComparison.OrdinalIgnoreCase) ||
+            config.PositionMonitorWasPrimary != previousMonitorWasPrimary;
 
         if (!changed)
         {

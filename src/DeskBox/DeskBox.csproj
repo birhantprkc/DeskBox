@@ -2,12 +2,12 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
     <RootNamespace>DeskBox</RootNamespace>
-    <Version>1.2.1</Version>
-    <AssemblyVersion>1.2.1.0</AssemblyVersion>
-    <FileVersion>1.2.1.0</FileVersion>
-    <InformationalVersion>1.2.1</InformationalVersion>
+    <Version>1.2.2-test</Version>
+    <AssemblyVersion>1.2.2.0</AssemblyVersion>
+    <FileVersion>1.2.2.0</FileVersion>
+    <InformationalVersion>1.2.2-test</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
@@ -19,8 +19,20 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <EnableMsixTooling>true</EnableMsixTooling>
     <AppxPackage>false</AppxPackage>
+    <DeskBoxDistribution Condition="'$(DeskBoxDistribution)' == ''">Direct</DeskBoxDistribution>
+    <DefineConstants Condition="'$(DeskBoxDistribution)' == 'Store'">$(DefineConstants);DESKBOX_STORE</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\deskbox.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(DeskBoxDistribution)' == 'Store'">
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <DefaultLanguage>zh-CN</DefaultLanguage>
+    <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+    <UapAppxPackageBuildMode Condition="'$(UapAppxPackageBuildMode)' == ''">SideloadOnly</UapAppxPackageBuildMode>
+    <AppxPackage Condition="'$(DeskBoxCreateMsixPackage)' == 'true'">true</AppxPackage>
+    <GenerateAppxPackageOnBuild Condition="'$(DeskBoxCreateMsixPackage)' == 'true'">true</GenerateAppxPackageOnBuild>
+    <AppxBundle Condition="'$(DeskBoxCreateMsixPackage)' == 'true' and '$(AppxBundle)' == ''">Never</AppxBundle>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,10 +40,10 @@
     <PackageReference Include="CommunityToolkit.WinUI.Controls.ColorPicker" Version="8.2.251219" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.2.251219" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.3" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2270" />
     <PackageReference Include="H.NotifyIcon.WinUI" Version="2.1.0" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -56,10 +68,10 @@
     <Content Include="Assets\wechat-qrcode.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\donation-wechat.png">
+    <Content Include="Assets\donation-wechat.png" Condition="'$(DeskBoxDistribution)' != 'Store'">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\donation-alipay.png">
+    <Content Include="Assets\donation-alipay.png" Condition="'$(DeskBoxDistribution)' != 'Store'">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Assets\SettingsNavIcons\*.svg">
@@ -68,6 +80,62 @@
     <Content Include="Assets\WidgetTitleIcons\*.svg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="Assets\Store\*.png" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)' != 'true' and '$(EnableMsixTooling)' == 'true'">
+    <ProjectCapability Include="Msix" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)' != 'true' and '$(EnableMsixTooling)' == 'true'">
+    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+  </PropertyGroup>
+
+  <Target Name="BuildDeskBoxUpdater" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxDistribution)' != 'Store'">
+    <MSBuild
+      Projects="..\DeskBox.Updater\DeskBox.Updater.csproj"
+      Targets="Build"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)" />
+  </Target>
+
+  <Target Name="CopyDeskBoxUpdater" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxDistribution)' != 'Store'">
+    <ItemGroup>
+      <DeskBoxUpdaterOutput Include="..\DeskBox.Updater\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\DeskBox.Updater.*" Condition="'$(RuntimeIdentifier)' != ''" />
+      <DeskBoxUpdaterOutput Include="..\DeskBox.Updater\bin\$(Platform)\$(Configuration)\$(TargetFramework)\DeskBox.Updater.*" Condition="'$(RuntimeIdentifier)' == ''" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DeskBoxUpdaterOutput)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishDeskBoxUpdater" AfterTargets="Publish" Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxDistribution)' != 'Store'">
+    <MSBuild
+      Projects="..\DeskBox.Updater\DeskBox.Updater.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishSingleFile=false;PublishDir=$(PublishDir)" />
+  </Target>
+
+  <Target Name="RemoveStoreRestrictedAssetsFromPri"
+          BeforeTargets="_GenerateProjectPriConfigurationFiles;_GenerateProjectPriFileCore"
+          Condition="'$(DeskBoxDistribution)' == 'Store'">
+    <ItemGroup>
+      <Image Remove="Assets\donation-wechat.png;Assets\donation-alipay.png" />
+      <Content Remove="Assets\donation-wechat.png;Assets\donation-alipay.png" />
+      <None Remove="Assets\donation-wechat.png;Assets\donation-alipay.png" />
+      <PRIResource Remove="Assets\donation-wechat.png;Assets\donation-alipay.png" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RemoveStoreRestrictedAssetsFromAppxPayload"
+          AfterTargets="_ComputeAppxPackagePayload"
+          BeforeTargets="_GenerateAppxPackageRecipe;_GenerateAppxPackageFile"
+          Condition="'$(DeskBoxDistribution)' == 'Store'">
+    <ItemGroup>
+      <AppxPackagePayload Remove="@(AppxPackagePayload)"
+                          Condition="'%(AppxPackagePayload.TargetPath)' == 'Assets\donation-wechat.png' Or '%(AppxPackagePayload.TargetPath)' == 'Assets\donation-alipay.png'" />
+    </ItemGroup>
+  </Target>
 
 </Project>

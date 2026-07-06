@@ -150,6 +150,7 @@ public sealed class SettingsService
         settings.ShowImageFilesAsIcons = false;
         settings.HideShortcutExtensionWhenShowingFileExtensions = true;
         settings.ShowHoverButtons = true;
+        settings.AutoCheckForUpdates = true;
         settings.QuickCaptureClipboardEnabled = true;
         settings.QuickCaptureImageClipboardEnabled = true;
         settings.QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;

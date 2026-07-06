@@ -5,7 +5,7 @@
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](#构建)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](#构建)
 
 DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量桌面格子帮你收纳文件、映射文件夹、记录待办、随手记点东西，也可以在桌面上控制音乐。DeskBox 不会替换 Windows 桌面，只是在原生桌面之上补一层更好整理、更好访问、更容易临时唤起的能力。
 
@@ -19,7 +19,7 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 - [DeskBox_Setup_1.2.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.1/DeskBox_Setup_1.2.1_x64.exe)
 
-安装器会检测 .NET 8 Runtime x64 和 Windows App Runtime 2.1.3 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
+安装器会检测 .NET 10 Runtime x64 和 Windows App Runtime 2.2 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
 ## 最新更新
 
@@ -84,12 +84,12 @@ Windows 桌面已经陪大家用了很多年，也是很多人每天最常用的
 ## 环境要求
 
 - Windows 11。
-- .NET 8 Runtime x64。
-- Windows App Runtime 2.1.3 x64。
+- .NET 10 Runtime x64。
+- Windows App Runtime 2.2 x64。
 
 当前项目主要在 Windows 11 下测试。Windows 10 或其他系统版本尚未完整验证。
 
-开发环境需要 .NET 8 SDK。推荐使用安装了 Windows App SDK 工作负载的 Visual Studio 2022。
+开发环境需要 .NET 10 SDK。推荐使用安装了 Windows App SDK 工作负载的 Visual Studio。
 
 ## 安装和卸载
 

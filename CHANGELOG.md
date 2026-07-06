@@ -4,11 +4,13 @@
 
 ### English
 
-- No unreleased changes yet.
+- Upgraded the Direct/Inno build baseline to .NET 10 and Windows App SDK 2.2.
+- Updated installer runtime dependency detection to .NET 10 Runtime x64 and Windows App Runtime 2.2 x64.
 
 ### 中文
 
-- 暂无未发布变更。
+- 将 Direct/Inno 版本的底层构建基线升级到 .NET 10 和 Windows App SDK 2.2。
+- 安装器运行时依赖检测升级为 .NET 10 Runtime x64 和 Windows App Runtime 2.2 x64。
 
 ## 1.2.1 - 2026-07-05
 

@@ -3,7 +3,8 @@
 ; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\x64 -v:minimal
 
 #define MyAppName "DeskBox"
-#define MyAppVersion "1.2.1"
+#define MyAppVersion "1.2.2-test"
+#define MyAppVersionInfo "1.2.2.0"
 #define MyAppPublisher "朱天雨"
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
@@ -15,7 +16,7 @@ AppId={{5E052824-3456-427E-9759-3BCAE078A1D3}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-AppComments=安装包会按需检测并下载 .NET 8 Runtime 和 Windows App Runtime。
+AppComments=安装包会按需检测并下载 .NET 10 Runtime 和 Windows App Runtime 2.2。
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
 UninstallDisplayIcon={app}\Assets\deskbox.ico
 ArchitecturesAllowed=x64compatible
@@ -32,8 +33,8 @@ RestartApplications=no
 OutputDir=..\Output
 OutputBaseFilename={#MyAppOutputBaseName}_{#MyAppVersion}_x64
 SetupIconFile=..\src\DeskBox\Assets\deskbox.ico
-VersionInfoVersion=1.2.1.0
-VersionInfoProductVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersionInfo}
+VersionInfoProductVersion={#MyAppVersionInfo}
 VersionInfoTextVersion={#MyAppVersion}
 Compression=lzma
 SolidCompression=yes

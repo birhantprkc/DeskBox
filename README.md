@@ -5,7 +5,7 @@ English | [简体中文](README.zh-CN.md)
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#requirements)
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](#build)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](#build)
 
 DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates native-feeling desktop widgets for collecting files, mapping folders, keeping todos, capturing quick notes, and controlling music from the desktop. It does not replace the Windows desktop shell; it adds one focused layer for keeping everyday things easier to reach, easier to sort, and easier to bring forward when you need them.
 
@@ -19,7 +19,7 @@ Current release: 1.2.1
 
 - [DeskBox_Setup_1.2.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.1/DeskBox_Setup_1.2.1_x64.exe)
 
-The installer checks for .NET 8 Runtime x64 and Windows App Runtime 2.1.3 x64. If either dependency is missing, the setup flow can download and install it for you.
+The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
 ## What's New In 1.2.1
 
@@ -86,12 +86,12 @@ DeskBox includes both English and Chinese localization. The screenshots below hi
 ## Requirements
 
 - Windows 11.
-- .NET 8 Runtime x64.
-- Windows App Runtime 2.1.3 x64.
+- .NET 10 Runtime x64.
+- Windows App Runtime 2.2 x64.
 
 DeskBox is currently tested on Windows 11. Windows 10 may work in some environments, but it is not a validated target.
 
-For development, install the .NET 8 SDK. Visual Studio 2022 with Windows App SDK workload is recommended.
+For development, install the .NET 10 SDK. Visual Studio with Windows App SDK workload is recommended.
 
 ## Install And Uninstall
 

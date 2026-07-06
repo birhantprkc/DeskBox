@@ -1,14 +1,18 @@
-using Microsoft.Win32;
-
 namespace DeskBox.Services;
 
 /// <summary>
-/// Manages auto-start on boot via Windows Registry (HKCU\Run).
+/// Compatibility facade for startup registration. The concrete implementation is selected by app distribution channel.
 /// </summary>
 public static class StartupService
 {
-    private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "DeskBox";
+    private static IStartupService s_current = new DirectStartupService();
+
+    public static IStartupService Current => s_current;
+
+    public static void Configure(IStartupService startupService)
+    {
+        s_current = startupService;
+    }
 
     /// <summary>
     /// Check if DeskBox is registered for auto-start.
@@ -17,7 +21,7 @@ public static class StartupService
     {
         try
         {
-            return GetRunValue() is not null;
+            return s_current.IsEnabled();
         }
         catch
         {
@@ -29,8 +33,7 @@ public static class StartupService
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, false);
-            return key?.GetValue(AppName) as string;
+            return s_current.GetRunValue();
         }
         catch
         {
@@ -38,18 +41,11 @@ public static class StartupService
         }
     }
 
-    /// <summary>
-    /// Enable auto-start on boot. Registers the current executable in HKCU\Run.
-    /// </summary>
     public static void Enable()
     {
         try
         {
-            var exePath = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(exePath)) return;
-
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-            key?.SetValue(AppName, $"\"{exePath}\" --startup");
+            s_current.Enable();
         }
         catch (Exception ex)
         {
@@ -57,15 +53,11 @@ public static class StartupService
         }
     }
 
-    /// <summary>
-    /// Disable auto-start on boot. Removes the registry entry.
-    /// </summary>
     public static void Disable()
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-            key?.DeleteValue(AppName, false);
+            s_current.Disable();
         }
         catch (Exception ex)
         {
@@ -73,12 +65,15 @@ public static class StartupService
         }
     }
 
-    /// <summary>
-    /// Set auto-start to the specified state.
-    /// </summary>
     public static void SetEnabled(bool enabled)
     {
-        if (enabled) Enable();
-        else Disable();
+        try
+        {
+            s_current.SetEnabled(enabled);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[StartupService] Failed to set startup: {ex.Message}");
+        }
     }
 }

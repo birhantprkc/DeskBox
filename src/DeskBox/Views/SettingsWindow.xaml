@@ -307,6 +307,9 @@
                 <NavigationViewItem
                     Tag="About"
                     svc:Localized.Key="Settings.Nav.About">
+                    <NavigationViewItem.InfoBadge>
+                        <InfoBadge Visibility="{x:Bind ViewModel.UpdateReminderBadgeVisibility, Mode=OneWay}" />
+                    </NavigationViewItem.InfoBadge>
                     <NavigationViewItem.Icon>
                         <ImageIcon Style="{StaticResource SettingsNavImageIconStyle}">
                             <ImageIcon.Source>
@@ -1571,105 +1574,229 @@
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.About" />
                     <StackPanel Margin="0,8,0,0" Spacing="4">
                         <toolkit:SettingsCard
-                            Header="DeskBox"
-                            Description="{Binding AboutVersionText}"
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.About.Description">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <ImageIcon>
-                                    <ImageIcon.Source>
-                                        <media:SvgImageSource UriSource="ms-appx:///Assets/deskbox.svg" />
-                                    </ImageIcon.Source>
-                                </ImageIcon>
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                Style="{StaticResource SettingValueTextStyle}"
-                                Text="{Binding AboutVersionText}" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
                             ContentAlignment="Vertical"
-                            HorizontalContentAlignment="Stretch"
-                            svc:Localized.DescriptionKey="Settings.Download.Description"
-                            svc:Localized.HeaderKey="Settings.Download.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE896;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <StackPanel Spacing="12">
-                                <TextBox
-                                    IsReadOnly="True"
-                                    Text="https://pan.quark.cn/s/f7a6769cdaf3"
-                                    TextWrapping="NoWrap" />
+                            HorizontalContentAlignment="Stretch">
+                            <StackPanel Spacing="14">
+                                <Grid
+                                    ColumnDefinitions="Auto,*,Auto"
+                                    ColumnSpacing="14"
+                                    RowSpacing="4">
+                                    <Image
+                                        Width="34"
+                                        Height="34"
+                                        VerticalAlignment="Top">
+                                        <Image.Source>
+                                            <media:SvgImageSource UriSource="ms-appx:///Assets/deskbox.svg" />
+                                        </Image.Source>
+                                    </Image>
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        Spacing="3"
+                                        VerticalAlignment="Center">
+                                        <TextBlock
+                                            FontSize="16"
+                                            FontWeight="SemiBold"
+                                            Text="DeskBox"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Style="{StaticResource SettingDescriptionTextStyle}"
+                                            svc:Localized.Key="Settings.About.Description" />
+                                        <TextBlock
+                                            Style="{StaticResource SettingDescriptionTextStyle}"
+                                            Text="{Binding AboutDeveloperText}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        MaxWidth="260"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource SettingValueTextStyle}"
+                                        Text="{Binding AboutVersionText}"
+                                        TextAlignment="Right"
+                                        TextWrapping="Wrap" />
+                                </Grid>
+
                                 <StackPanel
-                                    x:Name="DownloadLinkActionsPanel"
+                                    x:Name="AboutInfoActionsPanel"
                                     HorizontalAlignment="Right"
                                     Orientation="Horizontal"
                                     Spacing="8">
                                     <Button
-                                        x:Name="CopyDownloadLinkButton"
-                                        Click="CopyDownloadLinkButton_Click"
+                                        x:Name="AboutReasonButton"
+                                        Click="ShowProductReasonButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        svc:Localized.ToolTipKey="Settings.Download.CopyTooltip">
+                                        svc:Localized.ToolTipKey="Settings.About.ReasonTitle">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <SymbolIcon Symbol="Copy" />
-                                            <TextBlock svc:Localized.Key="Common.Copy" />
+                                            <FontIcon FontSize="14" Glyph="&#xE946;" />
+                                            <TextBlock svc:Localized.Key="Settings.About.ReasonButton" />
                                         </StackPanel>
                                     </Button>
                                     <Button
-                                        x:Name="OpenDownloadLinkButton"
-                                        Click="OpenDownloadLinkButton_Click"
+                                        x:Name="AboutWebsiteButton"
+                                        Click="OpenWebsiteButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        svc:Localized.ToolTipKey="Settings.Download.OpenTooltip">
+                                        ToolTipService.ToolTip="{Binding OfficialWebsiteLink}">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <SymbolIcon Symbol="OpenFile" />
-                                            <TextBlock svc:Localized.Key="Common.Open" />
+                                            <FontIcon FontSize="14" Glyph="&#xE774;" />
+                                            <TextBlock svc:Localized.Key="Settings.About.Website" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        x:Name="AboutRepositoryButton"
+                                        Click="OpenRepositoryButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        ToolTipService.ToolTip="{Binding OpenSourceRepositoryUrl}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <FontIcon FontSize="14" Glyph="&#xE8A7;" />
+                                            <TextBlock svc:Localized.Key="Settings.About.Repository" />
                                         </StackPanel>
                                     </Button>
                                 </StackPanel>
                             </StackPanel>
                         </toolkit:SettingsCard>
 
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.About.Description"
-                            svc:Localized.HeaderKey="Settings.About.ReasonTitle">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE946;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <Button
-                                Click="ShowProductReasonButton_Click"
-                                Style="{StaticResource ActionButtonStyle}"
-                                svc:Localized.ToolTipKey="Settings.About.ReasonTitle">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon FontSize="14" Glyph="&#xE946;" />
-                                    <TextBlock svc:Localized.Key="Common.View" />
-                                </StackPanel>
-                            </Button>
-                        </toolkit:SettingsCard>
+                        <toolkit:SettingsExpander
+                            HorizontalContentAlignment="Stretch"
+                            IsExpanded="True"
+                            svc:Localized.DescriptionKey="Settings.Update.Description"
+                            svc:Localized.HeaderKey="Settings.Update.Title">
+                            <toolkit:SettingsExpander.HeaderIcon>
+                                <FontIcon Glyph="&#xE895;" />
+                            </toolkit:SettingsExpander.HeaderIcon>
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Update.AutoCheckDescription"
+                                    svc:Localized.HeaderKey="Settings.Update.AutoCheck">
+                                    <ToggleSwitch
+                                        MinWidth="0"
+                                        IsOn="{Binding AutoCheckForUpdates, Mode=TwoWay}"
+                                        OffContent=""
+                                        OnContent="" />
+                                </toolkit:SettingsCard>
 
-                        <toolkit:SettingsCard
-                            Description="{Binding OpenSourceRepositoryDisplayText}"
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.HeaderKey="Settings.About.Repository">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE8A7;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <Button
-                                Click="OpenRepositoryButton_Click"
-                                Style="{StaticResource ActionButtonStyle}"
-                                ToolTipService.ToolTip="{Binding OpenSourceRepositoryUrl}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <SymbolIcon Symbol="OpenFile" />
-                                    <TextBlock svc:Localized.Key="Common.Open" />
-                                </StackPanel>
-                            </Button>
-                        </toolkit:SettingsCard>
+                                <toolkit:SettingsCard
+                                    ContentAlignment="Vertical"
+                                    HorizontalContentAlignment="Stretch"
+                                    Padding="20,14">
+                                    <StackPanel
+                                        HorizontalAlignment="Stretch"
+                                        Spacing="12">
+                                        <Grid
+                                            Margin="24,0,0,0"
+                                            ColumnDefinitions="24,*"
+                                            ColumnSpacing="12">
+                                            <FontIcon
+                                                Width="24"
+                                                Height="24"
+                                                FontSize="18"
+                                                Glyph="&#xE895;"
+                                                VerticalAlignment="Center" />
+                                            <StackPanel
+                                                Grid.Column="1"
+                                                Spacing="2"
+                                                VerticalAlignment="Center">
+                                                <TextBlock
+                                                    Style="{StaticResource SettingValueTextStyle}"
+                                                    Text="{Binding UpdateStatusText}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Style="{StaticResource SettingDescriptionTextStyle}"
+                                                    Text="{Binding UpdateDetailText}"
+                                                    TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid
+                                            MinWidth="220"
+                                            ColumnDefinitions="*,Auto"
+                                            ColumnSpacing="10"
+                                            Margin="60,0,0,0"
+                                            Visibility="{Binding UpdateProgressVisibility}">
+                                            <ProgressBar
+                                                Height="4"
+                                                Minimum="0"
+                                                Maximum="100"
+                                                Value="{Binding UpdateProgressValue}" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                MinWidth="40"
+                                                HorizontalAlignment="Right"
+                                                Style="{StaticResource SettingDescriptionTextStyle}"
+                                                Text="{Binding UpdateProgressText}"
+                                                TextAlignment="Right"
+                                                VerticalAlignment="Center" />
+                                        </Grid>
+
+                                        <StackPanel
+                                            x:Name="UpdateActionsPanel"
+                                            HorizontalAlignment="Right"
+                                            Margin="60,0,0,0"
+                                            Orientation="Horizontal"
+                                            Spacing="8">
+                                            <Button
+                                                x:Name="CheckUpdateButton"
+                                                Click="CheckUpdateButton_Click"
+                                                IsEnabled="{Binding CanCheckForUpdates}"
+                                                Style="{StaticResource ActionButtonStyle}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                                                    <TextBlock svc:Localized.Key="Settings.Update.Check" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                x:Name="DownloadUpdateButton"
+                                                Click="DownloadUpdateButton_Click"
+                                                IsEnabled="{Binding CanDownloadUpdate}"
+                                                Style="{StaticResource ActionButtonStyle}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <FontIcon FontSize="14" Glyph="&#xE896;" />
+                                                    <TextBlock Text="{Binding UpdateDownloadActionText}" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                x:Name="InstallUpdateButton"
+                                                Click="InstallUpdateButton_Click"
+                                                IsEnabled="{Binding CanInstallUpdate}"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                Visibility="{Binding InstallUpdateButtonVisibility}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <FontIcon FontSize="14" Glyph="&#xE118;" />
+                                                    <TextBlock svc:Localized.Key="Settings.Update.Install" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                x:Name="OpenUpdateReleaseNotesButton"
+                                                Click="OpenUpdateReleaseNotesButton_Click"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                Visibility="{Binding UpdateReleaseNotesVisibility}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <SymbolIcon Symbol="OpenFile" />
+                                                    <TextBlock svc:Localized.Key="Settings.Update.ReleaseNotes" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                x:Name="OpenManualUpdateDownloadButton"
+                                                Click="OpenManualUpdateDownloadButton_Click"
+                                                IsEnabled="{Binding CanOpenManualUpdateDownload}"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                Visibility="{Binding ManualUpdateFallbackVisibility}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <FontIcon FontSize="14" Glyph="&#xE896;" />
+                                                    <TextBlock svc:Localized.Key="Settings.Update.ManualDownload" />
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.About.DonationDescription"
-                            svc:Localized.HeaderKey="Settings.About.DonationTitle">
+                            svc:Localized.HeaderKey="Settings.About.DonationTitle"
+                            Visibility="{Binding DonationCardVisibility}">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE8F2;" />
                             </toolkit:SettingsCard.HeaderIcon>
@@ -1681,7 +1808,7 @@
                                     <Image
                                         Width="100"
                                         Height="100"
-                                        Source="ms-appx:///Assets/donation-wechat.png"
+                                        Source="{Binding DonationWechatImageSource}"
                                         Stretch="Uniform"
                                         VerticalAlignment="Center" />
                                     <TextBlock
@@ -1693,7 +1820,7 @@
                                     <Image
                                         Width="100"
                                         Height="100"
-                                        Source="ms-appx:///Assets/donation-alipay.png"
+                                        Source="{Binding DonationAlipayImageSource}"
                                         Stretch="Uniform"
                                         VerticalAlignment="Center" />
                                     <TextBlock

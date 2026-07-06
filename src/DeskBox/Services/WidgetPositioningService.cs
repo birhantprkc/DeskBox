@@ -17,8 +17,9 @@ public static class WidgetPositioningService
 {
     private const int MinimumVisibleExtent = 48;
     private const int FallbackOffset = 32;
+    private const int PrimaryOriginTolerance = 96;
 
-    private readonly record struct AvailableMonitorWorkArea(RectInt32 WorkArea, string? DeviceName);
+    private readonly record struct AvailableMonitorWorkArea(RectInt32 WorkArea, string? DeviceName, bool IsPrimary);
 
     public static RectInt32 ResolveBounds(WidgetConfig config, RectInt32 workArea)
     {
@@ -33,7 +34,7 @@ public static class WidgetPositioningService
         return ResolveBoundsCore(
             config,
             fallbackWorkArea,
-            availableWorkAreas.Select(workArea => new AvailableMonitorWorkArea(workArea, null)).ToList());
+            availableWorkAreas.Select(workArea => new AvailableMonitorWorkArea(workArea, null, false)).ToList());
     }
 
     internal static RectInt32 ResolveBoundsForTest(
@@ -46,7 +47,22 @@ public static class WidgetPositioningService
             config,
             fallbackWorkArea,
             availableWorkAreas
-                .Select(area => new AvailableMonitorWorkArea(area.WorkArea, area.DeviceName))
+                .Select(area => new AvailableMonitorWorkArea(area.WorkArea, area.DeviceName, false))
+                .ToList(),
+            dpiScaleProvider);
+    }
+
+    internal static RectInt32 ResolveBoundsForTestWithPrimary(
+        WidgetConfig config,
+        RectInt32 fallbackWorkArea,
+        IReadOnlyList<(RectInt32 WorkArea, string? DeviceName, bool IsPrimary)> availableWorkAreas,
+        Func<RectInt32, double> dpiScaleProvider)
+    {
+        return ResolveBoundsCore(
+            config,
+            fallbackWorkArea,
+            availableWorkAreas
+                .Select(area => new AvailableMonitorWorkArea(area.WorkArea, area.DeviceName, area.IsPrimary))
                 .ToList(),
             dpiScaleProvider);
     }
@@ -92,7 +108,17 @@ public static class WidgetPositioningService
         return EnsureCurrentBoundsCoordinateVersionCore(
             config,
             fallbackWorkArea,
-            availableWorkAreas.Select(workArea => new AvailableMonitorWorkArea(workArea, null)).ToList());
+            availableWorkAreas.Select(workArea => new AvailableMonitorWorkArea(workArea, null, false)).ToList());
+    }
+
+    public static bool EnsureCurrentBoundsCoordinateVersionForCurrentTopology(
+        WidgetConfig config,
+        RectInt32 fallbackWorkArea)
+    {
+        return EnsureCurrentBoundsCoordinateVersionCore(
+            config,
+            fallbackWorkArea,
+            GetAvailableMonitorWorkAreas());
     }
 
     internal static bool EnsureCurrentBoundsCoordinateVersionForTest(
@@ -105,7 +131,22 @@ public static class WidgetPositioningService
             config,
             fallbackWorkArea,
             availableWorkAreas
-                .Select(area => new AvailableMonitorWorkArea(area.WorkArea, area.DeviceName))
+                .Select(area => new AvailableMonitorWorkArea(area.WorkArea, area.DeviceName, false))
+                .ToList(),
+            dpiScaleProvider);
+    }
+
+    internal static bool EnsureCurrentBoundsCoordinateVersionForTestWithPrimary(
+        WidgetConfig config,
+        RectInt32 fallbackWorkArea,
+        IReadOnlyList<(RectInt32 WorkArea, string? DeviceName, bool IsPrimary)> availableWorkAreas,
+        Func<RectInt32, double> dpiScaleProvider)
+    {
+        return EnsureCurrentBoundsCoordinateVersionCore(
+            config,
+            fallbackWorkArea,
+            availableWorkAreas
+                .Select(area => new AvailableMonitorWorkArea(area.WorkArea, area.DeviceName, area.IsPrimary))
                 .ToList(),
             dpiScaleProvider);
     }
@@ -133,7 +174,7 @@ public static class WidgetPositioningService
         config.Y = legacyBounds.Y;
         config.Width = ToLogicalPixels(legacyBounds.Width, scale);
         config.Height = ToLogicalPixels(legacyBounds.Height, scale);
-        CaptureAnchorCore(config, legacyBounds, workArea, dpiScaleProvider);
+        CaptureAnchorCore(config, legacyBounds, workArea, dpiScaleProvider, availableWorkAreas);
         return true;
     }
 
@@ -146,7 +187,8 @@ public static class WidgetPositioningService
         WidgetConfig config,
         RectInt32 bounds,
         RectInt32 workArea,
-        Func<RectInt32, double>? dpiScaleProvider = null)
+        Func<RectInt32, double>? dpiScaleProvider = null,
+        IReadOnlyList<AvailableMonitorWorkArea>? availableWorkAreas = null)
     {
         double scale = UsesLogicalBounds(config) ? GetDpiScale(workArea, dpiScaleProvider) : 1.0;
         int leftMargin = bounds.X - workArea.X;
@@ -167,7 +209,9 @@ public static class WidgetPositioningService
         config.PositionMarginX = ToLogicalPixels(Math.Max(0, anchorRight ? rightMargin : leftMargin), scale);
         config.PositionMarginY = ToLogicalPixels(Math.Max(0, anchorBottom ? bottomMargin : topMargin), scale);
         config.PositionMonitorKey = CreateMonitorKey(workArea);
-        config.PositionMonitorDeviceName = FindDeviceNameForWorkArea(workArea);
+        var monitor = FindMonitorForWorkArea(workArea, availableWorkAreas);
+        config.PositionMonitorDeviceName = monitor?.DeviceName;
+        config.PositionMonitorWasPrimary = monitor?.IsPrimary;
     }
 
     public static void UpdateConfigFromPhysicalBounds(WidgetConfig config, RectInt32 bounds, RectInt32 workArea)
@@ -245,7 +289,8 @@ public static class WidgetPositioningService
                     area.WorkArea.Top,
                     area.WorkArea.Right - area.WorkArea.Left,
                     area.WorkArea.Bottom - area.WorkArea.Top),
-                string.IsNullOrWhiteSpace(area.DeviceName) ? null : area.DeviceName))
+                string.IsNullOrWhiteSpace(area.DeviceName) ? null : area.DeviceName,
+                area.IsPrimary))
             .ToList();
     }
 
@@ -257,7 +302,7 @@ public static class WidgetPositioningService
         return SelectWorkAreaCore(
             config,
             fallbackWorkArea,
-            availableWorkAreas.Select(workArea => new AvailableMonitorWorkArea(workArea, null)).ToList());
+            availableWorkAreas.Select(workArea => new AvailableMonitorWorkArea(workArea, null, false)).ToList());
     }
 
     private static RectInt32 SelectWorkAreaCore(
@@ -265,6 +310,12 @@ public static class WidgetPositioningService
         RectInt32 fallbackWorkArea,
         IReadOnlyList<AvailableMonitorWorkArea> availableWorkAreas)
     {
+        var primaryWorkArea = SelectPrimaryWorkAreaForSmartMode(config, availableWorkAreas);
+        if (primaryWorkArea.HasValue)
+        {
+            return primaryWorkArea.Value;
+        }
+
         if (!string.IsNullOrWhiteSpace(config.PositionMonitorDeviceName))
         {
             foreach (var area in availableWorkAreas)
@@ -301,16 +352,62 @@ public static class WidgetPositioningService
         return fallbackWorkArea;
     }
 
-    private static string? FindDeviceNameForWorkArea(RectInt32 workArea)
+    private static RectInt32? SelectPrimaryWorkAreaForSmartMode(
+        WidgetConfig config,
+        IReadOnlyList<AvailableMonitorWorkArea> availableWorkAreas)
     {
-        foreach (var area in GetAvailableMonitorWorkAreas())
+        if (!ShouldFollowPrimaryMonitor(config))
+        {
+            return null;
+        }
+
+        foreach (var area in availableWorkAreas)
+        {
+            if (area.IsPrimary)
+            {
+                return area.WorkArea;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool ShouldFollowPrimaryMonitor(WidgetConfig config)
+    {
+        if (config.PositionMonitorWasPrimary.HasValue)
+        {
+            return config.PositionMonitorWasPrimary.Value;
+        }
+
+        return SavedMonitorLooksLikePrimary(config);
+    }
+
+    private static bool SavedMonitorLooksLikePrimary(WidgetConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(config.PositionMonitorKey) ||
+            !TryParseMonitorKey(config.PositionMonitorKey, out var savedMonitor))
+        {
+            return false;
+        }
+
+        return savedMonitor.X >= 0 &&
+               savedMonitor.X < PrimaryOriginTolerance &&
+               savedMonitor.Y >= 0 &&
+               savedMonitor.Y < PrimaryOriginTolerance;
+    }
+
+    private static AvailableMonitorWorkArea? FindMonitorForWorkArea(
+        RectInt32 workArea,
+        IReadOnlyList<AvailableMonitorWorkArea>? availableWorkAreas = null)
+    {
+        foreach (var area in availableWorkAreas ?? GetAvailableMonitorWorkAreas())
         {
             if (area.WorkArea.X == workArea.X &&
                 area.WorkArea.Y == workArea.Y &&
                 area.WorkArea.Width == workArea.Width &&
                 area.WorkArea.Height == workArea.Height)
             {
-                return area.DeviceName;
+                return area;
             }
         }
 

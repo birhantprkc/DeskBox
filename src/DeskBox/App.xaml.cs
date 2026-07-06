@@ -34,10 +34,7 @@ public partial class App : Application
     private static readonly bool EnableVerboseLogging = IsEnabledEnvironmentValue(
         Environment.GetEnvironmentVariable(VerboseLoggingEnvironmentVariable));
 
-    private static readonly string LogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DeskBox",
-        "DeskBox.log");
+    private static readonly string LogPath = DeskBoxDataPathService.Current.LogFilePath;
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> s_logQueue = new();
     private static readonly SemaphoreSlim s_logSignal = new(0);
     private static int s_logWorkerStarted;
@@ -53,11 +50,15 @@ public partial class App : Application
     private MenuFlyoutItem? _trayMapFolderItem;
     private readonly Dictionary<WidgetKind, MenuFlyoutItem> _trayCreateWidgetItems = [];
     private MenuFlyoutItem? _trayOpenManagedStorageItem;
+    private MenuFlyoutItem? _trayUpdateItem;
     private MenuFlyoutItem? _traySettingsItem;
     private MenuFlyoutItem? _trayExitItem;
     private SettingsWindow? _settingsWindow;
     private OnboardingWindow? _onboardingWindow;
     private bool _widgetsRaisedFromTray;
+    private bool _hasUpdateAvailable;
+    private bool _updateNotificationShown;
+    private string _availableUpdateVersion = string.Empty;
 
     public static new App Current => (App)Application.Current;
 
@@ -65,9 +66,11 @@ public partial class App : Application
 
     public bool IsStartupMode { get; set; }
 
+    public AppDistributionService DistributionService { get; } = AppDistributionService.Current;
     public SettingsService SettingsService { get; } = new();
     public FileService FileService { get; } = new();
     public OrganizerService OrganizerService { get; }
+    public IAppUpdateService AppUpdateService { get; } = AppUpdateServiceFactory.Create(AppDistributionService.Current);
     public QuickCaptureService QuickCaptureService { get; } = new();
     public QuickCaptureClipboardService? QuickCaptureClipboardService { get; private set; }
     public LocalizationService LocalizationService { get; private set; } = null!;
@@ -106,8 +109,11 @@ public partial class App : Application
         }
 
         InitializeComponent();
+        StartupService.Configure(StartupServiceFactory.Create(DistributionService));
         OrganizerService = new OrganizerService(SettingsService, FileService);
+        AppUpdateService.CheckCompleted += OnUpdateCheckCompleted;
         UnhandledException += OnUnhandledException;
+        Log($"Distribution channel={DistributionService.ChannelName} packaged={DistributionService.IsPackaged}");
         Log($"Process integrity {GetProcessIntegrityReport()} pid={Environment.ProcessId} processPath={Environment.ProcessPath ?? "unknown"} baseDir={AppContext.BaseDirectory}");
         Log($"Process parent {GetParentProcessReport()} commandLine={Environment.CommandLine}");
         Log($"UAC {GetUacPolicyReport()}");
@@ -729,12 +735,106 @@ public partial class App : Application
                 ShowOnboarding();
             }
 
+            ScheduleBackgroundUpdateCheck();
+
             Log("OnLaunched completed successfully");
         }
         catch (Exception ex)
         {
             Log($"Exception in OnLaunched: {ex}");
         }
+    }
+
+    private void ScheduleBackgroundUpdateCheck()
+    {
+        if (!SettingsService.Settings.AutoCheckForUpdates)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(IsStartupMode ? TimeSpan.FromSeconds(45) : TimeSpan.FromSeconds(12));
+                var result = await AppUpdateService.CheckForUpdatesAsync();
+                SettingsService.Settings.LastUpdateCheckAt = DateTimeOffset.Now;
+                SettingsService.SaveDebounced(notifySubscribers: false);
+
+                if (result.IsUpdateAvailable && result.Manifest is not null)
+                {
+                    Log($"[Update] New version available: {result.Manifest.Version}");
+                }
+                else if (result.Status == AppUpdateCheckStatus.Failed)
+                {
+                    Log($"[Update] Background check failed: {result.ErrorMessage}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[Update] Background check crashed: {ex}");
+            }
+        });
+    }
+
+    private void OnUpdateCheckCompleted(AppUpdateCheckResult result)
+    {
+        if (UiDispatcherQueue is { HasThreadAccess: false } dispatcherQueue)
+        {
+            dispatcherQueue.TryEnqueue(() => OnUpdateCheckCompleted(result));
+            return;
+        }
+
+        if (result.IsUpdateAvailable && result.Manifest is not null)
+        {
+            SetUpdateAvailableReminder(result.Manifest);
+        }
+        else if (result.Status == AppUpdateCheckStatus.UpToDate)
+        {
+            ClearUpdateAvailableReminder();
+        }
+
+        _settingsWindow?.RefreshUpdateStateFromService();
+    }
+
+    private void SetUpdateAvailableReminder(AppUpdateManifest manifest)
+    {
+        _hasUpdateAvailable = true;
+        _availableUpdateVersion = manifest.Version;
+        RefreshTrayMenuText();
+        RefreshTrayToolTipText();
+
+        if (_updateNotificationShown || _trayIcon is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _trayIcon.ShowNotification(
+                LocalizationService.T("Tray.UpdateAvailableTitle"),
+                LocalizationService.Format("Tray.UpdateAvailableMessage", manifest.Version),
+                NotificationIcon.Info,
+                customIconHandle: null,
+                largeIcon: true,
+                sound: false,
+                respectQuietTime: true,
+                realtime: false,
+                timeout: TimeSpan.FromSeconds(8));
+            _updateNotificationShown = true;
+        }
+        catch (Exception ex)
+        {
+            Log($"[Update] Tray notification failed: {ex.Message}");
+        }
+    }
+
+    private void ClearUpdateAvailableReminder()
+    {
+        _hasUpdateAvailable = false;
+        _availableUpdateVersion = string.Empty;
+        RefreshTrayMenuText();
+        RefreshTrayToolTipText();
     }
 
     private void RegisterActivationListener()
@@ -813,6 +913,15 @@ public partial class App : Application
         };
         openManagedStorageItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, OpenManagedStorageFromTray);
 
+        var updateItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Tray.UpdateAvailable"),
+            Width = TrayMenuItemWidth,
+            Icon = new SymbolIcon(Symbol.Download),
+            Visibility = Visibility.Collapsed
+        };
+        updateItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, OpenAboutSettingsFromTray);
+
         var exitItem = new MenuFlyoutItem
         {
             Text = localization.T("Tray.Exit"),
@@ -844,12 +953,14 @@ public partial class App : Application
         contextMenu.Items.Add(new MenuFlyoutSeparator());
         contextMenu.Items.Add(openManagedStorageItem);
         contextMenu.Items.Add(new MenuFlyoutSeparator());
+        contextMenu.Items.Add(updateItem);
         contextMenu.Items.Add(settingsItem);
         contextMenu.Items.Add(new MenuFlyoutSeparator());
         contextMenu.Items.Add(exitItem);
 
         _trayMapFolderItem = mapFolderItem;
         _trayOpenManagedStorageItem = openManagedStorageItem;
+        _trayUpdateItem = updateItem;
         _traySettingsItem = settingsItem;
         _trayExitItem = exitItem;
 
@@ -1231,24 +1342,14 @@ public partial class App : Application
     private void UpdateTrayLayerStateText(bool raised)
     {
         _widgetsRaisedFromTray = raised;
-        if (_trayIcon is not null)
-        {
-            _trayIcon.ToolTipText = raised
-                ? LocalizationService.T("Tray.TooltipRaised")
-                : LocalizationService.T("Tray.TooltipNormal");
-        }
+        RefreshTrayToolTipText();
     }
 
     private void OnLanguageChanged()
     {
         Localized.RefreshAll(LocalizationService);
         RefreshTrayMenuText();
-        if (_trayIcon is not null)
-        {
-            _trayIcon.ToolTipText = _widgetsRaisedFromTray
-                ? LocalizationService.T("Tray.TooltipRaised")
-                : LocalizationService.T("Tray.Tooltip");
-        }
+        RefreshTrayToolTipText();
     }
 
     private void RefreshTrayMenuText()
@@ -1269,6 +1370,14 @@ public partial class App : Application
             _traySettingsItem.Text = LocalizationService.T("Tray.Settings");
         }
 
+        if (_trayUpdateItem is not null)
+        {
+            _trayUpdateItem.Text = string.IsNullOrWhiteSpace(_availableUpdateVersion)
+                ? LocalizationService.T("Tray.UpdateAvailable")
+                : LocalizationService.Format("Tray.UpdateAvailableWithVersion", _availableUpdateVersion);
+            _trayUpdateItem.Visibility = _hasUpdateAvailable ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         if (_trayOpenManagedStorageItem is not null)
         {
             _trayOpenManagedStorageItem.Text = LocalizationService.T("Tray.OpenManagedStorage");
@@ -1278,6 +1387,24 @@ public partial class App : Application
         {
             _trayExitItem.Text = LocalizationService.T("Tray.Exit");
         }
+    }
+
+    private void RefreshTrayToolTipText()
+    {
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        if (_hasUpdateAvailable && !string.IsNullOrWhiteSpace(_availableUpdateVersion))
+        {
+            _trayIcon.ToolTipText = LocalizationService.Format("Tray.TooltipUpdateAvailable", _availableUpdateVersion);
+            return;
+        }
+
+        _trayIcon.ToolTipText = _widgetsRaisedFromTray
+            ? LocalizationService.T("Tray.TooltipRaised")
+            : LocalizationService.T("Tray.Tooltip");
     }
 
     private static string GetCreateEntryText(WidgetContentDescriptor descriptor, LocalizationService localization)
@@ -1325,6 +1452,13 @@ public partial class App : Application
     {
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
         settingsWindow.Activate();
+    }
+
+    private void OpenAboutSettingsFromTray()
+    {
+        var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
+        settingsWindow.Activate();
+        settingsWindow.ShowSection("About");
     }
 
     private SettingsWindow CreateSettingsWindow()
@@ -1397,20 +1531,45 @@ public partial class App : Application
         });
     }
 
+    public async Task ShutdownForUpdateAsync()
+    {
+        Log("ShutdownForUpdateAsync invoked");
+        await ShutdownApplicationAsync();
+    }
+
     private async void ExitApplication()
     {
         Log("ExitApplication invoked");
+        await ShutdownApplicationAsync();
+    }
+
+    private async Task ShutdownApplicationAsync()
+    {
         await SettingsService.SaveAsync();
         WidgetManager?.CloseAll();
         _trayIcon?.Dispose();
+        _trayIcon = null;
         _activationRegistration?.Unregister(null);
         _activationRegistration = null;
         _activationEvent?.Dispose();
         _activationEvent = null;
-        _singleInstanceMutex?.ReleaseMutex();
+
+        try
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+        }
+
         _singleInstanceMutex?.Dispose();
         _singleInstanceMutex = null;
+        _settingsWindow?.Close();
+        _settingsWindow = null;
+        _onboardingWindow?.Close();
+        _onboardingWindow = null;
         _trayWindow?.Close();
+        _trayWindow = null;
         Exit();
     }
 

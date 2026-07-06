@@ -5,7 +5,9 @@ using CommunityToolkit.Mvvm.Input;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
 
 namespace DeskBox.ViewModels;
@@ -27,11 +29,19 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string CornerSmall = SettingsService.WidgetCornerPreferenceSmall;
     private const string CornerRound = SettingsService.WidgetCornerPreferenceRound;
     private const string RepositoryUrl = "https://github.com/Tianyu199509/DeskBox";
+    private const string OfficialWebsiteUrl = "https://deskbox.fun";
 
     private readonly SettingsService _settingsService;
     private readonly ThemeService _themeService;
     private readonly LocalizationService _localizationService;
     private readonly WidgetContentFactory _widgetContentFactory;
+    private readonly IAppUpdateService _appUpdateService;
+    private CancellationTokenSource? _updateOperationCts;
+    private AppUpdateManifest? _availableUpdateManifest;
+    private string? _downloadedUpdateInstallerPath;
+    private bool _showManualUpdateFallback;
+    private ImageSource? _donationWechatImageSource;
+    private ImageSource? _donationAlipayImageSource;
     private Color _currentAccentColor;
     private string _selectedTheme = ThemeSystem;
     private string _selectedTrayIconStyle = TrayIconStyleSystem;
@@ -83,6 +93,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string[]? _cachedMusicRhythmStyleDisplayNames;
 
     [ObservableProperty] private bool _autoStart;
+    [ObservableProperty] private bool _autoCheckForUpdates = true;
     [ObservableProperty] private bool _doubleClickToOpen;
     [ObservableProperty] private double _defaultWidth;
     [ObservableProperty] private double _defaultHeight;
@@ -111,6 +122,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _quickCaptureClipboardEnabled;
     [ObservableProperty] private bool _quickCaptureImageClipboardEnabled = true;
     [ObservableProperty] private int _quickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
+    [ObservableProperty] private bool _isCheckingForUpdates;
+    [ObservableProperty] private bool _isDownloadingUpdate;
+    [ObservableProperty] private string _updateStatusText = string.Empty;
+    [ObservableProperty] private string _updateDetailText = string.Empty;
+    [ObservableProperty] private double _updateProgressValue;
 
     public string SelectedTheme
     {
@@ -1177,12 +1193,338 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             .Split('+')[0] ??
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ??
         "1.0.2";
-    public string AboutVersionText => _localizationService.Format("Settings.About.Version", AppVersion);
+    public string AboutVersionText => _localizationService.Format("Settings.About.VersionWithChannel", AppVersion, DistributionChannelText);
+    public string DistributionChannelText => _localizationService.T(IsStoreUpdateDelivery
+        ? "Settings.About.Channel.Store"
+        : "Settings.About.Channel.Direct");
     public string OpenSourceRepositoryUrl => RepositoryUrl;
+    public string OfficialWebsiteDisplayText => OfficialWebsiteUrl.Replace("https://", string.Empty).TrimEnd('/');
+    public string OfficialWebsiteLink => OfficialWebsiteUrl;
+    public string DomesticMirrorDownloadUrl => AppUpdateService.DefaultManualDownloadUrl;
+    public string AboutDeveloperText => _localizationService.T("Settings.About.DeveloperName");
+    public Visibility DonationCardVisibility => IsDirectInstallerUpdateDelivery ? Visibility.Visible : Visibility.Collapsed;
+    public ImageSource? DonationWechatImageSource =>
+        IsDirectInstallerUpdateDelivery
+            ? _donationWechatImageSource ??= new BitmapImage(new Uri("ms-appx:///Assets/donation-wechat.png"))
+            : null;
+    public ImageSource? DonationAlipayImageSource =>
+        IsDirectInstallerUpdateDelivery
+            ? _donationAlipayImageSource ??= new BitmapImage(new Uri("ms-appx:///Assets/donation-alipay.png"))
+            : null;
     public string OpenSourceRepositoryDisplayText =>
         _localizationService.Format(
             "Settings.About.Developer",
             RepositoryUrl.Replace("https://", string.Empty).Replace("http://", string.Empty).TrimEnd('/'));
+    public string AvailableUpdateReleaseNotesUrl => _availableUpdateManifest?.ReleaseNotesUrl ?? string.Empty;
+    public string ManualUpdateDownloadUrl => GetManualUpdateDownloadUrl(_availableUpdateManifest);
+    public Visibility UpdateProgressVisibility => IsDownloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility UpdateProgressTextVisibility => IsDownloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility UpdateReleaseNotesVisibility =>
+        string.IsNullOrWhiteSpace(AvailableUpdateReleaseNotesUrl) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility ManualUpdateFallbackVisibility => CanOpenManualUpdateDownload ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility InstallUpdateButtonVisibility => IsDirectInstallerUpdateDelivery ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility UpdateReminderBadgeVisibility =>
+        _availableUpdateManifest is not null ? Visibility.Visible : Visibility.Collapsed;
+    public bool CanCheckForUpdates => !IsCheckingForUpdates && !IsDownloadingUpdate;
+    public bool CanDownloadUpdate => _availableUpdateManifest is not null && !IsCheckingForUpdates && !IsDownloadingUpdate;
+    public bool CanOpenManualUpdateDownload =>
+        IsDirectInstallerUpdateDelivery &&
+        !string.IsNullOrWhiteSpace(ManualUpdateDownloadUrl) &&
+        (_showManualUpdateFallback || HasManifestManualDownloadUrl(_availableUpdateManifest));
+    public bool CanInstallUpdate =>
+        IsDirectInstallerUpdateDelivery &&
+        !IsCheckingForUpdates &&
+        !IsDownloadingUpdate &&
+        !string.IsNullOrWhiteSpace(_downloadedUpdateInstallerPath) &&
+        File.Exists(_downloadedUpdateInstallerPath);
+    public string UpdateDownloadActionText => _localizationService.T(IsStoreUpdateDelivery
+        ? "Settings.Update.StoreInstall"
+        : "Settings.Update.Download");
+    public string UpdateProgressText => $"{Math.Clamp(UpdateProgressValue, 0, 100):0}%";
+
+    private bool IsStoreUpdateDelivery => _appUpdateService.DeliveryKind == AppUpdateDeliveryKind.MicrosoftStore;
+    private bool IsDirectInstallerUpdateDelivery => _appUpdateService.DeliveryKind == AppUpdateDeliveryKind.DirectInstaller;
+
+    public void RefreshCachedUpdateState()
+    {
+        ApplyCachedUpdateResult();
+    }
+
+    public async Task CheckForUpdatesAsync()
+    {
+        if (IsCheckingForUpdates || IsDownloadingUpdate)
+        {
+            return;
+        }
+
+        _updateOperationCts?.Cancel();
+        _updateOperationCts = new CancellationTokenSource();
+        IsCheckingForUpdates = true;
+        UpdateStatusText = _localizationService.T("Settings.Update.Status.Checking");
+        UpdateDetailText = _localizationService.T("Settings.Update.Detail.Checking");
+        NotifyUpdateActionPropertiesChanged();
+
+        try
+        {
+            var result = await _appUpdateService.CheckForUpdatesAsync(AppVersion, _updateOperationCts.Token);
+            _settingsService.Settings.LastUpdateCheckAt = DateTimeOffset.Now;
+            _settingsService.SaveDebounced(notifySubscribers: false);
+            ApplyUpdateCheckResult(result);
+        }
+        finally
+        {
+            IsCheckingForUpdates = false;
+            NotifyUpdateActionPropertiesChanged();
+        }
+    }
+
+    public async Task DownloadAvailableUpdateAsync()
+    {
+        if (_availableUpdateManifest is null || IsCheckingForUpdates || IsDownloadingUpdate)
+        {
+            return;
+        }
+
+        _updateOperationCts?.Cancel();
+        _updateOperationCts = new CancellationTokenSource();
+        _downloadedUpdateInstallerPath = null;
+        IsDownloadingUpdate = true;
+        UpdateProgressValue = 0;
+        UpdateStatusText = IsStoreUpdateDelivery
+            ? _localizationService.T("Settings.Update.Status.StoreInstalling")
+            : _localizationService.Format("Settings.Update.Status.Downloading", _availableUpdateManifest.Version);
+        UpdateDetailText = IsStoreUpdateDelivery
+            ? _localizationService.T("Settings.Update.Detail.StoreInstalling")
+            : _localizationService.T("Settings.Update.Detail.Downloading");
+        NotifyUpdateActionPropertiesChanged();
+
+        var progress = new Progress<AppUpdateDownloadProgress>(downloadProgress =>
+        {
+            UpdateProgressValue = downloadProgress.Percent;
+            OnPropertyChanged(nameof(UpdateProgressText));
+        });
+
+        try
+        {
+            var result = await _appUpdateService.DownloadUpdateAsync(_availableUpdateManifest, progress, _updateOperationCts.Token);
+            if (result.Success && IsStoreUpdateDelivery)
+            {
+                _availableUpdateManifest = null;
+                _downloadedUpdateInstallerPath = null;
+                _showManualUpdateFallback = false;
+                UpdateProgressValue = 100;
+                UpdateStatusText = _localizationService.T("Settings.Update.Status.StoreInstallComplete");
+                UpdateDetailText = _localizationService.T("Settings.Update.Detail.StoreInstallComplete");
+                return;
+            }
+
+            if (result.Success && !string.IsNullOrWhiteSpace(result.FilePath))
+            {
+                _downloadedUpdateInstallerPath = result.FilePath;
+                _showManualUpdateFallback = false;
+                UpdateProgressValue = 100;
+                UpdateStatusText = _localizationService.Format("Settings.Update.Status.Downloaded", _availableUpdateManifest.Version);
+                UpdateDetailText = _localizationService.T("Settings.Update.Detail.Downloaded");
+                return;
+            }
+
+            ApplyDownloadFailure(result);
+        }
+        finally
+        {
+            IsDownloadingUpdate = false;
+            NotifyUpdateActionPropertiesChanged();
+        }
+    }
+
+    public AppUpdateInstallResult StartDownloadedUpdateInstall()
+    {
+        if (!CanInstallUpdate || string.IsNullOrWhiteSpace(_downloadedUpdateInstallerPath))
+        {
+            return AppUpdateInstallResult.Failed(_localizationService.T("Settings.Update.Detail.DownloadMissing"));
+        }
+
+        var result = _appUpdateService.StartInstallerHelper(_downloadedUpdateInstallerPath);
+        if (result.Success)
+        {
+            UpdateStatusText = _localizationService.T("Settings.Update.Status.Installing");
+            UpdateDetailText = _localizationService.T("Settings.Update.Detail.Installing");
+            NotifyUpdateActionPropertiesChanged();
+        }
+
+        return result;
+    }
+
+    private void ApplyCachedUpdateResult()
+    {
+        if (_appUpdateService.LastCheckResult is { } result)
+        {
+            ApplyUpdateCheckResult(result);
+        }
+    }
+
+    private void ApplyUpdateCheckResult(AppUpdateCheckResult result)
+    {
+        if (result.IsUpdateAvailable && result.Manifest is not null)
+        {
+            _availableUpdateManifest = result.Manifest;
+            _downloadedUpdateInstallerPath = null;
+            _showManualUpdateFallback = false;
+            UpdateStatusText = IsStoreUpdateDelivery
+                ? _localizationService.T("Settings.Update.Status.StoreAvailable")
+                : _localizationService.Format("Settings.Update.Status.Available", result.Manifest.Version);
+            string summary = result.Manifest.GetLocalizedSummary(_localizationService.CurrentCultureName);
+            UpdateDetailText = string.IsNullOrWhiteSpace(summary)
+                ? _localizationService.T(IsStoreUpdateDelivery
+                    ? "Settings.Update.Detail.StoreAvailable"
+                    : "Settings.Update.Detail.Available")
+                : summary;
+        }
+        else if (result.Status == AppUpdateCheckStatus.UpToDate)
+        {
+            _availableUpdateManifest = null;
+            _downloadedUpdateInstallerPath = null;
+            _showManualUpdateFallback = false;
+            UpdateStatusText = _localizationService.T("Settings.Update.Status.UpToDate");
+            UpdateDetailText = _localizationService.T("Settings.Update.Detail.UpToDate");
+        }
+        else if (result.Status == AppUpdateCheckStatus.InvalidManifest)
+        {
+            _availableUpdateManifest = null;
+            _downloadedUpdateInstallerPath = null;
+            _showManualUpdateFallback = IsDirectInstallerUpdateDelivery;
+            UpdateStatusText = _localizationService.T("Settings.Update.Status.Failed");
+            UpdateDetailText = _localizationService.T("Settings.Update.Detail.InvalidManifest");
+        }
+        else
+        {
+            _availableUpdateManifest = null;
+            _downloadedUpdateInstallerPath = null;
+            _showManualUpdateFallback = IsDirectInstallerUpdateDelivery;
+            UpdateStatusText = _localizationService.T("Settings.Update.Status.Failed");
+            UpdateDetailText = string.IsNullOrWhiteSpace(result.ErrorMessage)
+                ? _localizationService.T("Settings.Update.Detail.Failed")
+                : GetFriendlyUpdateErrorText(result.ErrorMessage);
+        }
+
+        NotifyUpdateActionPropertiesChanged();
+    }
+
+    private void ApplyDownloadFailure(AppUpdateDownloadResult result)
+    {
+        _showManualUpdateFallback = IsDirectInstallerUpdateDelivery;
+        UpdateStatusText = _localizationService.T("Settings.Update.Status.Failed");
+        UpdateDetailText = result.FailureKind switch
+        {
+            AppUpdateDownloadFailureKind.HashMissing => _localizationService.T("Settings.Update.Detail.HashMissing"),
+            AppUpdateDownloadFailureKind.HashMismatch => _localizationService.T("Settings.Update.Detail.HashMismatch"),
+            AppUpdateDownloadFailureKind.InvalidManifest => _localizationService.T("Settings.Update.Detail.InvalidManifest"),
+            _ when !string.IsNullOrWhiteSpace(result.ErrorMessage) =>
+                GetFriendlyUpdateErrorText(result.ErrorMessage),
+            _ => _localizationService.T("Settings.Update.Detail.Failed")
+        };
+    }
+
+    private string GetFriendlyUpdateErrorText(string errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            return _localizationService.T("Settings.Update.Detail.Failed");
+        }
+
+        if (errorMessage.Contains("STORE_NOT_PACKAGED", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizationService.T("Settings.Update.Detail.StoreNotPackaged");
+        }
+
+        if (errorMessage.Contains("STORE_CANCELED", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizationService.T("Settings.Update.Detail.StoreCanceled");
+        }
+
+        if (errorMessage.Contains("STORE_INSTALL_FAILED", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizationService.T("Settings.Update.Detail.StoreInstallFailed");
+        }
+
+        if (errorMessage.Contains("STORE_UNAVAILABLE", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizationService.T("Settings.Update.Detail.StoreUnavailable");
+        }
+
+        if (errorMessage.Contains("404", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("NotFound", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("Not Found", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizationService.T("Settings.Update.Detail.ManifestNotFound");
+        }
+
+        if (errorMessage.Contains("403", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("401", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("Forbidden", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizationService.T("Settings.Update.Detail.AccessDenied");
+        }
+
+        if (errorMessage.Contains("timed out", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("TaskCanceledException", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("operation was canceled", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizationService.T("Settings.Update.Detail.Timeout");
+        }
+
+        if (errorMessage.Contains("NameResolution", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("No such host", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("remote name could not be resolved", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("无法解析", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("网络", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizationService.T("Settings.Update.Detail.NetworkUnavailable");
+        }
+
+        return _localizationService.T("Settings.Update.Detail.Failed");
+    }
+
+    private static string GetManualUpdateDownloadUrl(AppUpdateManifest? manifest)
+    {
+        if (!string.IsNullOrWhiteSpace(manifest?.ManualDownloadUrl))
+        {
+            return manifest.ManualDownloadUrl;
+        }
+
+        if (!string.IsNullOrWhiteSpace(manifest?.MirrorUrl))
+        {
+            return manifest.MirrorUrl;
+        }
+
+        return AppUpdateService.DefaultManualDownloadUrl;
+    }
+
+    private static bool HasManifestManualDownloadUrl(AppUpdateManifest? manifest)
+    {
+        return !string.IsNullOrWhiteSpace(manifest?.ManualDownloadUrl) ||
+            !string.IsNullOrWhiteSpace(manifest?.MirrorUrl);
+    }
+
+    private void NotifyUpdateActionPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(CanCheckForUpdates));
+        OnPropertyChanged(nameof(CanDownloadUpdate));
+        OnPropertyChanged(nameof(CanInstallUpdate));
+        OnPropertyChanged(nameof(InstallUpdateButtonVisibility));
+        OnPropertyChanged(nameof(UpdateDownloadActionText));
+        OnPropertyChanged(nameof(UpdateProgressVisibility));
+        OnPropertyChanged(nameof(UpdateProgressTextVisibility));
+        OnPropertyChanged(nameof(UpdateReleaseNotesVisibility));
+        OnPropertyChanged(nameof(AvailableUpdateReleaseNotesUrl));
+        OnPropertyChanged(nameof(ManualUpdateDownloadUrl));
+        OnPropertyChanged(nameof(CanOpenManualUpdateDownload));
+        OnPropertyChanged(nameof(ManualUpdateFallbackVisibility));
+        OnPropertyChanged(nameof(UpdateReminderBadgeVisibility));
+        OnPropertyChanged(nameof(UpdateProgressText));
+    }
 
     public GlobalHotkeyGesture GetCurrentGlobalHotkeyGesture()
     {
@@ -1404,15 +1746,22 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             reasonText);
     }
 
-    public SettingsViewModel(SettingsService settingsService, ThemeService themeService, LocalizationService? localizationService = null)
+    public SettingsViewModel(
+        SettingsService settingsService,
+        ThemeService themeService,
+        LocalizationService? localizationService = null,
+        IAppUpdateService? appUpdateService = null)
     {
         _settingsService = settingsService;
         _themeService = themeService;
         _localizationService = localizationService ?? new LocalizationService(settingsService);
         _widgetContentFactory = new WidgetContentFactory(_localizationService);
+        _appUpdateService = appUpdateService ?? new AppUpdateService();
         _quickCaptureImageCacheText = _localizationService.T("Settings.QuickCapture.ImageCacheLoading");
         _quickCaptureClipboardDiagnosticsText = _localizationService.T("Settings.QuickCapture.ClipboardDiagnosticsUnavailable");
         _dragDropPermissionRepairStatusText = string.Empty;
+        _updateStatusText = _localizationService.T("Settings.Update.Status.Ready");
+        _updateDetailText = GetReadyUpdateDetailText();
 
         var settings = settingsService.Settings;
         _selectedTheme = settings.Theme is ThemeLight or ThemeDark ? settings.Theme : ThemeSystem;
@@ -1423,6 +1772,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         _useSystemAccentColor = !string.Equals(settings.AccentColorMode, ThemeService.AccentModeCustom, StringComparison.OrdinalIgnoreCase);
         _autoStart = StartupService.IsEnabled();
+        _autoCheckForUpdates = settings.AutoCheckForUpdates;
         _doubleClickToOpen = settings.DoubleClickToOpen;
         _defaultWidth = settings.DefaultWidgetWidth;
         _defaultHeight = settings.DefaultWidgetHeight;
@@ -1467,6 +1817,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _selectedTodoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);
         _managedStorageRootPath = settings.DefaultManagedStorageRootPath;
 
+        ApplyCachedUpdateResult();
         RefreshAccentPreview();
         RefreshDragDropPermissionDiagnostic();
         _ = RefreshQuickAccessStateAsync();
@@ -1549,6 +1900,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             ShowImageFilesAsIcons = false;
             HideShortcutExtensionWhenShowingFileExtensions = true;
             ShowHoverButtons = true;
+            AutoCheckForUpdates = true;
             QuickCaptureClipboardEnabled = true;
             QuickCaptureImageClipboardEnabled = true;
             QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
@@ -1783,6 +2135,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         bool musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
         bool showImageFilesAsIcons = settings.ShowImageFilesAsIcons;
         bool showHoverButtons = settings.ShowHoverButtons;
+        bool autoCheckForUpdates = settings.AutoCheckForUpdates;
         string displayWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.DisplayWidgetChromeMode, WidgetChromeMode.Overlay);
         string interactiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
         string widgetTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
@@ -1879,6 +2232,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 ShowHoverButtons = showHoverButtons;
             }
 
+            if (AutoCheckForUpdates != autoCheckForUpdates)
+            {
+                AutoCheckForUpdates = autoCheckForUpdates;
+            }
+
             if (!string.Equals(SelectedDisplayWidgetChromeMode, displayWidgetChromeMode, StringComparison.Ordinal))
             {
                 SelectedDisplayWidgetChromeMode = displayWidgetChromeMode;
@@ -1934,7 +2292,26 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         RefreshSelectionProperties();
         OnPropertyChanged(nameof(AccentColorDescription));
         OnPropertyChanged(nameof(AboutVersionText));
+        OnPropertyChanged(nameof(DistributionChannelText));
+        OnPropertyChanged(nameof(AboutDeveloperText));
+        OnPropertyChanged(nameof(OfficialWebsiteDisplayText));
         OnPropertyChanged(nameof(OpenSourceRepositoryDisplayText));
+        OnPropertyChanged(nameof(UpdateDownloadActionText));
+        OnPropertyChanged(nameof(DonationCardVisibility));
+        OnPropertyChanged(nameof(DonationWechatImageSource));
+        OnPropertyChanged(nameof(DonationAlipayImageSource));
+        if (!IsCheckingForUpdates && !IsDownloadingUpdate)
+        {
+            if (_appUpdateService.LastCheckResult is not null)
+            {
+                ApplyCachedUpdateResult();
+            }
+            else
+            {
+                UpdateStatusText = _localizationService.T("Settings.Update.Status.Ready");
+                UpdateDetailText = GetReadyUpdateDetailText();
+            }
+        }
         OnPropertyChanged(nameof(QuickAccessStatusText));
         OnPropertyChanged(nameof(PinQuickAccessButtonText));
         OnPropertyChanged(nameof(PinQuickAccessToolTipText));
@@ -2189,6 +2566,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         StartupService.SetEnabled(value);
         _settingsService.Settings.AutoStart = value;
+        _settingsService.SaveDebounced();
+    }
+
+    partial void OnAutoCheckForUpdatesChanged(bool value)
+    {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
+        _settingsService.Settings.AutoCheckForUpdates = value;
         _settingsService.SaveDebounced();
     }
 
@@ -2758,6 +3146,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _updateOperationCts?.Cancel();
+        _updateOperationCts?.Dispose();
         if (App.Current?.QuickCaptureClipboardService is { } clipboardService)
         {
             clipboardService.DiagnosticsChanged -= OnQuickCaptureClipboardDiagnosticsChanged;
@@ -2927,5 +3317,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.SaveDebounced(notifySubscribers: !SuppressAppearanceNotifications);
+    }
+
+    private string GetReadyUpdateDetailText()
+    {
+        return _localizationService.T(IsStoreUpdateDelivery
+            ? "Settings.Update.Detail.StoreReady"
+            : "Settings.Update.Detail.Ready");
     }
 }

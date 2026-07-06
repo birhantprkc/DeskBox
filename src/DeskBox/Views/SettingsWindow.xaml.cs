@@ -13,7 +13,6 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Shapes;
 using System.Runtime.InteropServices;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 using WinRT.Interop;
 
@@ -31,7 +30,6 @@ public sealed partial class SettingsWindow : Window
     private const double RowStackContentThreshold = 620;
     private const double NarrowTitleThreshold = 560;
     private const double NavigationCompactThreshold = 760;
-    private const string DownloadLink = "https://pan.quark.cn/s/f7a6769cdaf3";
     private static readonly TimeSpan ResizeSettleDelay = TimeSpan.FromMilliseconds(120);
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcDestroy = 0x0082;
@@ -76,7 +74,7 @@ public sealed partial class SettingsWindow : Window
     {
         _themeService = themeService;
         _localizationService = localizationService;
-        ViewModel = new SettingsViewModel(settingsService, themeService, localizationService);
+        ViewModel = new SettingsViewModel(settingsService, themeService, localizationService, App.Current.AppUpdateService);
         InitializeComponent();
 
         SettingsRoot.DataContext = ViewModel;
@@ -193,6 +191,11 @@ public sealed partial class SettingsWindow : Window
     public void ShowSection(string sectionTag)
     {
         NavigateToSettingsSection(sectionTag);
+    }
+
+    public void RefreshUpdateStateFromService()
+    {
+        ViewModel.RefreshCachedUpdateState();
     }
 
     private NavigationViewItem? FindNavItemByTag(string tag)
@@ -1196,28 +1199,73 @@ public sealed partial class SettingsWindow : Window
         Win32Helper.OpenFile(ViewModel.OpenSourceRepositoryUrl);
     }
 
-    private async void CopyDownloadLinkButton_Click(object sender, RoutedEventArgs e)
+    private void OpenWebsiteButton_Click(object sender, RoutedEventArgs e)
     {
-        var package = new DataPackage();
-        package.SetText(DownloadLink);
-        DeskBoxClipboardWriteScope.MarkWrite(text: DownloadLink);
-        Clipboard.SetContent(package);
-        Clipboard.Flush();
+        Win32Helper.OpenFile(ViewModel.OfficialWebsiteLink);
+    }
 
-        if (SettingsRoot.XamlRoot is not null)
+    private async void CheckUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.CheckForUpdatesAsync();
+    }
+
+    private async void DownloadUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.DownloadAvailableUpdateAsync();
+    }
+
+    private void OpenUpdateReleaseNotesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(ViewModel.AvailableUpdateReleaseNotesUrl))
         {
-            await ShowInfoDialogAsync(
-                _localizationService.T("Settings.Download.CopiedTitle"),
-                DownloadLink);
+            Win32Helper.OpenFile(ViewModel.AvailableUpdateReleaseNotesUrl);
         }
     }
 
-    private async void OpenDownloadLinkButton_Click(object sender, RoutedEventArgs e)
+    private void OpenManualUpdateDownloadButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Uri.TryCreate(DownloadLink, UriKind.Absolute, out var uri))
+        if (!string.IsNullOrWhiteSpace(ViewModel.ManualUpdateDownloadUrl))
         {
-            await Launcher.LaunchUriAsync(uri);
+            Win32Helper.OpenFile(ViewModel.ManualUpdateDownloadUrl);
         }
+    }
+
+    private async void InstallUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = _localizationService.T("Settings.Update.InstallConfirmTitle"),
+            Content = new TextBlock
+            {
+                Text = _localizationService.T("Settings.Update.InstallConfirmBody"),
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = _localizationService.T("Settings.Update.Install"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var result = ViewModel.StartDownloadedUpdateInstall();
+        if (!result.Success)
+        {
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.Update.InstallStartFailedTitle"),
+                result.ErrorMessage ?? _localizationService.T("Settings.Update.InstallStartFailedBody"));
+            return;
+        }
+
+        await App.Current.ShutdownForUpdateAsync();
     }
 
     private void RefreshDragDropPermissionButton_Click(object sender, RoutedEventArgs e)
@@ -1864,10 +1912,18 @@ public sealed partial class SettingsWindow : Window
         PinQuickAccessButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         ChangePathButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         CleanupStorageButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        DownloadLinkActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
-        DownloadLinkActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
-        CopyDownloadLinkButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        OpenDownloadLinkButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        AboutInfoActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        AboutInfoActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
+        AboutReasonButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        AboutWebsiteButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        AboutRepositoryButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        UpdateActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        UpdateActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
+        CheckUpdateButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        DownloadUpdateButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        InstallUpdateButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        OpenUpdateReleaseNotesButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        OpenManualUpdateDownloadButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         GlobalHotkeyActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         GlobalHotkeyCaptureButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         ResetGlobalHotkeyButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;

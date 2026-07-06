@@ -1,10 +1,10 @@
 [Code]
 const
-  DotNetRuntimeUrl = 'https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.28/dotnet-runtime-8.0.28-win-x64.exe';
-  DotNetRuntimeFallbackUrl = 'https://aka.ms/dotnet/8.0/dotnet-runtime-win-x64.exe';
-  DotNetRuntimeInstallerName = 'dotnet-runtime-8.0.28-win-x64.exe';
-  WindowsAppRuntimeUrl = 'https://download.microsoft.com/download/d1af52f9-db3d-4138-adb5-960bd1009a43/WindowsAppRuntimeInstall-x64.exe';
-  WindowsAppRuntimeFallbackUrl = 'https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe';
+  DotNetRuntimeUrl = 'https://builds.dotnet.microsoft.com/dotnet/Runtime/10.0.9/dotnet-runtime-10.0.9-win-x64.exe';
+  DotNetRuntimeFallbackUrl = 'https://aka.ms/dotnet/10.0/dotnet-runtime-win-x64.exe';
+  DotNetRuntimeInstallerName = 'dotnet-runtime-10.0.9-win-x64.exe';
+  WindowsAppRuntimeUrl = 'https://download.microsoft.com/download/5e0f2e92-f3ef-4023-97f0-bd57018a478c/WindowsAppRuntimeInstall-x64.exe';
+  WindowsAppRuntimeFallbackUrl = 'https://aka.ms/windowsappsdk/2.2/2.2.0/windowsappruntimeinstall-x64.exe';
   WindowsAppRuntimeInstallerName = 'WindowsAppRuntimeInstall-x64.exe';
 
 var
@@ -28,7 +28,7 @@ begin
   Result := StrToIntDef(MajorText, 0) = ExpectedMajor;
 end;
 
-function IsDotNet8RuntimeInstalled: Boolean;
+function IsDotNet10RuntimeInstalled: Boolean;
 var
   FindRec: TFindRec;
 begin
@@ -39,7 +39,7 @@ begin
       repeat
         if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
         begin
-          if IsMajorVersion(FindRec.Name, 8) then
+          if IsMajorVersion(FindRec.Name, 10) then
           begin
             Result := True;
             Exit;
@@ -52,14 +52,14 @@ begin
   end;
 end;
 
-function IsWindowsAppRuntime21Installed: Boolean;
+function IsWindowsAppRuntime22Installed: Boolean;
 var
   ResultCode: Integer;
 begin
   Result :=
     Exec(
       ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      '-NoProfile -ExecutionPolicy Bypass -Command "$pkg = Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2 -ErrorAction SilentlyContinue | Where-Object { $_.Architecture -eq ''X64'' -and [version]$_.Version -ge [version]''2.1.3.0'' } | Select-Object -First 1; if (-not $pkg) { $pkg = Get-AppxPackage -AllUsers -Name Microsoft.WindowsAppRuntime.2 -ErrorAction SilentlyContinue | Where-Object { $_.Architecture -eq ''X64'' -and [version]$_.Version -ge [version]''2.1.3.0'' } | Select-Object -First 1 }; if ($pkg) { exit 0 } exit 1"',
+      '-NoProfile -ExecutionPolicy Bypass -Command "$pkg = Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2 -ErrorAction SilentlyContinue | Where-Object { $_.Architecture -eq ''X64'' -and [version]$_.Version -ge [version]''2.2.0.0'' } | Select-Object -First 1; if (-not $pkg) { $pkg = Get-AppxPackage -AllUsers -Name Microsoft.WindowsAppRuntime.2 -ErrorAction SilentlyContinue | Where-Object { $_.Architecture -eq ''X64'' -and [version]$_.Version -ge [version]''2.2.0.0'' } | Select-Object -First 1 }; if ($pkg) { exit 0 } exit 1"',
       '',
       SW_HIDE,
       ewWaitUntilTerminated,
@@ -69,10 +69,10 @@ end;
 
 procedure DetectDeskBoxDependencies;
 begin
-  ShouldInstallDotNetRuntime := not IsDotNet8RuntimeInstalled;
-  ShouldInstallWindowsAppRuntime := not IsWindowsAppRuntime21Installed;
+  ShouldInstallDotNetRuntime := not IsDotNet10RuntimeInstalled;
+  ShouldInstallWindowsAppRuntime := not IsWindowsAppRuntime22Installed;
 
-  Log('DeskBox dependency check: dotnet8Missing=' + IntToStr(Integer(ShouldInstallDotNetRuntime)));
+  Log('DeskBox dependency check: dotnet10Missing=' + IntToStr(Integer(ShouldInstallDotNetRuntime)));
   Log('DeskBox dependency check: windowsAppRuntimeMissing=' + IntToStr(Integer(ShouldInstallWindowsAppRuntime)));
 end;
 
@@ -137,9 +137,9 @@ begin
   try
     if ShouldInstallDotNetRuntime then
     begin
-      DependencyDownloadPage.Msg1Label.Caption := 'Downloading .NET 8 Runtime x64...';
+      DependencyDownloadPage.Msg1Label.Caption := 'Downloading .NET 10 Runtime x64...';
       if not DownloadDependencyWithProgress(
-        '.NET 8 Runtime x64',
+        '.NET 10 Runtime x64',
         DotNetRuntimeUrl,
         DotNetRuntimeFallbackUrl,
         DotNetRuntimeInstallerName,
@@ -153,9 +153,9 @@ begin
 
     if ShouldInstallWindowsAppRuntime then
     begin
-      DependencyDownloadPage.Msg1Label.Caption := 'Downloading Windows App Runtime 2.1 x64...';
+      DependencyDownloadPage.Msg1Label.Caption := 'Downloading Windows App Runtime 2.2 x64...';
       if not DownloadDependencyWithProgress(
-        'Windows App Runtime 2.1 x64',
+        'Windows App Runtime 2.2 x64',
         WindowsAppRuntimeUrl,
         WindowsAppRuntimeFallbackUrl,
         WindowsAppRuntimeInstallerName,
@@ -242,7 +242,7 @@ begin
     begin
       Step := Step + 1;
       if not InstallDownloadedDependency(
-        '.NET 8 Runtime x64',
+        '.NET 10 Runtime x64',
         DotNetRuntimeInstallerName,
         '/install /quiet /norestart',
         Step,
@@ -258,7 +258,7 @@ begin
     begin
       Step := Step + 1;
       if not InstallDownloadedDependency(
-        'Windows App Runtime 2.1 x64',
+        'Windows App Runtime 2.2 x64',
         WindowsAppRuntimeInstallerName,
         '--quiet',
         Step,

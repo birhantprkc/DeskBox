@@ -33,6 +33,12 @@ public class AppSettings
     /// <summary>Whether DeskBox should launch automatically at Windows startup.</summary>
     public bool AutoStart { get; set; } = true;
 
+    /// <summary>Whether DeskBox should check for updates in the background.</summary>
+    public bool AutoCheckForUpdates { get; set; } = true;
+
+    /// <summary>Last time DeskBox successfully attempted an update check.</summary>
+    public DateTimeOffset? LastUpdateCheckAt { get; set; }
+
     /// <summary>Whether the built-in Quick Capture widget is enabled.</summary>
     public bool QuickCaptureEnabled { get; set; }
     public bool TodoEnabled { get; set; }
