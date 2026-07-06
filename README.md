@@ -15,18 +15,18 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.2.2
+Current release: 1.2.3
 
-- [DeskBox_Setup_1.2.2_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.2/DeskBox_Setup_1.2.2_x64.exe)
+- [DeskBox_Setup_1.2.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.3/DeskBox_Setup_1.2.3_x64.exe)
 
 The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.2.2
+## What's New In 1.2.3
 
-- Upgraded the Direct/Inno build baseline to .NET 10 and Windows App SDK 2.2.
-- Added a Direct/Store distribution boundary for update delivery, startup registration, and package behavior.
-- Added Store MSIX build preparation with Store-specific assets, manifest, update flow, and release documentation.
-- Kept Direct builds on the existing installer/update path while excluding the Direct updater and donation QR resources from Store packages.
+- Added a desktop widget layer mode setting in Settings -> General, with Dynamic and Desktop pinned options.
+- Improved desktop-pinned behavior so widgets can stay on the desktop layer after Show Desktop / Win+D.
+- Refreshed Settings navigation icons with Fluent color icons and tightened several Settings card layouts.
+- Removed redundant switch labels and extra decorative icons while keeping the native WinUI switch style.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -125,7 +125,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.2.2_x64.exe
+Output\DeskBox_Setup_1.2.3_x64.exe
 ```
 
 ## Project Structure

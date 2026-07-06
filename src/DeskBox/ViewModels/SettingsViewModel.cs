@@ -54,6 +54,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedDisplayWidgetChromeMode = SettingsService.WidgetChromeModeOverlay;
     private string _selectedInteractiveWidgetChromeMode = SettingsService.WidgetChromeModeStandard;
     private string _selectedWidgetTitleIconMode = SettingsService.WidgetTitleIconModeColor;
+    private string _selectedWidgetLayerMode = SettingsService.WidgetLayerModeDynamic;
     private string _selectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
     private string _selectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
     private string _selectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
@@ -87,6 +88,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string[]? _cachedDisplayWidgetChromeModeDisplayNames;
     private string[]? _cachedInteractiveWidgetChromeModeDisplayNames;
     private string[]? _cachedWidgetTitleIconModeDisplayNames;
+    private string[]? _cachedWidgetLayerModeDisplayNames;
     private string[]? _cachedQuickCaptureDefaultViewDisplayNames;
     private string[]? _cachedTodoNewTaskPositionDisplayNames;
     private string[]? _cachedTodoDefaultFilterDisplayNames;
@@ -445,6 +447,33 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string SelectedWidgetTitleIconModeText => GetWidgetTitleIconModeDisplayName(SelectedWidgetTitleIconMode);
     public int SelectedWidgetTitleIconModeIndex => Array.IndexOf(AvailableWidgetTitleIconModes, _selectedWidgetTitleIconMode);
+
+    public string SelectedWidgetLayerMode
+    {
+        get => _selectedWidgetLayerMode;
+        set
+        {
+            string normalizedValue = SettingsService.NormalizeWidgetLayerModeSetting(value);
+            if (!SetProperty(ref _selectedWidgetLayerMode, normalizedValue))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetLayerMode = normalizedValue;
+            _settingsService.SaveDebounced();
+            App.Current?.WidgetManager?.RefreshVisibleWidgetDesktopLayers("settings-layer-mode");
+            OnPropertyChanged(nameof(SelectedWidgetLayerModeText));
+            OnPropertyChanged(nameof(SelectedWidgetLayerModeIndex));
+        }
+    }
+
+    public string SelectedWidgetLayerModeText => GetWidgetLayerModeDisplayName(SelectedWidgetLayerMode);
+    public int SelectedWidgetLayerModeIndex => Array.IndexOf(AvailableWidgetLayerModes, _selectedWidgetLayerMode);
 
     [RelayCommand]
     public void ResetDisplayWidgetChromeOverrides()
@@ -1148,6 +1177,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string[] AvailableWidgetTitleIconModeDisplayNames => _cachedWidgetTitleIconModeDisplayNames ??= AvailableWidgetTitleIconModes.Select(GetWidgetTitleIconModeDisplayName).ToArray();
 
+    public string[] AvailableWidgetLayerModes { get; } =
+    [
+        SettingsService.WidgetLayerModeDynamic,
+        SettingsService.WidgetLayerModeDesktopPinned
+    ];
+
+    public string[] AvailableWidgetLayerModeDisplayNames => _cachedWidgetLayerModeDisplayNames ??= AvailableWidgetLayerModes.Select(GetWidgetLayerModeDisplayName).ToArray();
+
     public string[] AvailableQuickCaptureDefaultViews { get; } =
     [
         SettingsService.QuickCaptureDefaultViewRecords,
@@ -1791,6 +1828,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _selectedDisplayWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.DisplayWidgetChromeMode, WidgetChromeMode.Overlay);
         _selectedInteractiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
         _selectedWidgetTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
+        _selectedWidgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(settings.WidgetLayerMode);
         _iconSize = settings.IconSize;
         _textSize = settings.TextSize;
         _layoutDensityScale = settings.LayoutDensityScale;
@@ -1889,6 +1927,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SelectedDisplayWidgetChromeMode = SettingsService.WidgetChromeModeOverlay;
             SelectedInteractiveWidgetChromeMode = SettingsService.WidgetChromeModeStandard;
             SelectedWidgetTitleIconMode = SettingsService.WidgetTitleIconModeColor;
+            SelectedWidgetLayerMode = SettingsService.WidgetLayerModeDynamic;
             WidgetOpacity = SettingsService.DefaultWidgetOpacity;
             IconSize = SettingsService.DefaultIconSize;
             TextSize = SettingsService.DefaultTextSize;
@@ -2053,6 +2092,15 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         };
     }
 
+    public string GetWidgetLayerModeDisplayName(string mode)
+    {
+        return SettingsService.NormalizeWidgetLayerModeSetting(mode) switch
+        {
+            SettingsService.WidgetLayerModeDesktopPinned => _localizationService.T("Settings.WidgetLayerMode.DesktopPinned"),
+            _ => _localizationService.T("Settings.WidgetLayerMode.Dynamic")
+        };
+    }
+
     public string GetQuickCaptureDefaultViewDisplayName(string view)
     {
         return NormalizeQuickCaptureDefaultView(view) switch
@@ -2139,6 +2187,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         string displayWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.DisplayWidgetChromeMode, WidgetChromeMode.Overlay);
         string interactiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
         string widgetTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
+        string widgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(settings.WidgetLayerMode);
         string todoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
         string todoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);
         string managedStorageRootPath = SettingsService.NormalizeManagedStorageRootPath(settings.DefaultManagedStorageRootPath);
@@ -2252,6 +2301,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 SelectedWidgetTitleIconMode = widgetTitleIconMode;
             }
 
+            if (!string.Equals(SelectedWidgetLayerMode, widgetLayerMode, StringComparison.Ordinal))
+            {
+                SelectedWidgetLayerMode = widgetLayerMode;
+            }
+
             if (!string.Equals(SelectedTodoNewTaskPosition, todoNewTaskPosition, StringComparison.Ordinal))
             {
                 SelectedTodoNewTaskPosition = todoNewTaskPosition;
@@ -2281,6 +2335,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetTitleIconModeText));
         OnPropertyChanged(nameof(SelectedWidgetTitleIconModeIndex));
+        OnPropertyChanged(nameof(SelectedWidgetLayerModeText));
+        OnPropertyChanged(nameof(SelectedWidgetLayerModeIndex));
         OnPropertyChanged(nameof(QuickCaptureStatusText));
         OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
         OnPropertyChanged(nameof(FeatureWidgetEntries));
@@ -2341,6 +2397,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _cachedDisplayWidgetChromeModeDisplayNames = null;
         _cachedInteractiveWidgetChromeModeDisplayNames = null;
         _cachedWidgetTitleIconModeDisplayNames = null;
+        _cachedWidgetLayerModeDisplayNames = null;
         _cachedQuickCaptureDefaultViewDisplayNames = null;
         _cachedTodoNewTaskPositionDisplayNames = null;
         _cachedTodoDefaultFilterDisplayNames = null;
@@ -2356,6 +2413,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AvailableDisplayWidgetChromeModeDisplayNames));
         OnPropertyChanged(nameof(AvailableInteractiveWidgetChromeModeDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetTitleIconModeDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetLayerModeDisplayNames));
         OnPropertyChanged(nameof(AvailableQuickCaptureDefaultViewDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoNewTaskPositionDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoDefaultFilterDisplayNames));
@@ -2385,6 +2443,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetTitleIconModeText));
         OnPropertyChanged(nameof(SelectedWidgetTitleIconModeIndex));
+        OnPropertyChanged(nameof(SelectedWidgetLayerModeText));
+        OnPropertyChanged(nameof(SelectedWidgetLayerModeIndex));
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewText));
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewIndex));
         OnPropertyChanged(nameof(SelectedTodoNewTaskPositionText));

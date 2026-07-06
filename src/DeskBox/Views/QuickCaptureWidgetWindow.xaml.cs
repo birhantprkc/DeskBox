@@ -173,20 +173,14 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     public void PushToBottom()
     {
         _isAtDesktopLayer = true;
-        Win32Helper.ClearWindowTopMost(_hWnd);
-        Win32Helper.SetWindowToBottom(_hWnd);
+        WidgetLayerService.MoveToDesktopBottom(_hWnd);
         App.Log($"[ZOrder] QuickCapture PushToBottom hwnd=0x{_hWnd.ToInt64():X}");
     }
 
     public void ClearTopMostOnly()
     {
         _isAtDesktopLayer = true;
-        Win32Helper.ClearWindowTopMost(_hWnd);
-        IntPtr foreground = Win32Helper.GetForegroundWindow();
-        if (foreground != IntPtr.Zero && foreground != _hWnd)
-        {
-            Win32Helper.BringWindowToFront(foreground);
-        }
+        IntPtr foreground = WidgetLayerService.ClearTopMostPreservingForeground(_hWnd);
         App.Log($"[ZOrder] QuickCapture ClearTopMostOnly hwnd=0x{_hWnd.ToInt64():X} fg=0x{foreground.ToInt64():X}");
     }
 
@@ -255,7 +249,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         LogTrayWindow("EnsureRaisedTopMost");
         _appWindow.Show();
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNORMAL);
-        Win32Helper.BringWindowToFront(_hWnd);
+        WidgetLayerService.BringToFront(_hWnd);
         HoldTemporaryTopMost();
         QueueBackdropRefresh();
     }
@@ -398,6 +392,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _topMostSafetyTimer?.Stop();
         _topMostSafetyTimer = null;
         _trayAnimation.Stop();
+        WidgetLayerService.ReleaseWindow(_hWnd);
         Close();
     }
 
@@ -536,6 +531,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         {
             _isClosing = true;
             Visible = false;
+            WidgetLayerService.ReleaseWindow(_hWnd);
             _settingsService.SettingsChanged -= OnSettingsChanged;
             if (_themeService is not null)
             {
@@ -612,7 +608,13 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private bool RestoreBoundsAfterDisplayChange()
     {
-        return TryRestoreBoundsForCurrentTopology(allowHidden: false);
+        bool restored = TryRestoreBoundsForCurrentTopology(allowHidden: false);
+        if (restored && Visible)
+        {
+            RestoreDesktopLayer(force: true);
+        }
+
+        return restored;
     }
 
     private void ApplyLocalizedText()
@@ -2967,6 +2969,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             !_isAtDesktopLayer ||
             _isDragging ||
             _isResizing ||
+            WidgetLayerService.UsesDesktopPinnedMode() ||
             (App.Current.WidgetManager is { WidgetsRaisedFromTray: true }))
         {
             App.Log($"[ZOrder] QuickCapture PointerActivated BLOCKED hwnd=0x{_hWnd.ToInt64():X} visible={Visible} atDesktop={_isAtDesktopLayer} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray}");
@@ -3056,10 +3059,20 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private void HoldTemporaryTopMost()
     {
+        if (WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            _isAtDesktopLayer = true;
+            _keepRaisedUntilDeactivate = false;
+            _restoreDesktopLayerWhenIdle = false;
+            WidgetLayerService.MoveToDesktopBottom(_hWnd);
+            App.Log($"[ZOrder] QuickCapture HoldTemporaryTopMost skipped pinned hwnd=0x{_hWnd.ToInt64():X}");
+            return;
+        }
+
         _isAtDesktopLayer = false;
         _keepRaisedUntilDeactivate = true;
         _restoreDesktopLayerWhenIdle = false;
-        Win32Helper.SetWindowTopMost(_hWnd);
+        WidgetLayerService.HoldTemporaryTopMost(_hWnd);
         App.Log($"[ZOrder] QuickCapture HoldTemporaryTopMost hwnd=0x{_hWnd.ToInt64():X}");
         StartTopMostSafetyTimer();
     }
@@ -3776,7 +3789,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _isHideAnimationRunning = false;
         _trayAnimation.Stop();
         RestoreNativeBackdropAfterTrayReveal();
-        Win32Helper.ClearWindowTopMost(_hWnd);
+        WidgetLayerService.ClearTopMost(_hWnd);
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
         _appWindow.Hide();
         _trayAnimation.RestoreVisualState();

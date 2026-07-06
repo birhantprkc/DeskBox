@@ -12,6 +12,7 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
     private const uint WmNcDestroy = 0x0082;
     private const uint SpiSetWorkArea = 0x002F;
     private const int MaxRestoreRetryCount = 8;
+    private static readonly uint s_taskbarCreatedMessage = Win32Helper.RegisterWindowMessage("TaskbarCreated");
     private static readonly TimeSpan RestoreDelay = TimeSpan.FromMilliseconds(280);
     private static readonly TimeSpan RestoreRetryDelay = TimeSpan.FromMilliseconds(180);
     private static readonly UIntPtr SubclassId = new(0xDDB2);
@@ -58,8 +59,10 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
         UIntPtr refData)
     {
         if (message is WmDisplayChange or WmDpiChanged ||
+            message == s_taskbarCreatedMessage ||
             message == WmSettingChange && IsRelevantSettingChange(wParam, lParam))
         {
+            WidgetLayerService.InvalidateDesktopIconViewCache();
             QueueRestore();
         }
         else if (message == WmNcDestroy)

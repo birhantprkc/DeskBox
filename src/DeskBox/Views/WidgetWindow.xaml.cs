@@ -304,6 +304,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         {
             _isClosing = true;
             Visible = false;
+            WidgetLayerService.ReleaseWindow(_hWnd);
             _settingsService.SettingsChanged -= OnSettingsChanged;
             _localizationService.LanguageChanged -= OnLanguageChanged;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
@@ -373,7 +374,13 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private bool RestoreBoundsAfterDisplayChange()
     {
-        return TryRestoreBoundsForCurrentTopology(allowHidden: false);
+        bool restored = TryRestoreBoundsForCurrentTopology(allowHidden: false);
+        if (restored && Visible)
+        {
+            RestoreDesktopLayer(force: true);
+        }
+
+        return restored;
     }
 
     private void OnLanguageChanged()
@@ -409,20 +416,14 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     public void PushToBottom()
     {
         _isAtDesktopLayer = true;
-        Win32Helper.ClearWindowTopMost(_hWnd);
-        Win32Helper.SetWindowToBottom(_hWnd);
+        WidgetLayerService.MoveToDesktopBottom(_hWnd);
         App.Log($"[ZOrder] Widget PushToBottom hwnd=0x{_hWnd.ToInt64():X}");
     }
 
     public void ClearTopMostOnly()
     {
         _isAtDesktopLayer = true;
-        Win32Helper.ClearWindowTopMost(_hWnd);
-        IntPtr foreground = Win32Helper.GetForegroundWindow();
-        if (foreground != IntPtr.Zero && foreground != _hWnd)
-        {
-            Win32Helper.BringWindowToFront(foreground);
-        }
+        IntPtr foreground = WidgetLayerService.ClearTopMostPreservingForeground(_hWnd);
         App.Log($"[ZOrder] Widget ClearTopMostOnly hwnd=0x{_hWnd.ToInt64():X} fg=0x{foreground.ToInt64():X}");
     }
 
@@ -504,7 +505,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         App.Log($"[ZOrder] Widget EnsureRaisedFromTrayTopMost hwnd=0x{_hWnd.ToInt64():X} atDesktop={_isAtDesktopLayer}");
         _appWindow.Show();
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNORMAL);
-        Win32Helper.BringWindowToFront(_hWnd);
+        WidgetLayerService.BringToFront(_hWnd);
         HoldTemporaryTopMost();
     }
 
@@ -723,7 +724,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _isHideAnimationRunning = false;
         _trayAnimation.Stop();
         RestoreNativeBackdropAfterTrayReveal();
-        Win32Helper.ClearWindowTopMost(_hWnd);
+        WidgetLayerService.ClearTopMost(_hWnd);
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
         _appWindow.Hide();
         _trayAnimation.RestoreVisualState();
@@ -896,6 +897,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     public void CloseWindow()
     {
+        WidgetLayerService.ReleaseWindow(_hWnd);
         Close();
     }
 
@@ -942,10 +944,20 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void HoldTemporaryTopMost()
     {
+        if (WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            _isAtDesktopLayer = true;
+            _keepRaisedUntilDeactivate = false;
+            _restoreDesktopLayerWhenIdle = false;
+            WidgetLayerService.MoveToDesktopBottom(_hWnd);
+            App.Log($"[ZOrder] Widget HoldTemporaryTopMost skipped pinned hwnd=0x{_hWnd.ToInt64():X}");
+            return;
+        }
+
         _isAtDesktopLayer = false;
         _keepRaisedUntilDeactivate = true;
         _restoreDesktopLayerWhenIdle = false;
-        Win32Helper.SetWindowTopMost(_hWnd);
+        WidgetLayerService.HoldTemporaryTopMost(_hWnd);
         var stack = new System.Diagnostics.StackTrace(true);
         var frame = stack.GetFrame(1);
         App.Log($"[ZOrder] Widget HoldTemporaryTopMost hwnd=0x{_hWnd.ToInt64():X} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray} from={frame?.GetMethod()?.DeclaringType?.Name}.{frame?.GetMethod()?.Name}");
@@ -994,6 +1006,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             !_isAtDesktopLayer ||
             _isDragging ||
             _isResizing ||
+            WidgetLayerService.UsesDesktopPinnedMode() ||
             (App.Current.WidgetManager is { WidgetsRaisedFromTray: true }))
         {
             App.Log($"[ZOrder] Widget PointerActivated BLOCKED hwnd=0x{_hWnd.ToInt64():X} visible={Visible} atDesktop={_isAtDesktopLayer} raised={App.Current.WidgetManager?.WidgetsRaisedFromTray}");

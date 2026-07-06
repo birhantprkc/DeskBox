@@ -15,18 +15,18 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.2.2
+当前版本：1.2.3
 
-- [DeskBox_Setup_1.2.2_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.2/DeskBox_Setup_1.2.2_x64.exe)
+- [DeskBox_Setup_1.2.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.3/DeskBox_Setup_1.2.3_x64.exe)
 
 安装器会检测 .NET 10 Runtime x64 和 Windows App Runtime 2.2 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
 ## 最新更新
 
-- Direct/Inno 官网版构建基线升级到 .NET 10 和 Windows App SDK 2.2。
-- 新增 Direct / Microsoft Store 双通道边界，更新服务、开机自启和包行为会按渠道分流。
-- 新增 Store MSIX 打包准备，包括商店资源、manifest、商店更新入口和发版操作文档。
-- 官网版继续保留现有安装器和应用内更新链路；Store 包会排除 Direct 更新器和捐赠二维码资源。
+- 设置 -> 常规新增桌面格子层级模式，可在动态层级和桌面固定层之间切换。
+- 优化桌面固定层行为，格子在“显示桌面”或 Win+D 后也可以留在桌面层显示。
+- 设置左侧导航换成 Fluent 彩色图标，并继续收口设置卡片里的布局细节。
+- 删除多余的开关文字和装饰图标，同时保留原生 WinUI 开关样式。
 
 完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -123,7 +123,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.2.2_x64.exe
+Output\DeskBox_Setup_1.2.3_x64.exe
 ```
 
 ## 项目结构

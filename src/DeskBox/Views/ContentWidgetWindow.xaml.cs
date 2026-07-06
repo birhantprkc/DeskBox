@@ -246,7 +246,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
 
         _appWindow.Show();
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNORMAL);
-        Win32Helper.BringWindowToFront(_hWnd);
+        WidgetLayerService.BringToFront(_hWnd);
         HoldTemporaryTopMost();
     }
 
@@ -274,7 +274,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         Visible = false;
         _config.IsVisible = false;
         _settingsService.SaveDebounced();
-        Win32Helper.ClearWindowTopMost(_hWnd);
+        WidgetLayerService.ClearTopMost(_hWnd);
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
         _appWindow.Hide();
         _trayAnimation.RestoreVisualState();
@@ -296,6 +296,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         }
 
         _isClosing = true;
+        WidgetLayerService.ReleaseWindow(_hWnd);
         Close();
     }
 
@@ -379,6 +380,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         {
             _isClosing = true;
             Visible = false;
+            WidgetLayerService.ReleaseWindow(_hWnd);
             _topMostSafetyTimer?.Stop();
             _topMostSafetyTimer = null;
             App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;
@@ -446,7 +448,13 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
 
     private bool RestoreBoundsAfterDisplayChange()
     {
-        return TryRestoreBoundsForCurrentTopology(allowHidden: false);
+        bool restored = TryRestoreBoundsForCurrentTopology(allowHidden: false);
+        if (restored && Visible)
+        {
+            RestoreDesktopLayer(force: true);
+        }
+
+        return restored;
     }
 
     private void ContentWidgetWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -553,29 +561,33 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
     private void PushToBottom()
     {
         _isAtDesktopLayer = true;
-        Win32Helper.ClearWindowTopMost(_hWnd);
-        Win32Helper.SetWindowToBottom(_hWnd);
+        WidgetLayerService.MoveToDesktopBottom(_hWnd);
         App.Log($"[ZOrder] Content PushToBottom hwnd=0x{_hWnd.ToInt64():X}");
     }
 
     private void ClearTopMostOnly()
     {
         _isAtDesktopLayer = true;
-        Win32Helper.ClearWindowTopMost(_hWnd);
-        IntPtr foreground = Win32Helper.GetForegroundWindow();
-        if (foreground != IntPtr.Zero && foreground != _hWnd)
-        {
-            Win32Helper.BringWindowToFront(foreground);
-        }
+        IntPtr foreground = WidgetLayerService.ClearTopMostPreservingForeground(_hWnd);
         App.Log($"[ZOrder] Content ClearTopMostOnly hwnd=0x{_hWnd.ToInt64():X} fg=0x{foreground.ToInt64():X}");
     }
 
     private void HoldTemporaryTopMost()
     {
+        if (WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            _isAtDesktopLayer = true;
+            _keepRaisedUntilDeactivate = false;
+            _restoreDesktopLayerWhenIdle = false;
+            WidgetLayerService.MoveToDesktopBottom(_hWnd);
+            App.Log($"[ZOrder] Content HoldTemporaryTopMost skipped pinned hwnd=0x{_hWnd.ToInt64():X}");
+            return;
+        }
+
         _isAtDesktopLayer = false;
         _keepRaisedUntilDeactivate = true;
         _restoreDesktopLayerWhenIdle = false;
-        Win32Helper.SetWindowTopMost(_hWnd);
+        WidgetLayerService.HoldTemporaryTopMost(_hWnd);
         App.Log($"[ZOrder] Content HoldTemporaryTopMost hwnd=0x{_hWnd.ToInt64():X}");
         StartTopMostSafetyTimer();
     }
@@ -715,7 +727,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         _isHideAnimationRunning = false;
         _isHidePrepared = false;
         _trayAnimation.Stop();
-        Win32Helper.ClearWindowTopMost(_hWnd);
+        WidgetLayerService.ClearTopMost(_hWnd);
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
         _appWindow.Hide();
         _trayAnimation.RestoreVisualState();

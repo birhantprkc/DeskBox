@@ -48,6 +48,8 @@ public sealed class SettingsService
     public const string WidgetAnimationEasingLight = "Light";
     public const string WidgetAnimationEasingStandard = "Standard";
     public const string WidgetAnimationEasingStrong = "Strong";
+    public const string WidgetLayerModeDynamic = "Dynamic";
+    public const string WidgetLayerModeDesktopPinned = "DesktopPinned";
     public const string WidgetChromeModeStandard = WidgetChromeModeNames.Standard;
     public const string WidgetChromeModeCompact = WidgetChromeModeNames.Compact;
     public const string WidgetChromeModeOverlay = WidgetChromeModeNames.Overlay;
@@ -135,6 +137,7 @@ public sealed class SettingsService
         settings.WidgetAnimationSpeed = WidgetAnimationSpeedStandard;
         settings.WidgetAnimationSlideDirection = WidgetAnimationSlideDirectionRight;
         settings.WidgetAnimationEasingIntensity = WidgetAnimationEasingStandard;
+        settings.WidgetLayerMode = WidgetLayerModeDynamic;
         settings.DisplayWidgetChromeMode = WidgetChromeModeOverlay;
         settings.InteractiveWidgetChromeMode = WidgetChromeModeStandard;
         settings.WidgetTitleIconMode = WidgetTitleIconModeColor;
@@ -459,6 +462,13 @@ public sealed class SettingsService
             changed = true;
         }
 
+        string normalizedLayerMode = NormalizeWidgetLayerModeSetting(settings.WidgetLayerMode);
+        if (!string.Equals(settings.WidgetLayerMode, normalizedLayerMode, StringComparison.Ordinal))
+        {
+            settings.WidgetLayerMode = normalizedLayerMode;
+            changed = true;
+        }
+
         string normalizedDisplayChrome = NormalizeWidgetChromeModeSetting(
             settings.DisplayWidgetChromeMode,
             WidgetChromeMode.Overlay);
@@ -612,6 +622,13 @@ public sealed class SettingsService
     public static string NormalizeWidgetTitleIconModeSetting(string? value)
     {
         return WidgetTitleIconModeNames.NormalizeSettingValue(value);
+    }
+
+    public static string NormalizeWidgetLayerModeSetting(string? value)
+    {
+        return string.Equals(value, WidgetLayerModeDesktopPinned, StringComparison.Ordinal)
+            ? WidgetLayerModeDesktopPinned
+            : WidgetLayerModeDynamic;
     }
 
     public static string NormalizeMusicRhythmStyle(string? value)

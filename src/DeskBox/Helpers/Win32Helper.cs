@@ -74,10 +74,37 @@ public static partial class Win32Helper
     [LibraryImport("user32.dll")]
     public static partial IntPtr GetParent(IntPtr hWnd);
 
+    [LibraryImport("user32.dll", SetLastError = true)]
+    public static partial IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+
     [LibraryImport("user32.dll")]
     public static partial IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsWindow(IntPtr hWnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial IntPtr FindWindow(string? lpClassName, string? lpWindowName);
+
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter, string? lpszClass, string? lpszWindow);
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+    public static partial IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        uint flags,
+        uint timeout,
+        out UIntPtr result);
+
+    [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial uint RegisterWindowMessage(string lpString);
+
     public const uint GA_ROOT = 2;
+    public const uint SMTO_NORMAL = 0x0000;
 
     // ────────────────────────────────────────────────────────────────
     //  Extended window styles
@@ -91,6 +118,7 @@ public static partial class Win32Helper
     public const uint LWA_ALPHA = 0x00000002;
 
     public const int GWL_STYLE = -16;
+    public const int GWLP_HWNDPARENT = -8;
     public const int WS_CHILD = 0x40000000;
     public const int WS_VISIBLE = 0x10000000;
     public const int WS_POPUP = unchecked((int)0x80000000);
@@ -104,6 +132,15 @@ public static partial class Win32Helper
 
     [LibraryImport("user32.dll", EntryPoint = "SetWindowLongW")]
     public static partial int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    public static partial IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    public static partial IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [LibraryImport("kernel32.dll")]
+    public static partial void SetLastError(uint dwErrCode);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

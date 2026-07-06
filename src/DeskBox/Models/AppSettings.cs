@@ -146,6 +146,12 @@ public class AppSettings
     public string WidgetAnimationEasingIntensity { get; set; } = "Standard";
 
     /// <summary>
+    /// Window layer behavior for desktop widgets.
+    /// Valid values: <c>"Dynamic"</c>, <c>"DesktopPinned"</c>.
+    /// </summary>
+    public string WidgetLayerMode { get; set; } = "Dynamic";
+
+    /// <summary>
     /// Default chrome/title mode for display widgets such as Music, Weather, and System Monitor.
     /// Valid values: <c>"Standard"</c>, <c>"Compact"</c>, <c>"Overlay"</c>, <c>"Hidden"</c>.
     /// </summary>

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.3 - 2026-07-06
+
+### English
+
+- Added a configurable desktop widget layer mode under Settings -> General. Users can keep the existing Dynamic behavior or switch to Desktop pinned mode.
+- Improved Desktop pinned behavior so visible widgets are reattached to the desktop layer after Show Desktop / Win+D and display-topology refreshes.
+- Updated Settings navigation icons to Fluent color icons and refined several Settings layouts for more consistent spacing and card hierarchy.
+- Removed redundant ToggleSwitch on/off text while preserving the native WinUI switch visual style.
+- Removed extra decorative icons from the widget title icon setting and update-status rows.
+
+### 中文
+
+- 在「设置 -> 常规」新增桌面格子层级模式，用户可以保留现有动态层级，也可以切换到桌面固定层。
+- 优化桌面固定层行为，让已显示的格子在“显示桌面”/ Win+D 和显示环境刷新后继续回到桌面层。
+- 设置左侧导航图标换成 Fluent 彩色图标，并继续调整设置页卡片间距和层级。
+- 删除 ToggleSwitch 多余的开关文字，同时保留原生 WinUI 开关样式。
+- 删除“格子标题图标”和“更新状态”行里多余的装饰图标。
+
 ## 1.2.2 - 2026-07-06
 
 ### English

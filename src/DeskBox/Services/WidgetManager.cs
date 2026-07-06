@@ -105,6 +105,7 @@ public sealed class WidgetManager
     private readonly Dictionary<WidgetKind, bool> _lastFeatureWidgetEnabledStates = new();
     private readonly Dictionary<WidgetKind, FeatureWidgetHandler> _featureWidgetHandlers;
     private readonly Dictionary<WidgetKind, WidgetWindowProvider> _windowProviders;
+    private string _lastWidgetLayerMode;
     private DateTime _lastTrayLayerToggleUtc = DateTime.MinValue;
     private DateTime _suppressTrayLayerRestoreUntilUtc = DateTime.MinValue;
     private long _trayRaiseBatchGeneration;
@@ -287,6 +288,7 @@ public sealed class WidgetManager
         {
             _lastFeatureWidgetEnabledStates[kind] = FeatureWidgetSettings.IsEnabled(_settingsService.Settings, kind);
         }
+        _lastWidgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(_settingsService.Settings.WidgetLayerMode);
         _settingsService.SettingsChanged += OnSettingsChanged;
         _settingsService.AppearancePreviewChanged += ApplyAppearancePreview;
         _themeService.AppearanceChanged += ApplyAppearancePreview;
@@ -355,6 +357,8 @@ public sealed class WidgetManager
 
     private void OnSettingsChanged()
     {
+        ApplyWidgetLayerModeIfChanged();
+
         foreach (var kind in FeatureWidgetSettings.FeatureKinds)
         {
             bool enabled = FeatureWidgetSettings.IsEnabled(_settingsService.Settings, kind);
@@ -366,6 +370,48 @@ public sealed class WidgetManager
 
             _lastFeatureWidgetEnabledStates[kind] = enabled;
             ApplyFeatureWidgetEnabledState(kind, enabled);
+        }
+    }
+
+    private void ApplyWidgetLayerModeIfChanged()
+    {
+        string layerMode = SettingsService.NormalizeWidgetLayerModeSetting(_settingsService.Settings.WidgetLayerMode);
+        if (string.Equals(layerMode, _lastWidgetLayerMode, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string previousMode = _lastWidgetLayerMode;
+        _lastWidgetLayerMode = layerMode;
+        WidgetLayerService.InvalidateDesktopIconViewCache();
+        App.Log($"[WidgetManager] Widget layer mode changed {previousMode}->{layerMode}");
+        RefreshVisibleWidgetDesktopLayers("layer-mode-changed");
+    }
+
+    public void RefreshVisibleWidgetDesktopLayers(string reason)
+    {
+        if (!HasUiThreadAccess())
+        {
+            App.UiDispatcherQueue.TryEnqueue(() => RefreshVisibleWidgetDesktopLayers(reason));
+            return;
+        }
+
+        App.Log($"[WidgetManager] Refresh visible widget desktop layers reason={reason}");
+        foreach (var window in GetLoadedDesktopWindows())
+        {
+            if (!window.Visible)
+            {
+                continue;
+            }
+
+            try
+            {
+                window.ForceRestoreDesktopLayerFromManager();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Failed to refresh widget desktop layer {FormatHostWindow(window)}: {ex}");
+            }
         }
     }
 
@@ -891,6 +937,13 @@ public sealed class WidgetManager
     public async Task<bool?> RaiseWidgetsFromTrayAsync()
     {
         using var perfScope = PerformanceLogger.Measure("WidgetManager.RaiseWidgetsFromTray");
+        if (WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            App.LogVerbose("[TrayBatch] Raise redirected to desktop-pinned show");
+            await SetAllWidgetsVisibleAsync(true);
+            return false;
+        }
+
         var now = DateTime.UtcNow;
         double sinceLastToggleMs = (now - _lastTrayLayerToggleUtc).TotalMilliseconds;
         App.LogVerbose(
@@ -1689,7 +1742,7 @@ public sealed class WidgetManager
         {
             if (window.Visible && window.WindowHandle != exceptHwnd)
             {
-                Win32Helper.BringWindowToFront(window.WindowHandle);
+                WidgetLayerService.BringToFront(window.WindowHandle);
             }
         }
     }

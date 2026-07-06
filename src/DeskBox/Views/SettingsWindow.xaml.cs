@@ -49,6 +49,7 @@ public sealed partial class SettingsWindow : Window
     private bool _isRecordingHotkey;
     private bool _isRefreshingFeatureWidgetList;
     private bool _isSyncingNavigationSelection;
+    private bool _isSettingsRootLoaded;
     private string _currentSettingsSection = "General";
 
     private static readonly IReadOnlyDictionary<string, SettingsSectionRoute> SectionRoutes =
@@ -96,7 +97,8 @@ public sealed partial class SettingsWindow : Window
             _ = ViewModel.RefreshQuickCaptureImageCacheInfoAsync();
             RefreshGlobalHotkeyControls();
             UpdateResponsiveLayout(GetWindowWidth());
-            ApplyLocalizedToggleSwitchContent();
+            ApplyToggleSwitchContentVisibility();
+            _isSettingsRootLoaded = true;
         };
 
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop
@@ -278,9 +280,9 @@ public sealed partial class SettingsWindow : Window
             : NavigationViewBackButtonVisible.Collapsed;
         UpdateBreadcrumb(route);
 
-        PageScroller.ChangeView(null, 0, null, disableAnimation: true);
-        DispatcherQueue.TryEnqueue(() =>
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
+            PageScroller.ChangeView(null, 0, null, disableAnimation: true);
             CollectResponsiveRows(SettingsRoot);
             UpdateResponsiveLayout(GetWindowWidth());
         });
@@ -373,6 +375,14 @@ public sealed partial class SettingsWindow : Window
                 break;
             case "WidgetTitleIconMode":
                 ViewModel.SelectedWidgetTitleIconMode = ViewModel.AvailableWidgetTitleIconModes[combo.SelectedIndex];
+                break;
+            case "WidgetLayerMode":
+                if (!_isSettingsRootLoaded)
+                {
+                    return;
+                }
+
+                ViewModel.SelectedWidgetLayerMode = ViewModel.AvailableWidgetLayerModes[combo.SelectedIndex];
                 break;
             case "QuickCaptureDefaultView":
                 ViewModel.SelectedQuickCaptureDefaultView = ViewModel.AvailableQuickCaptureDefaultViews[combo.SelectedIndex];
@@ -506,7 +516,7 @@ public sealed partial class SettingsWindow : Window
     {
         Title = _localizationService.T("Settings.WindowTitle");
         Localized.RefreshAll(_localizationService);
-        ApplyLocalizedToggleSwitchContent();
+        ApplyToggleSwitchContentVisibility();
         RefreshFeatureWidgetList();
         ViewModel.RefreshGlobalHotkeyState();
         RefreshGlobalHotkeyControls();
@@ -516,15 +526,18 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    private void ApplyLocalizedToggleSwitchContent()
+    private void ApplyToggleSwitchContentVisibility()
     {
-        string onText = _localizationService.T("Settings.Toggle.On");
-        string offText = _localizationService.T("Settings.Toggle.Off");
         foreach (var toggle in FindDescendants<ToggleSwitch>(SettingsRoot))
         {
-            toggle.OnContent = onText;
-            toggle.OffContent = offText;
+            ClearToggleSwitchContent(toggle);
         }
+    }
+
+    private static void ClearToggleSwitchContent(ToggleSwitch toggle)
+    {
+        toggle.OnContent = string.Empty;
+        toggle.OffContent = string.Empty;
     }
 
     private void RefreshFeatureWidgetList()
@@ -549,7 +562,7 @@ public sealed partial class SettingsWindow : Window
             _isRefreshingFeatureWidgetList = false;
         }
 
-        ApplyLocalizedToggleSwitchContent();
+        ApplyToggleSwitchContentVisibility();
     }
 
     private Border CreateFeatureWidgetRow(FeatureWidgetEntry entry)
@@ -647,10 +660,12 @@ public sealed partial class SettingsWindow : Window
             {
                 MinWidth = 0,
                 HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
                 IsOn = entry.IsEnabled,
                 IsEnabled = entry.CanToggle,
                 Tag = entry.Kind
             };
+            ClearToggleSwitchContent(toggle);
             toggle.Toggled += FeatureWidgetToggle_Toggled;
             Canvas.SetZIndex(toggle, 2);
             Grid.SetColumn(toggle, 3);
@@ -1880,10 +1895,19 @@ public sealed partial class SettingsWindow : Window
     {
         bool useCompactNavigation = width < NavigationCompactThreshold;
 
-        SettingsNavigationView.PaneDisplayMode = useCompactNavigation
+        var targetPaneDisplayMode = useCompactNavigation
             ? NavigationViewPaneDisplayMode.LeftCompact
             : NavigationViewPaneDisplayMode.Left;
-        SettingsNavigationView.IsPaneOpen = !useCompactNavigation;
+        if (SettingsNavigationView.PaneDisplayMode != targetPaneDisplayMode)
+        {
+            SettingsNavigationView.PaneDisplayMode = targetPaneDisplayMode;
+        }
+
+        bool targetPaneOpen = !useCompactNavigation;
+        if (SettingsNavigationView.IsPaneOpen != targetPaneOpen)
+        {
+            SettingsNavigationView.IsPaneOpen = targetPaneOpen;
+        }
 
         double expectedPaneWidth = useCompactNavigation
             ? SettingsNavigationView.CompactPaneLength

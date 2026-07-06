@@ -1,12 +1,24 @@
-<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <path d="M4.75 3h5.5C11.22 3 12 3.78 12 4.75v5.5c0 .97-.78 1.75-1.75 1.75h-5.5A1.75 1.75 0 0 1 3 10.25v-5.5C3 3.78 3.78 3 4.75 3Z" fill="url(#a)"/>
-  <path d="M13.75 3h5.5C20.22 3 21 3.78 21 4.75v5.5c0 .97-.78 1.75-1.75 1.75h-5.5A1.75 1.75 0 0 1 12 10.25v-5.5C12 3.78 12.78 3 13.75 3Z" fill="url(#b)"/>
-  <path d="M4.75 12h5.5c.97 0 1.75.78 1.75 1.75v5.5c0 .97-.78 1.75-1.75 1.75h-5.5A1.75 1.75 0 0 1 3 19.25v-5.5C3 12.78 3.78 12 4.75 12Z" fill="url(#c)"/>
-  <path d="M13.75 12h5.5c.97 0 1.75.78 1.75 1.75v5.5c0 .97-.78 1.75-1.75 1.75h-5.5A1.75 1.75 0 0 1 12 19.25v-5.5c0-.97.78-1.75 1.75-1.75Z" fill="url(#d)"/>
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="m17 12-3.5-.5-3.5.5-.5 2.5.5 2.5h4a3 3 0 0 0 3-3v-2Z" fill="url(#ic_fluent_board_20_color__a)" />
+  <path d="m10 3-.5 4.5.5 4.5h7V6a3 3 0 0 0-3-3h-4Z" fill="url(#ic_fluent_board_20_color__b)" />
+  <path d="M10 17V8l-3.5-.5L3 8v6a3 3 0 0 0 3 3h4Z" fill="url(#ic_fluent_board_20_color__c)" />
+  <path d="M10 3v5H3V6a3 3 0 0 1 3-3h4Z" fill="url(#ic_fluent_board_20_color__d)" />
   <defs>
-    <linearGradient id="a" x1="3" y1="3" x2="12" y2="12" gradientUnits="userSpaceOnUse"><stop stop-color="#B9C0C7"/><stop offset="1" stop-color="#63686E"/></linearGradient>
-    <linearGradient id="b" x1="12" y1="3" x2="21" y2="12" gradientUnits="userSpaceOnUse"><stop stop-color="#36DFF1"/><stop offset="1" stop-color="#2764E7"/></linearGradient>
-    <linearGradient id="c" x1="3" y1="12" x2="12" y2="21" gradientUnits="userSpaceOnUse"><stop stop-color="#55595E"/><stop offset="1" stop-color="#383B3D"/></linearGradient>
-    <linearGradient id="d" x1="12" y1="12" x2="21" y2="21" gradientUnits="userSpaceOnUse"><stop stop-color="#A78BFA"/><stop offset="1" stop-color="#EC4899"/></linearGradient>
+    <linearGradient id="ic_fluent_board_20_color__a" x1="7" y1="9.5" x2="11.1" y2="18.88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B0F098" />
+      <stop offset="1" stop-color="#52D17C" />
+    </linearGradient>
+    <linearGradient id="ic_fluent_board_20_color__b" x1="11" y1="4" x2="16.33" y2="10.74" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#52D17C" />
+      <stop offset="1" stop-color="#309C61" />
+    </linearGradient>
+    <linearGradient id="ic_fluent_board_20_color__c" x1="4" y1="9" x2="9.46" y2="14.56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#42B870" />
+      <stop offset="1" stop-color="#1A7F7C" />
+    </linearGradient>
+    <linearGradient id="ic_fluent_board_20_color__d" x1="4" y1="4" x2="6.07" y2="9.01" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B0F098" />
+      <stop offset="1" stop-color="#64DE89" />
+    </linearGradient>
   </defs>
 </svg>

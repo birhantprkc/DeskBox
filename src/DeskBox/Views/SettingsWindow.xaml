@@ -392,6 +392,8 @@
                                 <FontIcon Glyph="&#xE7E6;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding UseSystemAccentColor, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -563,6 +565,8 @@
                                     svc:Localized.DescriptionKey="Settings.ShowHoverButtons.Description"
                                     svc:Localized.HeaderKey="Settings.ShowHoverButtons.Title">
                                     <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
                                         MinWidth="0"
                                         IsOn="{Binding ShowHoverButtons, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
@@ -571,9 +575,6 @@
                                     HorizontalContentAlignment="Right"
                                     svc:Localized.DescriptionKey="Settings.WidgetTitleIcon.Description"
                                     svc:Localized.HeaderKey="Settings.WidgetTitleIcon.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE8A5;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
                                     <ComboBox
                                         MinWidth="176"
                                         ItemsSource="{Binding AvailableWidgetTitleIconModeDisplayNames}"
@@ -735,6 +736,8 @@
                                 <FontIcon Glyph="&#xE8D2;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding ShowFileExtensions, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -747,6 +750,8 @@
                                 <FontIcon Glyph="&#xE8A7;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsEnabled="{Binding ShowFileExtensions}"
                                 IsOn="{Binding HideShortcutExtensionWhenShowingFileExtensions, Mode=TwoWay}" />
@@ -760,6 +765,8 @@
                                 <FontIcon Glyph="&#xEB9F;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding ShowImageFilesAsIcons, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -858,6 +865,8 @@
                                     svc:Localized.DescriptionKey="Settings.HideShortcutArrow.Description"
                                     svc:Localized.HeaderKey="Settings.HideShortcutArrow.Title">
                                     <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
                                         MinWidth="0"
                                         IsOn="{Binding HideShortcutArrowOverlay, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
@@ -867,6 +876,8 @@
                                     svc:Localized.DescriptionKey="Settings.ListDetails.Description"
                                     svc:Localized.HeaderKey="Settings.ListDetails.Title">
                                     <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
                                         MinWidth="0"
                                         IsOn="{Binding ShowListItemDetails, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
@@ -962,6 +973,8 @@
                                 <FontIcon Glyph="&#xE765;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -1100,6 +1113,8 @@
                                 <FontIcon Glyph="&#xE8A5;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding QuickCaptureEnabled, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -1137,6 +1152,8 @@
                                     Style="{StaticResource SettingDescriptionTextStyle}"
                                     Text="{Binding QuickCaptureClipboardDiagnosticsText}" />
                                 <ToggleSwitch
+                                    OnContent=""
+                                    OffContent=""
                                     x:Name="QuickCaptureClipboardToggle"
                                     Grid.Column="1"
                                     MinWidth="0"
@@ -1171,6 +1188,8 @@
                                     svc:Localized.DescriptionKey="Settings.QuickCapture.ImageClipboardDescription"
                                     svc:Localized.HeaderKey="Settings.QuickCapture.ImageClipboardTitle">
                                     <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
                                         MinWidth="0"
                                         IsOn="{Binding QuickCaptureImageClipboardEnabled, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
@@ -1281,6 +1300,8 @@
                                 <FontIcon Glyph="&#xE73E;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding TodoShowCompletedTasks, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -1298,6 +1319,8 @@
                                     svc:Localized.DescriptionKey="Settings.Todo.ShowFooterStats.Description"
                                     svc:Localized.HeaderKey="Settings.Todo.ShowFooterStats.Title">
                                     <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
                                         MinWidth="0"
                                         IsOn="{Binding TodoShowFooterStats, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
@@ -1307,6 +1330,8 @@
                                     svc:Localized.DescriptionKey="Settings.Todo.ShowClearCompleted.Description"
                                     svc:Localized.HeaderKey="Settings.Todo.ShowClearCompleted.Title">
                                     <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
                                         MinWidth="0"
                                         IsOn="{Binding TodoShowClearCompletedButton, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
@@ -1316,6 +1341,8 @@
                                     svc:Localized.DescriptionKey="Settings.Todo.ConfirmBeforeDelete.Description"
                                     svc:Localized.HeaderKey="Settings.Todo.ConfirmBeforeDelete.Title">
                                     <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
                                         MinWidth="0"
                                         IsOn="{Binding TodoConfirmBeforeDelete, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
@@ -1340,6 +1367,8 @@
                                 <FontIcon Glyph="&#xEB9F;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding MusicUseArtworkBackdrop, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -1352,6 +1381,8 @@
                                 <FontIcon Glyph="&#xE9D2;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding MusicShowRhythmBars, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -1384,6 +1415,8 @@
                                     svc:Localized.DescriptionKey="Settings.Music.CoverHoverMotion.Description"
                                     svc:Localized.HeaderKey="Settings.Music.CoverHoverMotion.Title">
                                     <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
                                         MinWidth="0"
                                         IsOn="{Binding MusicEnableCoverHoverMotion, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
@@ -1420,6 +1453,8 @@
                                 <FontIcon Glyph="&#xE7C1;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding AutoStart, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
@@ -1432,8 +1467,25 @@
                                 <FontIcon Glyph="&#xE7C9;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding DoubleClickToOpen, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.WidgetLayerMode.Description"
+                            svc:Localized.HeaderKey="Settings.WidgetLayerMode.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE81E;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="176"
+                                ItemsSource="{Binding AvailableWidgetLayerModeDisplayNames}"
+                                SelectedIndex="{Binding SelectedWidgetLayerModeIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="WidgetLayerMode" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -1669,10 +1721,10 @@
                                     svc:Localized.DescriptionKey="Settings.Update.AutoCheckDescription"
                                     svc:Localized.HeaderKey="Settings.Update.AutoCheck">
                                     <ToggleSwitch
-                                        MinWidth="0"
-                                        IsOn="{Binding AutoCheckForUpdates, Mode=TwoWay}"
+                                        OnContent=""
                                         OffContent=""
-                                        OnContent="" />
+                                        MinWidth="0"
+                                        IsOn="{Binding AutoCheckForUpdates, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
@@ -1682,30 +1734,19 @@
                                     <StackPanel
                                         HorizontalAlignment="Stretch"
                                         Spacing="12">
-                                        <Grid
-                                            Margin="24,0,0,0"
-                                            ColumnDefinitions="24,*"
-                                            ColumnSpacing="12">
-                                            <FontIcon
-                                                Width="24"
-                                                Height="24"
-                                                FontSize="18"
-                                                Glyph="&#xE895;"
-                                                VerticalAlignment="Center" />
-                                            <StackPanel
-                                                Grid.Column="1"
-                                                Spacing="2"
-                                                VerticalAlignment="Center">
-                                                <TextBlock
-                                                    Style="{StaticResource SettingValueTextStyle}"
-                                                    Text="{Binding UpdateStatusText}"
-                                                    TextWrapping="Wrap" />
-                                                <TextBlock
-                                                    Style="{StaticResource SettingDescriptionTextStyle}"
-                                                    Text="{Binding UpdateDetailText}"
-                                                    TextWrapping="Wrap" />
-                                            </StackPanel>
-                                        </Grid>
+                                        <StackPanel
+                                            Margin="60,0,0,0"
+                                            Spacing="2"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Style="{StaticResource SettingValueTextStyle}"
+                                                Text="{Binding UpdateStatusText}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Style="{StaticResource SettingDescriptionTextStyle}"
+                                                Text="{Binding UpdateDetailText}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
 
                                         <Grid
                                             MinWidth="220"
