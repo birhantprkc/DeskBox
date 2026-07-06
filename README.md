@@ -15,19 +15,18 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.2.1
+Current release: 1.2.2
 
-- [DeskBox_Setup_1.2.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.1/DeskBox_Setup_1.2.1_x64.exe)
+- [DeskBox_Setup_1.2.2_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.2/DeskBox_Setup_1.2.2_x64.exe)
 
 The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.2.1
+## What's New In 1.2.2
 
-- Improved widget positioning across monitor changes, DPI changes, external display plug/unplug, and 1080p-to-4K display swaps.
-- Added configurable widget title icons for desktop widgets: color, filled mono, line mono, hidden, and localized text-label modes. Color is the default for new installs and reset settings.
-- Added title-style selection to the file widget blank-area context menu, so file widgets can be adjusted without opening the title-bar menu.
-- Refined Settings defaults and reset behavior so new installs and restored preferences now use the same animation and title-icon defaults.
-- Cleaned up Quick Capture default-view normalization and expanded tests for settings defaults and monitor-aware widget positioning.
+- Upgraded the Direct/Inno build baseline to .NET 10 and Windows App SDK 2.2.
+- Added a Direct/Store distribution boundary for update delivery, startup registration, and package behavior.
+- Added Store MSIX build preparation with Store-specific assets, manifest, update flow, and release documentation.
+- Kept Direct builds on the existing installer/update path while excluding the Direct updater and donation QR resources from Store packages.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -126,7 +125,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.2.1_x64.exe
+Output\DeskBox_Setup_1.2.2_x64.exe
 ```
 
 ## Project Structure

@@ -15,19 +15,18 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.2.1
+当前版本：1.2.2
 
-- [DeskBox_Setup_1.2.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.1/DeskBox_Setup_1.2.1_x64.exe)
+- [DeskBox_Setup_1.2.2_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.2/DeskBox_Setup_1.2.2_x64.exe)
 
 安装器会检测 .NET 10 Runtime x64 和 Windows App Runtime 2.2 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
 ## 最新更新
 
-- 优化多屏和 DPI 场景下的格子定位：插拔外接显示器、切换缩放、1080p 更换 4K 显示器时，格子会按当前屏幕重新恢复到可见位置。
-- 新增桌面格子标题图标模式：彩色、面性单色、线性单色、隐藏和多语言文字标签。新安装和恢复默认设置都默认使用彩色图标。
-- 文件格子空白区域右键菜单新增标题样式选择，不需要只依赖标题栏菜单调整。
-- 统一新安装默认值和恢复默认设置：动效、标题图标等外观偏好保持一致。
-- 整理随记默认视图归一化逻辑，并补充设置默认值、多屏定位相关自动化测试。
+- Direct/Inno 官网版构建基线升级到 .NET 10 和 Windows App SDK 2.2。
+- 新增 Direct / Microsoft Store 双通道边界，更新服务、开机自启和包行为会按渠道分流。
+- 新增 Store MSIX 打包准备，包括商店资源、manifest、商店更新入口和发版操作文档。
+- 官网版继续保留现有安装器和应用内更新链路；Store 包会排除 Direct 更新器和捐赠二维码资源。
 
 完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -124,7 +123,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.2.1_x64.exe
+Output\DeskBox_Setup_1.2.2_x64.exe
 ```
 
 ## 项目结构
