@@ -10,7 +10,7 @@
   <Identity
     Name="DeskBox.Desktop"
     Publisher="CN=DeskBox"
-    Version="1.2.3.0" />
+    Version="1.2.4.0" />
 
   <mp:PhoneIdentity PhoneProductId="7bb59608-421d-4fd4-8f12-8929f87d086a" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
 

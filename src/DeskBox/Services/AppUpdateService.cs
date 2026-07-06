@@ -176,12 +176,6 @@ public sealed class AppUpdateService : IAppUpdateService
             return AppUpdateInstallResult.Failed("The downloaded installer no longer exists.");
         }
 
-        string helperPath = Path.Combine(AppContext.BaseDirectory, "DeskBox.Updater.exe");
-        if (!File.Exists(helperPath))
-        {
-            return AppUpdateInstallResult.Failed("DeskBox.Updater.exe was not found in the application directory.");
-        }
-
         string? appPath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(appPath) || !File.Exists(appPath))
         {
@@ -190,6 +184,12 @@ public sealed class AppUpdateService : IAppUpdateService
 
         try
         {
+            string helperPath = PrepareDetachedUpdaterHelper(AppContext.BaseDirectory, _updateRootPath);
+            if (!File.Exists(helperPath))
+            {
+                return AppUpdateInstallResult.Failed("DeskBox.Updater.exe was not found in the application directory.");
+            }
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = helperPath,
@@ -211,10 +211,33 @@ public sealed class AppUpdateService : IAppUpdateService
             Process.Start(startInfo);
             return AppUpdateInstallResult.Started();
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return AppUpdateInstallResult.Failed(ex.Message);
         }
+    }
+
+    internal static string PrepareDetachedUpdaterHelper(string appDirectory, string updateRootPath)
+    {
+        string sourceHelperPath = Path.Combine(appDirectory, "DeskBox.Updater.exe");
+        if (!File.Exists(sourceHelperPath))
+        {
+            return sourceHelperPath;
+        }
+
+        string helperDirectory = Path.Combine(
+            updateRootPath,
+            "helper",
+            $"{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}");
+        Directory.CreateDirectory(helperDirectory);
+
+        foreach (var sourcePath in Directory.EnumerateFiles(appDirectory, "DeskBox.Updater.*", SearchOption.TopDirectoryOnly))
+        {
+            string targetPath = Path.Combine(helperDirectory, Path.GetFileName(sourcePath));
+            File.Copy(sourcePath, targetPath, overwrite: true);
+        }
+
+        return Path.Combine(helperDirectory, "DeskBox.Updater.exe");
     }
 
     public static string GetCurrentAppVersion()

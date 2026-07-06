@@ -98,6 +98,27 @@ public sealed class AppUpdateServiceTests : IDisposable
         Assert.Equal(payload, await File.ReadAllBytesAsync(result.FilePath!));
     }
 
+    [Fact]
+    public async Task PrepareDetachedUpdaterHelper_CopiesUpdaterOutsideAppDirectory()
+    {
+        string appDirectory = Path.Combine(_tempRoot, "app");
+        string updateRoot = Path.Combine(_tempRoot, "updates");
+        Directory.CreateDirectory(appDirectory);
+
+        string sourceExe = Path.Combine(appDirectory, "DeskBox.Updater.exe");
+        string sourceRuntimeConfig = Path.Combine(appDirectory, "DeskBox.Updater.runtimeconfig.json");
+        await File.WriteAllTextAsync(sourceExe, "exe");
+        await File.WriteAllTextAsync(sourceRuntimeConfig, "{}");
+
+        string detachedExe = AppUpdateService.PrepareDetachedUpdaterHelper(appDirectory, updateRoot);
+
+        Assert.True(File.Exists(detachedExe));
+        Assert.NotEqual(sourceExe, detachedExe);
+        Assert.StartsWith(Path.Combine(updateRoot, "helper"), detachedExe, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("exe", await File.ReadAllTextAsync(detachedExe));
+        Assert.True(File.Exists(Path.Combine(Path.GetDirectoryName(detachedExe)!, "DeskBox.Updater.runtimeconfig.json")));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempRoot))

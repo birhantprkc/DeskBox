@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.4 - 2026-07-06
+
+### English
+
+- Fixed the in-app update installation handoff after an update has been downloaded.
+- Runs `DeskBox.Updater.exe` from a detached local update-helper directory before starting the installer, so the installer can safely overwrite the DeskBox install directory.
+- Updated installer packaging so old versions can update without the running updater locking `DeskBox.Updater.*`.
+
+### 中文
+
+- 修复应用内更新下载完成后，点击安装、确认弹窗后 DeskBox 退出但安装器没有继续执行的问题。
+- 安装更新前会先把 `DeskBox.Updater.exe` 复制到本地更新缓存目录，再从缓存目录启动，避免更新助手锁住 DeskBox 安装目录。
+- 调整安装包规则，旧版本通过应用内更新安装新版时，不再覆盖正在运行的 `DeskBox.Updater.*` 文件。
+
 ## 1.2.3 - 2026-07-06
 
 ### English

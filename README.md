@@ -15,18 +15,17 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.2.3
+Current release: 1.2.4
 
-- [DeskBox_Setup_1.2.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.3/DeskBox_Setup_1.2.3_x64.exe)
+- [DeskBox_Setup_1.2.4_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.4/DeskBox_Setup_1.2.4_x64.exe)
 
 The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.2.3
+## What's New In 1.2.4
 
-- Added a desktop widget layer mode setting in Settings -> General, with Dynamic and Desktop pinned options.
-- Improved desktop-pinned behavior so widgets can stay on the desktop layer after Show Desktop / Win+D.
-- Refreshed Settings navigation icons with Fluent color icons and tightened several Settings card layouts.
-- Removed redundant switch labels and extra decorative icons while keeping the native WinUI switch style.
+- Fixed the in-app update installation handoff after an update has been downloaded.
+- Runs the update helper from a detached local cache directory, so the installer can safely overwrite the DeskBox install directory.
+- Adjusted installer packaging so old versions can update without the running updater locking `DeskBox.Updater.*`.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -105,14 +104,20 @@ During uninstall, DeskBox stops the running app first and lets you choose whethe
 Restore and build:
 
 ```powershell
-dotnet restore .\DeskBox.sln -p:Platform=x64 -p:RuntimeIdentifier=win-x64
-dotnet build .\src\DeskBox\DeskBox.csproj --configuration Debug --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
+dotnet restore .\DeskBox.sln -p:Platform=x64
+dotnet build .\src\DeskBox\DeskBox.csproj --configuration Debug --no-restore -p:Platform=x64 -v:minimal
 ```
 
 Run tests:
 
 ```powershell
-dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
+dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -v:minimal
+```
+
+Launch the Debug app:
+
+```powershell
+.\scripts\start-debug.ps1
 ```
 
 Create a Release x64 publish output and installer:
@@ -125,7 +130,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.2.3_x64.exe
+Output\DeskBox_Setup_1.2.4_x64.exe
 ```
 
 ## Project Structure
