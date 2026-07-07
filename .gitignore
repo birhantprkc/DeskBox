@@ -42,13 +42,20 @@ build_*.txt
 # Old website (replaced by deskbox-site)
 website/
 
-# Website
+# Website source moved to private repository
+deskbox-site/
+deploy.ps1
+ssh_run.ps1
+fail2ban-nginx.conf
 deskbox-site/node_modules/
 deskbox-site/.next/
 deskbox-site/out/
 
 # Local backup patches
 backups/
+
+# Local Microsoft Store listing artboards
+store-assets-html/
 
 # Local WeChat article drafts
 docs/wechat/*.md
