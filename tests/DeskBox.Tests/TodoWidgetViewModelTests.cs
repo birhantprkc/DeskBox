@@ -430,7 +430,12 @@ public sealed class TodoWidgetViewModelTests : IDisposable
         await viewModel.InitializeAsync();
         var item = await viewModel.AddItemAsync("timed task");
         Assert.NotNull(item);
-        var dueDate = new DateTimeOffset(2026, 7, 9, 18, 30, 15, TimeSpan.FromHours(8));
+        var localDueDate = DateTimeOffset.Now.Date
+            .AddDays(3)
+            .AddHours(18)
+            .AddMinutes(30)
+            .AddSeconds(15);
+        var dueDate = new DateTimeOffset(localDueDate, TimeZoneInfo.Local.GetUtcOffset(localDueDate));
 
         Assert.True(await viewModel.SetDueDateAsync(item.Id, dueDate));
 
