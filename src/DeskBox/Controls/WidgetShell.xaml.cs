@@ -113,6 +113,8 @@ public sealed partial class WidgetShell : UserControl
     private Thickness _titleBarPadding = new(14, 7, 12, 5);
 
     public event EventHandler<RoutedEventArgs>? AddRequested;
+    public event EventHandler<RoutedEventArgs>? PositionLockRequested;
+    public event EventHandler<RoutedEventArgs>? SizeLockRequested;
     public event EventHandler<RoutedEventArgs>? MoreRequested;
     public event EventHandler<RoutedEventArgs>? CloseRequested;
     public event EventHandler<DoubleTappedRoutedEventArgs>? TitleDoubleTapped;
@@ -221,12 +223,18 @@ public sealed partial class WidgetShell : UserControl
     public StackPanel RightActionButtonHost => RightActionButtons;
     public StackPanel TitleIdentityHostElement => TitleIdentityHost;
     public ContentPresenter ShellContentPresenterElement => ShellContentPresenter;
+    public Button PositionLockActionButton => PositionLockButton;
+    public Button SizeLockActionButton => SizeLockButton;
     public Button AddActionButton => AddButton;
     public Button MoreActionButton => MoreButton;
     public Button CloseActionButton => CloseButton;
-    public FontIcon AddActionIcon => AddButtonIcon;
-    public FontIcon MoreActionIcon => MoreButtonIcon;
-    public FontIcon CloseActionIcon => CloseButtonIcon;
+    public FrameworkElement PositionLockActionIcon => PositionLockButtonIcon;
+    public FrameworkElement PositionLockFilledActionIcon => PositionLockButtonFilledIcon;
+    public FrameworkElement SizeLockActionIcon => SizeLockButtonIcon;
+    public FrameworkElement SizeLockFilledActionIcon => SizeLockButtonFilledIcon;
+    public FrameworkElement AddActionIcon => AddButtonIcon;
+    public FrameworkElement MoreActionIcon => MoreButtonIcon;
+    public FrameworkElement CloseActionIcon => CloseButtonIcon;
     public FrameworkElement DragHandleElement => OverlayDragHandle;
 
     public bool IsOverlayChromeMode => ChromeMode is WidgetChromeMode.Overlay or WidgetChromeMode.Hidden;
@@ -489,7 +497,7 @@ public sealed partial class WidgetShell : UserControl
         var border = isOverlay ? CreateOpaqueOverlayButtonBorder() : new SolidColorBrush(Colors.Transparent);
         var thickness = isOverlay ? new Thickness(0.8) : new Thickness(0);
 
-        foreach (var button in new[] { AddButton, MoreButton, CloseButton })
+        foreach (var button in new[] { PositionLockButton, SizeLockButton, AddButton, MoreButton, CloseButton })
         {
             button.Background = background;
             button.BorderBrush = border;
@@ -541,6 +549,16 @@ public sealed partial class WidgetShell : UserControl
     private void AddButton_Click(object sender, RoutedEventArgs e)
     {
         AddRequested?.Invoke(this, e);
+    }
+
+    private void PositionLockButton_Click(object sender, RoutedEventArgs e)
+    {
+        PositionLockRequested?.Invoke(this, e);
+    }
+
+    private void SizeLockButton_Click(object sender, RoutedEventArgs e)
+    {
+        SizeLockRequested?.Invoke(this, e);
     }
 
     private void MoreButton_Click(object sender, RoutedEventArgs e)

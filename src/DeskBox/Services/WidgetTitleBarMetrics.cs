@@ -13,6 +13,10 @@ public sealed record WidgetTitleBarMetrics(
 
 public static class WidgetTitleBarMetricsCalculator
 {
+    private const double FluentActionIconNativeSize = 20;
+    private const double FluentActionIconVisualScale = 0.7;
+    private const double CompactActionIconVisualScale = 0.7;
+
     public static WidgetTitleBarMetrics Create(
         double titleIconSize,
         double titleTextSize,
@@ -57,9 +61,38 @@ public static class WidgetTitleBarMetricsCalculator
         button.MinHeight = metrics.ActionButtonSize;
     }
 
-    public static void ApplyActionIcon(FontIcon icon, WidgetTitleBarMetrics metrics)
+    public static void ApplyActionIcon(FrameworkElement icon, WidgetTitleBarMetrics metrics)
     {
-        icon.FontSize = metrics.ActionIconSize;
+        bool compact = metrics.RowHeight.Value <= 36;
+        double visualScale = compact
+            ? FluentActionIconVisualScale * CompactActionIconVisualScale
+            : FluentActionIconVisualScale;
+        double targetSize = Math.Clamp(
+            Math.Round(Math.Min(FluentActionIconNativeSize, metrics.ActionButtonSize - 4) * visualScale),
+            compact ? 10 : 12,
+            FluentActionIconNativeSize);
+
+        if (icon is FontIcon fontIcon)
+        {
+            fontIcon.FontSize = targetSize;
+            return;
+        }
+
+        if (icon is PathIcon)
+        {
+            icon.Width = targetSize;
+            icon.Height = targetSize;
+            icon.HorizontalAlignment = HorizontalAlignment.Center;
+            icon.VerticalAlignment = VerticalAlignment.Center;
+            icon.RenderTransform = null;
+            return;
+        }
+
+        icon.Width = targetSize;
+        icon.Height = targetSize;
+        icon.HorizontalAlignment = HorizontalAlignment.Center;
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        icon.RenderTransform = null;
     }
 
     public static Thickness CreateOuterPadding(WidgetChromeMode chromeMode)

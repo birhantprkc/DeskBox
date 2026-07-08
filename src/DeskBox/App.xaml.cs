@@ -8,6 +8,8 @@ using DeskBox.Views;
 using System.Diagnostics;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
+using Microsoft.Windows.AppLifecycle;
+using Microsoft.Windows.AppNotifications;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -30,11 +32,17 @@ public partial class App : Application
     private const int TrayContextMenuFallbackOffsetPixels = 24;
     private const int TrayContextMenuEstimatedWidth = (int)TrayMenuItemWidth + 16;
     private const int MaxQueuedLogLines = 4096;
+    private const string TodoReminderNotificationSource = "source=todoReminder";
+    private const string TodoReminderSourceValue = "todoReminder";
+    private const string PendingNativeNotificationActivationFileName = "pending-notification-activation.txt";
     private const string VerboseLoggingEnvironmentVariable = "DESKBOX_VERBOSE_LOG";
     private static readonly bool EnableVerboseLogging = IsEnabledEnvironmentValue(
         Environment.GetEnvironmentVariable(VerboseLoggingEnvironmentVariable));
 
     private static readonly string LogPath = DeskBoxDataPathService.Current.LogFilePath;
+    private static readonly string PendingNativeNotificationActivationPath = Path.Combine(
+        DeskBoxDataPathService.Current.RootPath,
+        PendingNativeNotificationActivationFileName);
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> s_logQueue = new();
     private static readonly SemaphoreSlim s_logSignal = new(0);
     private static int s_logWorkerStarted;
@@ -55,6 +63,8 @@ public partial class App : Application
     private MenuFlyoutItem? _trayExitItem;
     private SettingsWindow? _settingsWindow;
     private OnboardingWindow? _onboardingWindow;
+    private NativeAppNotificationService? _nativeNotificationService;
+    private TodoReminderService? _todoReminderService;
     private bool _widgetsRaisedFromTray;
     private bool _hasUpdateAvailable;
     private bool _updateNotificationShown;
@@ -77,6 +87,8 @@ public partial class App : Application
     public ThemeService ThemeService { get; private set; } = null!;
     public GlobalHotkeyService? GlobalHotkeyService { get; private set; }
     public WidgetManager? WidgetManager { get; private set; }
+    public NativeAppNotificationService? NativeNotificationService => _nativeNotificationService;
+    public TodoReminderService? TodoReminderService => _todoReminderService;
     public SettingsWindow? SettingsWindowInstance => _settingsWindow;
 
     public static bool IsVerboseLoggingEnabled => EnableVerboseLogging;
@@ -85,11 +97,16 @@ public partial class App : Application
     {
         Log("App() constructor start");
         bool launchedForStartup = IsStartupLaunch(Environment.GetCommandLineArgs());
+        string? nativeNotificationActivationArguments = TryGetCurrentNativeNotificationActivationArguments();
         _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskBox_Activate_Event_7F3A9B2E");
         _singleInstanceMutex = new Mutex(true, "DeskBox_SingleInstance_Mutex_7F3A9B2E", out bool createdNew);
         if (!createdNew)
         {
-            if (launchedForStartup)
+            if (!string.IsNullOrWhiteSpace(nativeNotificationActivationArguments))
+            {
+                StorePendingNativeNotificationActivationArguments(nativeNotificationActivationArguments);
+            }
+            else if (launchedForStartup)
             {
                 Log("Another instance running; startup launch exiting silently");
                 Environment.Exit(0);
@@ -719,6 +736,8 @@ public partial class App : Application
             WidgetManager.SyncStorageFolderEntries();
             await WidgetManager.RestoreWidgetsAsync();
 
+            StartNativeNotificationService();
+
             if (SettingsService.Settings.Widgets.Count(widget =>
                     widget.WidgetKind == WidgetKind.File &&
                     !widget.IsDisabled &&
@@ -735,6 +754,7 @@ public partial class App : Application
                 ShowOnboarding();
             }
 
+            StartTodoReminderService();
             ScheduleBackgroundUpdateCheck();
 
             Log("OnLaunched completed successfully");
@@ -747,6 +767,11 @@ public partial class App : Application
 
     private void ScheduleBackgroundUpdateCheck()
     {
+        if (DistributionService.IsMicrosoftStore)
+        {
+            return;
+        }
+
         if (!SettingsService.Settings.AutoCheckForUpdates)
         {
             return;
@@ -775,6 +800,222 @@ public partial class App : Application
                 Log($"[Update] Background check crashed: {ex}");
             }
         });
+    }
+
+    private void StartTodoReminderService()
+    {
+        _todoReminderService?.Dispose();
+        _todoReminderService = new TodoReminderService(
+            SettingsService,
+            LocalizationService,
+            UiDispatcherQueue,
+            ShowTodoReminderNotification);
+        _todoReminderService.Start();
+    }
+
+    private void StartNativeNotificationService()
+    {
+        _nativeNotificationService?.Dispose();
+        _nativeNotificationService = new NativeAppNotificationService(HandleNativeNotificationActivation);
+        if (_nativeNotificationService.Register())
+        {
+            HandleCurrentNativeNotificationActivation();
+        }
+    }
+
+    private void HandleCurrentNativeNotificationActivation()
+    {
+        string? activationArguments = TryGetCurrentNativeNotificationActivationArguments();
+        if (!string.IsNullOrWhiteSpace(activationArguments))
+        {
+            HandleNativeNotificationActivation(activationArguments);
+        }
+    }
+
+    private void HandleNativeNotificationActivation(string arguments)
+    {
+        if (UiDispatcherQueue is { HasThreadAccess: false } dispatcherQueue)
+        {
+            dispatcherQueue.TryEnqueue(() => HandleNativeNotificationActivation(arguments));
+            return;
+        }
+
+        App.Log($"[Notification] Native notification activated args={arguments}");
+        var notificationArguments = ParseNotificationArguments(arguments);
+        if (IsTodoReminderNotification(notificationArguments))
+        {
+            notificationArguments.TryGetValue("widgetId", out string? widgetId);
+            notificationArguments.TryGetValue("itemId", out string? itemId);
+            bool preferTodayFilter = notificationArguments.TryGetValue("view", out string? view) &&
+                                     string.Equals(view, "today", StringComparison.OrdinalIgnoreCase);
+            _ = ShowTodoWidgetFromNotificationAsync(widgetId, itemId, preferTodayFilter);
+        }
+        else
+        {
+            _ = RaiseTrayWidgetsAsync();
+        }
+    }
+
+    private async Task ShowTodoWidgetFromNotificationAsync(
+        string? widgetId = null,
+        string? itemId = null,
+        bool preferTodayFilter = false)
+    {
+        try
+        {
+            if (WidgetManager is not null)
+            {
+                await WidgetManager.ShowTodoReminderTargetAsync(widgetId, itemId, preferTodayFilter);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Notification] Failed to show Todo from native notification: {ex}");
+        }
+    }
+
+    private void ShowTodoReminderNotification(TodoReminderNotification notification)
+    {
+        if (UiDispatcherQueue is { HasThreadAccess: false } dispatcherQueue)
+        {
+            dispatcherQueue.TryEnqueue(() => ShowTodoReminderNotification(notification));
+            return;
+        }
+
+        if (_nativeNotificationService?.TryShow(
+                notification.Title,
+                notification.Message,
+                new Dictionary<string, string>
+                {
+                    ["source"] = TodoReminderSourceValue,
+                    ["widgetId"] = notification.WidgetId ?? string.Empty,
+                    ["itemId"] = notification.ItemId ?? string.Empty,
+                    ["view"] = notification.HasTodayDueItem ? "today" : "all"
+                }) == true)
+        {
+            Log($"[TodoReminder] Native notification shown count={notification.Count} widget={notification.WidgetId ?? "none"} item={notification.ItemId ?? "none"}");
+            return;
+        }
+
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _trayIcon.ShowNotification(
+                notification.Title,
+                notification.Message,
+                NotificationIcon.Info,
+                customIconHandle: null,
+                largeIcon: true,
+                sound: false,
+                respectQuietTime: true,
+                realtime: false,
+                timeout: TimeSpan.FromSeconds(8));
+            Log($"[TodoReminder] Tray notification fallback shown count={notification.Count}");
+        }
+        catch (Exception ex)
+        {
+            Log($"[TodoReminder] Tray notification failed: {ex.Message}");
+        }
+    }
+
+    private static bool IsTodoReminderNotification(IReadOnlyDictionary<string, string> arguments)
+    {
+        return arguments.TryGetValue("source", out string? source) &&
+               string.Equals(source, TodoReminderSourceValue, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, string> ParseNotificationArguments(string arguments)
+    {
+        var parsed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            return parsed;
+        }
+
+        foreach (var pair in arguments.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int separatorIndex = pair.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                continue;
+            }
+
+            string key = Uri.UnescapeDataString(pair[..separatorIndex]);
+            string value = Uri.UnescapeDataString(pair[(separatorIndex + 1)..]);
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                parsed[key] = value;
+            }
+        }
+
+        if (parsed.Count == 0 &&
+            arguments.Contains(TodoReminderNotificationSource, StringComparison.OrdinalIgnoreCase))
+        {
+            parsed["source"] = TodoReminderSourceValue;
+        }
+
+        return parsed;
+    }
+
+    private static string? TryGetCurrentNativeNotificationActivationArguments()
+    {
+        try
+        {
+            var activatedArgs = AppInstance.GetCurrent().GetActivatedEventArgs();
+            if (activatedArgs.Kind == ExtendedActivationKind.AppNotification &&
+                activatedArgs.Data is AppNotificationActivatedEventArgs notificationArgs)
+            {
+                return notificationArgs.Argument;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Notification] Failed to read native notification activation args: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static void StorePendingNativeNotificationActivationArguments(string arguments)
+    {
+        try
+        {
+            Directory.CreateDirectory(DeskBoxDataPathService.Current.RootPath);
+            string tempPath = Path.Combine(
+                DeskBoxDataPathService.Current.RootPath,
+                $"pending-notification-activation.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(tempPath, arguments);
+            File.Move(tempPath, PendingNativeNotificationActivationPath, overwrite: true);
+            Log($"[Notification] Forwarded native notification activation to running instance args={arguments}");
+        }
+        catch (Exception ex)
+        {
+            Log($"[Notification] Failed to forward native notification activation args: {ex}");
+        }
+    }
+
+    private static string? TakePendingNativeNotificationActivationArguments()
+    {
+        try
+        {
+            if (!File.Exists(PendingNativeNotificationActivationPath))
+            {
+                return null;
+            }
+
+            string arguments = File.ReadAllText(PendingNativeNotificationActivationPath);
+            File.Delete(PendingNativeNotificationActivationPath);
+            return string.IsNullOrWhiteSpace(arguments) ? null : arguments;
+        }
+        catch (Exception ex)
+        {
+            Log($"[Notification] Failed to read forwarded native notification activation args: {ex}");
+            return null;
+        }
     }
 
     private void OnUpdateCheckCompleted(AppUpdateCheckResult result)
@@ -861,6 +1102,13 @@ public partial class App : Application
     private async Task HandleExternalActivationAsync()
     {
         Log("HandleExternalActivationAsync invoked");
+
+        string? nativeNotificationActivationArguments = TakePendingNativeNotificationActivationArguments();
+        if (!string.IsNullOrWhiteSpace(nativeNotificationActivationArguments))
+        {
+            HandleNativeNotificationActivation(nativeNotificationActivationArguments);
+            return;
+        }
 
         if (WidgetManager is not null)
         {
@@ -1546,6 +1794,10 @@ public partial class App : Application
     private async Task ShutdownApplicationAsync()
     {
         await SettingsService.SaveAsync();
+        _nativeNotificationService?.Dispose();
+        _nativeNotificationService = null;
+        _todoReminderService?.Dispose();
+        _todoReminderService = null;
         WidgetManager?.CloseAll();
         _trayIcon?.Dispose();
         _trayIcon = null;

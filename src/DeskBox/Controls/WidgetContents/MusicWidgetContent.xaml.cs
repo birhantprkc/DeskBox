@@ -131,6 +131,28 @@ public sealed partial class MusicWidgetContent : UserControl
         }
     }
 
+    private void RootGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (InlineVolumePanel.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        FrameworkElement? sourceElement = e.OriginalSource as FrameworkElement;
+        if (IsElementInside(sourceElement, InlineVolumePanel) ||
+            IsElementInside(sourceElement, VolumeButton))
+        {
+            return;
+        }
+
+        InlineVolumePanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void InlineVolumePanel_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+    }
+
     private void MusicWidgetContent_Loaded(object sender, RoutedEventArgs e)
     {
         EnsureTitleMarqueeTimer();
@@ -339,8 +361,8 @@ public sealed partial class MusicWidgetContent : UserControl
             .TransformPoint(new Windows.Foundation.Point(0, 0));
         double panelWidth = InlineVolumePanel.Width > 0 ? InlineVolumePanel.Width : InlineVolumePanel.ActualWidth;
         double panelHeight = InlineVolumePanel.Height > 0 ? InlineVolumePanel.Height : InlineVolumePanel.ActualHeight;
-        double left = buttonOrigin.X + (VolumeButton.ActualWidth / 2) - (panelWidth / 2);
-        double top = buttonOrigin.Y - panelHeight - 6;
+        double left = buttonOrigin.X + VolumeButton.ActualWidth - panelWidth;
+        double top = buttonOrigin.Y - panelHeight - 7;
 
         if (RootGrid.ActualWidth > 0)
         {
@@ -353,6 +375,22 @@ public sealed partial class MusicWidgetContent : UserControl
         }
 
         InlineVolumePanel.Margin = new Thickness(Math.Round(left), Math.Round(top), 0, 0);
+    }
+
+    private static bool IsElementInside(FrameworkElement? sourceElement, FrameworkElement target)
+    {
+        DependencyObject? current = sourceElement;
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, target))
+            {
+                return true;
+            }
+
+            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private async Task RefreshInlineVolumeAsync()

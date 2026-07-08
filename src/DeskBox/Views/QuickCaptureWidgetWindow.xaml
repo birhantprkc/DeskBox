@@ -65,11 +65,14 @@
         <controls:WidgetShell
             x:Name="QuickCaptureShell"
             Grid.RowSpan="2"
+            AddRequested="AddButton_Click"
             CloseRequested="CloseButton_Click"
             DragHandlePointerMoved="DragHandle_PointerMoved"
             DragHandlePointerPressed="DragHandle_PointerPressed"
             DragHandlePointerReleased="DragHandle_PointerReleased"
             MoreRequested="MoreButton_Click"
+            PositionLockRequested="PositionLockButton_Click"
+            SizeLockRequested="SizeLockButton_Click"
             OverlayTitle="{Binding DisplayName}"
             IsTitleEditable="True"
             TitleDoubleTapped="QuickCaptureShell_TitleDoubleTapped"
@@ -141,7 +144,6 @@
                         SelectedIndex="0"
                         SizeChanged="QuickCaptureViewSegmented_SizeChanged">
                         <toolkit:SegmentedItem
-                            Style="{StaticResource WidgetSegmentedItemStyle}"
                             Tag="Records"
                             ToolTipService.ToolTip="{Binding RecordsTabText}">
                             <TextBlock
@@ -155,7 +157,6 @@
                                 TextWrapping="NoWrap" />
                         </toolkit:SegmentedItem>
                         <toolkit:SegmentedItem
-                            Style="{StaticResource WidgetSegmentedItemStyle}"
                             Tag="Pinned"
                             ToolTipService.ToolTip="{Binding PinnedTabText}">
                             <TextBlock
@@ -169,7 +170,6 @@
                                 TextWrapping="NoWrap" />
                         </toolkit:SegmentedItem>
                         <toolkit:SegmentedItem
-                            Style="{StaticResource WidgetSegmentedItemStyle}"
                             Tag="Recent"
                             ToolTipService.ToolTip="{Binding RecentTabText}">
                             <TextBlock

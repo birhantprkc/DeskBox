@@ -56,6 +56,117 @@ public sealed class AppUpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CheckForUpdatesAsync_FallsBackToGitHubReleaseWhenManifestUnavailable()
+    {
+        using var httpClient = CreateHttpClient(request =>
+        {
+            string url = request.RequestUri!.ToString();
+            if (url.Contains("stable.json", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """
+                    {
+                      "tag_name": "v1.2.4",
+                      "html_url": "https://github.com/Tianyu199509/DeskBox/releases/tag/v1.2.4",
+                      "assets": [
+                        {
+                          "name": "DeskBox_Setup_1.2.4_x64.exe",
+                          "browser_download_url": "https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.4/DeskBox_Setup_1.2.4_x64.exe",
+                          "size": 23423211,
+                          "digest": "sha256:8ecb3092ae5bd6883f8a75bbea03d9800251e0c23fdbe1bf4d91fd3a62565561"
+                        }
+                      ]
+                    }
+                    """,
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+
+        var service = new AppUpdateService(
+            httpClient,
+            "https://deskbox.fun/update/stable.json",
+            _tempRoot,
+            AppUpdateService.DefaultGitHubLatestReleaseApiUrl);
+
+        var result = await service.CheckForUpdatesAsync("1.2.3");
+
+        Assert.Equal(AppUpdateCheckStatus.UpdateAvailable, result.Status);
+        Assert.NotNull(result.Manifest);
+        Assert.Equal("1.2.4", result.Manifest.Version);
+        Assert.Equal("https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.4/DeskBox_Setup_1.2.4_x64.exe", result.Manifest.DownloadUrl);
+        Assert.Equal("8ECB3092AE5BD6883F8A75BBEA03D9800251E0C23FDBE1BF4D91FD3A62565561", result.Manifest.Sha256);
+        Assert.Equal(23423211, result.Manifest.Size);
+        Assert.Equal("https://github.com/Tianyu199509/DeskBox/releases/tag/v1.2.4", result.Manifest.ReleaseNotesUrl);
+    }
+
+    [Fact]
+    public async Task CheckForUpdatesAsync_FallsBackToGitHubShaAssetWhenDigestMissing()
+    {
+        using var httpClient = CreateHttpClient(request =>
+        {
+            string url = request.RequestUri!.ToString();
+            if (url.Contains("stable.json", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+
+            if (url.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "8ECB3092AE5BD6883F8A75BBEA03D9800251E0C23FDBE1BF4D91FD3A62565561  DeskBox_Setup_1.2.4_x64.exe",
+                        Encoding.UTF8,
+                        "text/plain")
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """
+                    {
+                      "tag_name": "v1.2.4",
+                      "html_url": "https://github.com/Tianyu199509/DeskBox/releases/tag/v1.2.4",
+                      "assets": [
+                        {
+                          "name": "DeskBox_Setup_1.2.4_x64.exe",
+                          "browser_download_url": "https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.4/DeskBox_Setup_1.2.4_x64.exe",
+                          "size": 23423211
+                        },
+                        {
+                          "name": "DeskBox_Setup_1.2.4_x64.exe.sha256",
+                          "browser_download_url": "https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.4/DeskBox_Setup_1.2.4_x64.exe.sha256",
+                          "size": 95
+                        }
+                      ]
+                    }
+                    """,
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+
+        var service = new AppUpdateService(
+            httpClient,
+            "https://deskbox.fun/update/stable.json",
+            _tempRoot,
+            AppUpdateService.DefaultGitHubLatestReleaseApiUrl);
+
+        var result = await service.CheckForUpdatesAsync("1.2.3");
+
+        Assert.Equal(AppUpdateCheckStatus.UpdateAvailable, result.Status);
+        Assert.NotNull(result.Manifest);
+        Assert.Equal("8ECB3092AE5BD6883F8A75BBEA03D9800251E0C23FDBE1BF4D91FD3A62565561", result.Manifest.Sha256);
+    }
+
+    [Fact]
     public async Task DownloadUpdateAsync_RejectsInstallerWithoutHash()
     {
         using var httpClient = CreateHttpClient(_ => new HttpResponseMessage(HttpStatusCode.OK)

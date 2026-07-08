@@ -57,6 +57,15 @@ Direct 构建继续使用：
 - `DirectStartupService`
 - `DeskBox.Updater`
 
+## 本地素材目录边界
+
+`store-assets-html/` 只用于本地生成 Microsoft Store 产品页截图、图标或试验素材。它不是应用资源，也不是 Store MSIX 资源。
+
+- 不提交到 Git。
+- 不进入 Direct 安装包。
+- 不进入 Store MSIX。
+- 需要上传 Partner Center 时，只上传从该目录截图/导出的 PNG，不上传 HTML 源目录。
+
 ## 后续验证
 
 真正上架前还需要：
@@ -65,3 +74,4 @@ Direct 构建继续使用：
 2. 运行 Windows App Certification Kit。
 3. 实测文件拖拽、托盘、开机自启、系统音量、多屏/DPI。
 4. 根据 Microsoft Store 政策确认关于页捐赠二维码是否隐藏或替换为官网说明。
+5. 确认包内没有 `DeskBox.Updater.*`、`donation-*` 或 `store-assets-html/` 这类非 Store 包资源。

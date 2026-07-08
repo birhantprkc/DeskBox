@@ -573,6 +573,18 @@
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.HoverButtonActions.Description"
+                                    svc:Localized.HeaderKey="Settings.HoverButtonActions.Title">
+                                    <DropDownButton
+                                        MinWidth="176"
+                                        MaxWidth="260"
+                                        HorizontalAlignment="Right"
+                                        Click="HoverButtonActionsDropDown_Click"
+                                        Content="{Binding HoverButtonActionsSummaryText}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
                                     svc:Localized.DescriptionKey="Settings.WidgetTitleIcon.Description"
                                     svc:Localized.HeaderKey="Settings.WidgetTitleIcon.Title">
                                     <ComboBox
@@ -881,6 +893,17 @@
                                         MinWidth="0"
                                         IsOn="{Binding ShowListItemDetails, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.FilePathTooltips.Description"
+                                    svc:Localized.HeaderKey="Settings.FilePathTooltips.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding ShowFileItemPathTooltips, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
                             </toolkit:SettingsExpander.Items>
                         </toolkit:SettingsExpander>
 
@@ -1135,6 +1158,21 @@
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.QuickCapture.TabStyle.Description"
+                            svc:Localized.HeaderKey="Settings.QuickCapture.TabStyle.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8FD;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="150"
+                                ItemsSource="{Binding AvailableQuickCaptureTabStyleDisplayNames}"
+                                SelectedIndex="{Binding SelectedQuickCaptureTabStyleIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="QuickCaptureTabStyle" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
                             ContentAlignment="Vertical"
                             HorizontalContentAlignment="Stretch"
                             svc:Localized.DescriptionKey="Settings.QuickCapture.ClipboardDescription"
@@ -1279,6 +1317,21 @@
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Todo.TabStyle.Description"
+                            svc:Localized.HeaderKey="Settings.Todo.TabStyle.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8FD;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="150"
+                                ItemsSource="{Binding AvailableTodoTabStyleDisplayNames}"
+                                SelectedIndex="{Binding SelectedTodoTabStyleIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="TodoTabStyle" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.Todo.NewTaskPosition.Description"
                             svc:Localized.HeaderKey="Settings.Todo.NewTaskPosition.Title">
                             <toolkit:SettingsCard.HeaderIcon>
@@ -1290,6 +1343,36 @@
                                 SelectedIndex="{Binding SelectedTodoNewTaskPositionIndex, Mode=OneWay}"
                                 SelectionChanged="SettingsComboBox_SelectionChanged"
                                 Tag="TodoNewTaskPosition" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Todo.ReminderEnabled.Description"
+                            svc:Localized.HeaderKey="Settings.Todo.ReminderEnabled.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE916;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
+                                MinWidth="0"
+                                IsOn="{Binding TodoReminderEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Todo.ReminderOffset.Description"
+                            svc:Localized.HeaderKey="Settings.Todo.ReminderOffset.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE823;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="150"
+                                IsEnabled="{Binding TodoReminderEnabled}"
+                                ItemsSource="{Binding AvailableTodoReminderOffsetDisplayNames}"
+                                SelectedIndex="{Binding SelectedTodoReminderOffsetMinutesIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="TodoReminderOffset" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -1719,7 +1802,8 @@
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
                                     svc:Localized.DescriptionKey="Settings.Update.AutoCheckDescription"
-                                    svc:Localized.HeaderKey="Settings.Update.AutoCheck">
+                                    svc:Localized.HeaderKey="Settings.Update.AutoCheck"
+                                    Visibility="{Binding UpdateAutoCheckVisibility}">
                                     <ToggleSwitch
                                         OnContent=""
                                         OffContent=""
@@ -1819,12 +1903,12 @@
                                             <Button
                                                 x:Name="OpenManualUpdateDownloadButton"
                                                 Click="OpenManualUpdateDownloadButton_Click"
-                                                IsEnabled="{Binding CanOpenManualUpdateDownload}"
+                                                IsEnabled="{Binding CanOpenUpdateFallback}"
                                                 Style="{StaticResource ActionButtonStyle}"
-                                                Visibility="{Binding ManualUpdateFallbackVisibility}">
+                                                Visibility="{Binding UpdateFallbackVisibility}">
                                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                                     <FontIcon FontSize="14" Glyph="&#xE896;" />
-                                                    <TextBlock svc:Localized.Key="Settings.Update.ManualDownload" />
+                                                    <TextBlock Text="{Binding UpdateFallbackActionText}" />
                                                 </StackPanel>
                                             </Button>
                                         </StackPanel>

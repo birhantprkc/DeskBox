@@ -445,6 +445,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     public Visibility ArtworkBackdropVisibility => UseArtworkBackdrop ? Visibility.Visible : Visibility.Collapsed;
 
+    public CornerRadius ArtworkBackdropCornerRadius => new(GetArtworkBackdropCornerRadius());
+
     public Visibility RhythmBarsVisibility => ShowRhythmBars ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility SoftWaveVisibility => ShowRhythmBars && RhythmStyle == SettingsService.MusicRhythmStyleSoftWave
@@ -1387,6 +1389,18 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         ShowRhythmBars = settings.MusicShowRhythmBars;
         RhythmStyle = SettingsService.NormalizeMusicRhythmStyle(settings.MusicRhythmStyle);
         EnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
+        OnPropertyChanged(nameof(ArtworkBackdropCornerRadius));
+    }
+
+    private double GetArtworkBackdropCornerRadius()
+    {
+        return _settingsService?.Settings.WidgetCornerPreference switch
+        {
+            SettingsService.WidgetCornerPreferenceSquare => 0,
+            SettingsService.WidgetCornerPreferenceSmall => 6,
+            SettingsService.WidgetCornerPreferenceRound => 10,
+            _ => 8
+        };
     }
 
     private void RaiseDisplayPropertiesChanged()
@@ -1411,6 +1425,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ThumbnailVisibility));
         OnPropertyChanged(nameof(ThumbnailPlaceholderVisibility));
         OnPropertyChanged(nameof(ArtworkBackdropVisibility));
+        OnPropertyChanged(nameof(ArtworkBackdropCornerRadius));
         OnPropertyChanged(nameof(MusicAccentBrush));
         OnPropertyChanged(nameof(PlayPauseButtonBackgroundBrush));
         OnPropertyChanged(nameof(HasSeekableTimeline));

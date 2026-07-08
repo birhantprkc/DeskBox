@@ -26,6 +26,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     private string _searchText = string.Empty;
     private bool _isSearchExpanded;
     private QuickCaptureViewMode _selectedView = QuickCaptureViewMode.Records;
+    private string _tabStyle = SettingsService.WidgetTabStylePivot;
     private double _widgetOpacity;
     private double _textSize;
     private double _iconSize;
@@ -66,6 +67,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         _currentViewSaveTimer.IsRepeating = false;
         _currentViewSaveTimer.Tick += CurrentViewSaveTimer_Tick;
         _widgetOpacity = settingsService.Settings.WidgetOpacity;
+        _tabStyle = SettingsService.NormalizeWidgetTabStyle(settingsService.Settings.QuickCaptureTabStyle);
         _textSize = SettingsService.NormalizeTextSize(settingsService.Settings.TextSize);
         _iconSize = SettingsService.NormalizeIconSize(settingsService.Settings.IconSize);
         Name = config.Name;
@@ -184,6 +186,12 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     public bool IsPinnedView => SelectedView == QuickCaptureViewMode.Pinned;
 
     public bool IsRecentView => SelectedView == QuickCaptureViewMode.Recent;
+
+    public string TabStyle
+    {
+        get => _tabStyle;
+        private set => SetProperty(ref _tabStyle, SettingsService.NormalizeWidgetTabStyle(value));
+    }
 
     public double WidgetOpacity
     {
@@ -719,6 +727,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     {
         var settings = _settingsService.Settings;
         WidgetOpacity = settings.WidgetOpacity;
+        TabStyle = settings.QuickCaptureTabStyle;
         TextSize = SettingsService.NormalizeTextSize(settings.TextSize);
         IconSize = SettingsService.NormalizeIconSize(settings.IconSize);
         OnPropertyChanged(nameof(TitleIconSize));

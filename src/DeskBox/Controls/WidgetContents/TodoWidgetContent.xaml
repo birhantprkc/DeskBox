@@ -45,10 +45,21 @@
 
         <Style x:Key="TodoConfirmCommandButtonStyle" TargetType="Button" BasedOn="{StaticResource WidgetConfirmCommandButtonStyle}" />
 
+        <Style x:Key="TodoCustomDueTimeButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+
     </UserControl.Resources>
 
     <Grid
         x:Name="RootGrid"
+        AllowDrop="True"
+        DragOver="RootGrid_DragOver"
+        Drop="RootGrid_Drop"
         Padding="10,8,8,8"
         RowSpacing="8">
         <Grid.RowDefinitions>
@@ -101,7 +112,6 @@
                 SelectedIndex="0"
                 SizeChanged="TodoFilterSegmented_SizeChanged">
                 <toolkit:SegmentedItem
-                    Style="{StaticResource WidgetSegmentedItemStyle}"
                     Tag="All"
                     ToolTipService.ToolTip="{Binding AllFilterText}">
                     <TextBlock
@@ -115,7 +125,6 @@
                         TextWrapping="NoWrap" />
                 </toolkit:SegmentedItem>
                 <toolkit:SegmentedItem
-                    Style="{StaticResource WidgetSegmentedItemStyle}"
                     Tag="Today"
                     ToolTipService.ToolTip="{Binding TodayFilterText}">
                     <TextBlock
@@ -129,7 +138,6 @@
                         TextWrapping="NoWrap" />
                 </toolkit:SegmentedItem>
                 <toolkit:SegmentedItem
-                    Style="{StaticResource WidgetSegmentedItemStyle}"
                     Tag="Important"
                     ToolTipService.ToolTip="{Binding ImportantFilterText}">
                     <TextBlock
@@ -143,7 +151,6 @@
                         TextWrapping="NoWrap" />
                 </toolkit:SegmentedItem>
                 <toolkit:SegmentedItem
-                    Style="{StaticResource WidgetSegmentedItemStyle}"
                     Tag="Completed"
                     ToolTipService.ToolTip="{Binding CompletedFilterText}">
                     <TextBlock
@@ -216,10 +223,12 @@
             <ListView
                 x:Name="TodoListView"
                 Grid.Row="0"
+                AllowDrop="True"
                 IsItemClickEnabled="False"
                 CanDragItems="True"
                 CanReorderItems="True"
-                AllowDrop="True"
+                DragOver="TodoListView_DragOver"
+                KeyDown="TodoListView_KeyDown"
                 DragItemsStarting="TodoListView_DragItemsStarting"
                 DragItemsCompleted="TodoListView_DragItemsCompleted"
                 ItemsSource="{Binding VisibleItems}"
@@ -254,6 +263,13 @@
                                 Grid.ColumnSpan="3"
                                 Style="{StaticResource WidgetRowHoverBackgroundStyle}" />
 
+                            <Border
+                                Grid.ColumnSpan="3"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="6"
+                                Opacity="0.18"
+                                Visibility="{Binding CopySelectionVisibility}" />
+
                             <Button
                                 Grid.Column="0"
                                 VerticalAlignment="Center"
@@ -285,6 +301,11 @@
                             <Grid
                                 Grid.Column="2"
                                 MinHeight="20"
+                                Margin="0,1,0,0"
+                                Background="Transparent"
+                                DoubleTapped="TodoItemContent_DoubleTapped"
+                                Opacity="{Binding ContentOpacity}"
+                                Tapped="TodoItemContent_Tapped"
                                 VerticalAlignment="Center"
                                 RowSpacing="1">
                                 <Grid.RowDefinitions>
@@ -295,8 +316,7 @@
                                 <TextBlock
                                     Grid.Row="0"
                                     HorizontalAlignment="Stretch"
-                                    VerticalAlignment="Top"
-                                    DoubleTapped="TodoItemText_DoubleTapped"
+                                    VerticalAlignment="Center"
                                     FontSize="{Binding ElementName=TodoListView, Path=DataContext.TextSize}"
                                     CharacterSpacing="8"
                                     LineHeight="{Binding ElementName=TodoListView, Path=DataContext.ItemTextLineHeight}"
@@ -304,6 +324,7 @@
                                     MaxLines="10"
                                     Text="{Binding Text, Mode=OneWay}"
                                     TextAlignment="Left"
+                                    TextDecorations="{Binding TextDecorations}"
                                     TextTrimming="CharacterEllipsis"
                                     TextWrapping="Wrap"
                                     Visibility="{Binding TextVisibility}" />
@@ -316,7 +337,17 @@
                                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                     Text="{Binding DueStatusText}"
                                     TextTrimming="CharacterEllipsis"
-                                    Visibility="{Binding DueStatusVisibility}" />
+                                    Visibility="{Binding DueStatusNormalVisibility}" />
+
+                                <TextBlock
+                                    Grid.Row="1"
+                                    Margin="0,1,0,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="{Binding ElementName=TodoListView, Path=DataContext.SecondaryTextSize}"
+                                    Foreground="#F7630C"
+                                    Text="{Binding DueStatusText}"
+                                    TextTrimming="CharacterEllipsis"
+                                    Visibility="{Binding DueStatusOverdueVisibility}" />
                             </Grid>
 
                             <Border
@@ -448,6 +479,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0" ColumnSpacing="8">
@@ -479,8 +511,34 @@
                     MinWidth="0"
                     HorizontalAlignment="Stretch" />
 
-                <StackPanel
+                <Button
+                    x:Name="CustomDueTimeButton"
                     Grid.Row="2"
+                    Click="CustomDueTimeButton_Click"
+                    FontSize="{Binding FilterTextSize}"
+                    HorizontalAlignment="Stretch"
+                    Style="{StaticResource TodoCustomDueTimeButtonStyle}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock
+                            x:Name="CustomDueTimeText"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            FontSize="{Binding FilterTextSize}" />
+
+                        <FontIcon
+                            Grid.Column="1"
+                            FontSize="12"
+                            Glyph="&#xE916;" />
+                    </Grid>
+                </Button>
+
+                <StackPanel
+                    Grid.Row="3"
                     HorizontalAlignment="Right"
                     Orientation="Horizontal"
                     Spacing="8">

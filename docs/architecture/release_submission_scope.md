@@ -41,6 +41,7 @@
 | --- | --- | --- |
 | `deskbox-site/` | 不跟应用提交混在一起 | 官网内容确实要同步发布时，单独做网站提交 |
 | `docs/wechat/` | 默认不提交 | 只有明确要把某个公开素材纳入仓库时才提交 |
+| `store-assets-html/` | 默认不提交 | 仅作为本地 Microsoft Store 截图/图标 HTML 画布；导出的 PNG 可手动上传 Partner Center，但源目录不进应用提交 |
 | 宣传封面、产品长图、公众号配图 | 默认不提交 | README 或官网实际引用时才提交到合适目录 |
 | 新截图 | 单独确认 | README/官网引用则提交；临时测试截图不提交 |
 | `Package.appxmanifest` 的 Identity | 占位可提交为技术准备 | Partner Center 真实身份到位后必须再更新 |
@@ -62,6 +63,7 @@
 | `*.msix` / `*.msixbundle` / `*.msixupload` | 打包产物 |
 | `*.log` | 日志 |
 | `docs/wechat/*.md` / `docs/wechat/*_wechat.html` | 本地公众号草稿 |
+| `store-assets-html/` | 本地 Store 截图/图标生成画布，不应进入 Git、Direct 安装包或 Store MSIX |
 | 临时截图、剪贴板图片 | 本地验证材料 |
 | 微信/支付宝收款码测试副本 | Store 政策敏感且不应误进 Store 包或公开提交 |
 
@@ -85,7 +87,7 @@ git ls-files --others --exclude-standard
 检查是否混入构建产物：
 
 ```powershell
-git status --short | Select-String -Pattern '\.codex-temp|artifacts|bin/|obj/|\.msix|\.pfx|\.cer|TestResults|Output'
+git status --short | Select-String -Pattern '\.codex-temp|artifacts|bin/|obj/|\.msix|\.pfx|\.cer|TestResults|Output|store-assets-html'
 ```
 
 检查 Store 包是否误带 Direct 更新器或捐赠二维码：
@@ -141,6 +143,7 @@ git commit -m "Prepare .NET 10 and Store distribution channel"
 提交前人工确认：
 
 - `git status --short` 中没有 `.codex-temp/`、`artifacts/`、MSIX、证书、测试日志。
+- `git status --short` 中没有 `store-assets-html/` 这类本地 Store 素材画布目录。
 - 网站改动没有误混进应用提交。
 - README 和 CHANGELOG 只写真实已经完成的内容。
 - Store 版资源不包含捐赠二维码。

@@ -9,6 +9,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <ResourceDictionary.ThemeDictionaries>
@@ -18,6 +19,9 @@
                     <SolidColorBrush x:Key="WidgetTextSecondaryBrush" Color="#5A5A5A" />
                     <SolidColorBrush x:Key="WidgetDividerBrush" Color="#D0D0D0" />
                     <SolidColorBrush x:Key="WindowBackgroundBackgroundBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="WidgetOverlaySurfaceBrush" Color="#FBFCFD" />
+                    <SolidColorBrush x:Key="WidgetOverlayInputSurfaceBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="WidgetOverlayStrokeBrush" Color="#24000000" />
                     <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
                     <CornerRadius x:Key="ComboBoxItemCornerRadius">6</CornerRadius>
                     <CornerRadius x:Key="ComboBoxHiglightBorderCornerRadius">8</CornerRadius>
@@ -32,6 +36,9 @@
                     <SolidColorBrush x:Key="WidgetTextSecondaryBrush" Color="#A5A5A5" />
                     <SolidColorBrush x:Key="WidgetDividerBrush" Color="#3C3C3C" />
                     <SolidColorBrush x:Key="WindowBackgroundBackgroundBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="WidgetOverlaySurfaceBrush" Color="#2A3038" />
+                    <SolidColorBrush x:Key="WidgetOverlayInputSurfaceBrush" Color="#222830" />
+                    <SolidColorBrush x:Key="WidgetOverlayStrokeBrush" Color="#52FFFFFF" />
                     <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
                     <CornerRadius x:Key="ComboBoxItemCornerRadius">6</CornerRadius>
                     <CornerRadius x:Key="ComboBoxHiglightBorderCornerRadius">8</CornerRadius>
@@ -230,6 +237,8 @@
 
             <Style x:Key="WidgetEditorTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource WidgetTextInputStyle}">
                 <Setter Property="AcceptsReturn" Value="True" />
+                <Setter Property="Background" Value="{ThemeResource WidgetOverlayInputSurfaceBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource WidgetOverlayStrokeBrush}" />
                 <Setter Property="MinHeight" Value="0" />
                 <Setter Property="Padding" Value="8,6" />
                 <Setter Property="TextWrapping" Value="Wrap" />
@@ -240,8 +249,8 @@
 
             <Style x:Key="WidgetInlineEditorOverlayStyle" TargetType="Border">
                 <Setter Property="Padding" Value="10" />
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="Background" Value="{ThemeResource WidgetOverlaySurfaceBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource WidgetOverlayStrokeBrush}" />
                 <Setter Property="BorderThickness" Value="0.8" />
                 <Setter Property="CornerRadius" Value="8" />
             </Style>
@@ -263,12 +272,10 @@
                 <Setter Property="Padding" Value="8,2" />
             </Style>
 
-            <Style x:Key="WidgetSegmentedItemStyle" TargetType="toolkit:SegmentedItem">
-                <Setter Property="MinWidth" Value="0" />
+            <Style x:Key="WidgetPivotSegmentedStyle" TargetType="toolkit:Segmented" BasedOn="{StaticResource PivotSegmentedStyle}">
                 <Setter Property="MinHeight" Value="{Binding SegmentHeight}" />
-                <Setter Property="Height" Value="{Binding SegmentHeight}" />
-                <Setter Property="Padding" Value="{Binding SegmentPadding}" />
                 <Setter Property="FontSize" Value="{Binding SegmentTextSize}" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
             </Style>
 
             <Style x:Key="WidgetRowHoverBackgroundStyle" TargetType="Border">

@@ -56,10 +56,18 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private WidgetTitleIcon TitleIcon => QuickCaptureShell.TitleIconElement;
     private TextBlock TitleText => QuickCaptureShell.TitleTextElement;
     private StackPanel RightActionButtons => QuickCaptureShell.RightActionButtonHost;
+    private Button PositionLockButton => QuickCaptureShell.PositionLockActionButton;
+    private Button SizeLockButton => QuickCaptureShell.SizeLockActionButton;
+    private Button AddButton => QuickCaptureShell.AddActionButton;
     private Button MoreButton => QuickCaptureShell.MoreActionButton;
     private Button CloseButton => QuickCaptureShell.CloseActionButton;
-    private FontIcon MoreButtonIcon => QuickCaptureShell.MoreActionIcon;
-    private FontIcon CloseButtonIcon => QuickCaptureShell.CloseActionIcon;
+    private FrameworkElement PositionLockButtonIcon => QuickCaptureShell.PositionLockActionIcon;
+    private FrameworkElement PositionLockButtonFilledIcon => QuickCaptureShell.PositionLockFilledActionIcon;
+    private FrameworkElement SizeLockButtonIcon => QuickCaptureShell.SizeLockActionIcon;
+    private FrameworkElement SizeLockButtonFilledIcon => QuickCaptureShell.SizeLockFilledActionIcon;
+    private FrameworkElement AddButtonIcon => QuickCaptureShell.AddActionIcon;
+    private FrameworkElement MoreButtonIcon => QuickCaptureShell.MoreActionIcon;
+    private FrameworkElement CloseButtonIcon => QuickCaptureShell.CloseActionIcon;
     private TextBox EditTextBox => QuickCaptureInlineEditor.EditorTextBox;
     private Button EditCloseButton => QuickCaptureInlineEditor.CloseButton;
     private Button EditCancelButton => QuickCaptureInlineEditor.CancelButton;
@@ -410,9 +418,11 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         }
 
         ViewModel.ApplyAppearancePreview();
+        QuickCaptureShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
         ApplyWindowCornerPreference();
         ApplyBackdropPreference();
         QueueBackdropRefresh();
+        ApplyTitleBarLayout();
     }
 
     public void RestoreDesktopLayerFromManager()
@@ -629,6 +639,9 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         SearchTextBox.PlaceholderText = searchText;
         ToolTipService.SetToolTip(SearchButton, searchText);
         ToolTipService.SetToolTip(CloseSearchButton, closeSearchText);
+        ToolTipService.SetToolTip(PositionLockButton, _localizationService.T("Widget.LockPosition"));
+        ToolTipService.SetToolTip(SizeLockButton, _localizationService.T("Widget.LockSize"));
+        ToolTipService.SetToolTip(AddButton, _localizationService.T("Widget.Tooltip.Add"));
         ToolTipService.SetToolTip(MoreButton, moreText);
         ToolTipService.SetToolTip(CloseButton, closeText);
         ToolTipService.SetToolTip(EditCloseButton, _localizationService.T("Common.Cancel"));
@@ -636,6 +649,9 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         AutomationProperties.SetName(SearchButton, searchText);
         AutomationProperties.SetName(SearchTextBox, searchText);
         AutomationProperties.SetName(CloseSearchButton, closeSearchText);
+        AutomationProperties.SetName(PositionLockButton, _localizationService.T("Widget.LockPosition"));
+        AutomationProperties.SetName(SizeLockButton, _localizationService.T("Widget.LockSize"));
+        AutomationProperties.SetName(AddButton, _localizationService.T("Widget.Tooltip.Add"));
         AutomationProperties.SetName(MoreButton, moreText);
         AutomationProperties.SetName(CloseButton, closeText);
         AutomationProperties.SetName(EditCloseButton, _localizationService.T("Common.Cancel"));
@@ -683,6 +699,11 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             RefreshSelectedViewSegment();
         }
 
+        if (e.PropertyName == nameof(QuickCaptureWidgetViewModel.TabStyle))
+        {
+            ApplySegmentedStyle();
+        }
+
         if (e.PropertyName is nameof(QuickCaptureWidgetViewModel.IconSize) or
             nameof(QuickCaptureWidgetViewModel.TextSize))
         {
@@ -721,6 +742,16 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     {
         await ViewModel.AddInputAsync();
         InputTextBox.Focus(FocusState.Programmatic);
+    }
+
+    private void PositionLockButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetPositionLocked(!ViewModel.Config.IsPositionLocked);
+    }
+
+    private void SizeLockButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetSizeLocked(!ViewModel.Config.IsSizeLocked);
     }
 
     private void ExpandInputButton_Click(object sender, RoutedEventArgs e)
@@ -781,7 +812,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private void QuickCaptureViewSegmented_Loaded(object sender, RoutedEventArgs e)
     {
-        ApplySegmentedLayout();
+        ApplySegmentedStyle();
     }
 
     private void QuickCaptureViewSegmented_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -791,7 +822,25 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private void ApplySegmentedLayout()
     {
-        WidgetSegmentedLayoutHelper.ApplyEqualItemWidths(QuickCaptureViewSegmented);
+        if (ViewModel.TabStyle == SettingsService.WidgetTabStyleButton)
+        {
+            WidgetSegmentedLayoutHelper.ApplyEqualItemWidths(QuickCaptureViewSegmented);
+        }
+        else
+        {
+            WidgetSegmentedLayoutHelper.ApplyNaturalItemWidths(QuickCaptureViewSegmented);
+        }
+    }
+
+    private void ApplySegmentedStyle()
+    {
+        if (QuickCaptureViewSegmented is null)
+        {
+            return;
+        }
+
+        WidgetSegmentedStyleHelper.Apply(QuickCaptureViewSegmented, ViewModel.TabStyle);
+        ApplySegmentedLayout();
     }
 
     private void QuickCaptureViewSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1409,42 +1458,6 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         button.Resources["ButtonForegroundPressed"] = foreground;
     }
 
-    private static void ApplyConfirmCommandButtonTheme(Button button, bool isDark, Windows.UI.Color accentColor, bool isPrimary)
-    {
-        var transparent = new SolidColorBrush(Colors.Transparent);
-        var background = new SolidColorBrush(WithAlpha(
-            BuildAccentSurfaceColor(
-                isDark,
-                accentColor,
-                isDark ? ColorHelper.FromArgb(0xFF, 0x24, 0x29, 0x30) : ColorHelper.FromArgb(0xFF, 0xFA, 0xFB, 0xFD),
-                accentMix: isPrimary ? (isDark ? 0.16 : 0.08) : (isDark ? 0.04 : 0.02),
-                overlayMix: isDark ? 0.02 : 0.01),
-            0xFF));
-        var hoverBackground = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x24 : (byte)0x18));
-        var pressedBackground = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x36 : (byte)0x24));
-        var border = new SolidColorBrush(WithAlpha(accentColor, isPrimary ? (isDark ? (byte)0x64 : (byte)0x42) : (byte)0x28));
-        var foreground = new SolidColorBrush(isPrimary
-            ? WithAlpha(accentColor, isDark ? (byte)0xF0 : (byte)0xE2)
-            : isDark
-                ? ColorHelper.FromArgb(0xE8, 0xF4, 0xF7, 0xFB)
-                : ColorHelper.FromArgb(0xE8, 0x1D, 0x1F, 0x23));
-
-        button.Background = background;
-        button.BorderBrush = border;
-        button.Foreground = foreground;
-        button.Resources["ButtonBackground"] = background;
-        button.Resources["ButtonBackgroundPointerOver"] = hoverBackground;
-        button.Resources["ButtonBackgroundPressed"] = pressedBackground;
-        button.Resources["ButtonBackgroundDisabled"] = transparent;
-        button.Resources["ButtonBorderBrush"] = border;
-        button.Resources["ButtonBorderBrushPointerOver"] = border;
-        button.Resources["ButtonBorderBrushPressed"] = border;
-        button.Resources["ButtonBorderBrushDisabled"] = transparent;
-        button.Resources["ButtonForeground"] = foreground;
-        button.Resources["ButtonForegroundPointerOver"] = foreground;
-        button.Resources["ButtonForegroundPressed"] = foreground;
-    }
-
     private static void SetItemHoverState(DependencyObject? itemRoot, bool isHovered)
     {
         if (itemRoot is null)
@@ -1626,7 +1639,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         if (item.Type == QuickCaptureItemType.Link &&
             Uri.TryCreate(item.Url ?? item.Body, UriKind.Absolute, out var uri))
         {
-            dataPackage.SetText(item.Body);
+            DeskBoxDragData.SetText(dataPackage, item.Body, DeskBoxDragData.SourceQuickCapture);
             dataPackage.SetWebLink(uri);
             dataPackage.SetUri(uri);
             dataPackage.Properties.Title = item.Body;
@@ -1635,7 +1648,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         if (!string.IsNullOrWhiteSpace(item.Body))
         {
-            dataPackage.SetText(item.Body);
+            DeskBoxDragData.SetText(dataPackage, item.Body, DeskBoxDragData.SourceQuickCapture);
             dataPackage.Properties.Title = item.Body;
             return true;
         }
@@ -1679,12 +1692,12 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             _localizationService.T("Widget.LockPosition"),
             "\uE72E",
             ViewModel.Config.IsPositionLocked,
-            value => ViewModel.SetPositionLocked(value)));
+            SetPositionLocked));
         flyout.Items.Add(CreateToggleMenuItem(
             _localizationService.T("Widget.LockSize"),
-            "\uE740",
+            "\uE9CE",
             ViewModel.Config.IsSizeLocked,
-            value => ViewModel.SetSizeLocked(value)));
+            SetSizeLocked));
         flyout.Items.Add(new MenuFlyoutSeparator());
 
         flyout.Items.Add(WidgetChromeMenuBuilder.Create(
@@ -1739,6 +1752,18 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         WidgetChromeModeNames.SetOverrideMode(ViewModel.Config, mode);
         _settingsService.UpdateWidget(ViewModel.Config);
         ApplyTitleBarLayout();
+    }
+
+    private void SetPositionLocked(bool value)
+    {
+        ViewModel.SetPositionLocked(value);
+        ApplyLockActionIconState();
+    }
+
+    private void SetSizeLocked(bool value)
+    {
+        ViewModel.SetSizeLocked(value);
+        ApplyLockActionIconState();
     }
 
     private MenuFlyout CreateItemFlyout(QuickCaptureItemViewModel item, FrameworkElement anchor)
@@ -2350,7 +2375,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             return true;
         }
 
-        return !IsWithin(source, MoreButton) &&
+        return !IsWithin(source, PositionLockButton) &&
+               !IsWithin(source, SizeLockButton) &&
+               !IsWithin(source, AddButton) &&
+               !IsWithin(source, MoreButton) &&
                !IsWithin(source, CloseButton) &&
                !HasAncestorOfType<TextBox>(source);
     }
@@ -2463,7 +2491,35 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private static bool HasFallbackFileFormats(DataPackageView dataView)
     {
-        return dataView.AvailableFormats.Count > 0;
+        foreach (string format in dataView.AvailableFormats)
+        {
+            if (IsLikelyFileTransferFormat(format))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsLikelyFileTransferFormat(string format)
+    {
+        if (string.IsNullOrWhiteSpace(format))
+        {
+            return false;
+        }
+
+        if (format.StartsWith("Preferred DropEffect", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return format.Contains("StorageItems", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("StorageItem", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileGroupDescriptor", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileDrop", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("FileName", StringComparison.OrdinalIgnoreCase) ||
+               format.Contains("Shell", StringComparison.OrdinalIgnoreCase);
     }
 
     private async void RootGrid_Drop(object sender, DragEventArgs e)
@@ -2576,6 +2632,14 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private static async Task<QuickCaptureDropContent> TryReadDroppedContentAsync(DataPackageView dataView)
     {
+        string? internalText = await DeskBoxDragData.TryGetInternalTextAsync(dataView);
+        if (!string.IsNullOrWhiteSpace(internalText))
+        {
+            return internalText.Length > QuickCaptureClipboardService.MaxClipboardTextCharacters
+                ? new QuickCaptureDropContent([], [], 1)
+                : new QuickCaptureDropContent([internalText], [], 0);
+        }
+
         if (dataView.Contains(StandardDataFormats.StorageItems) ||
             HasFallbackFileFormats(dataView))
         {
@@ -3404,16 +3468,53 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         QuickCaptureShell.SetTitleBarPadding(WidgetTitleBarMetricsCalculator.CreateOuterPadding(chromeMode));
         TitleIcon.IconSize = metrics.TitleIconSize;
         TitleText.FontSize = metrics.TitleTextSize;
+        ApplyTitleActionButtonConfiguration();
+        ApplyLockActionIconState();
 
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(PositionLockButton, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(SizeLockButton, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(AddButton, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionButton(MoreButton, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionButton(CloseButton, metrics);
 
+        WidgetActionIconHelper.ApplyPairSize(PositionLockButtonIcon, PositionLockButtonFilledIcon, metrics);
+        WidgetActionIconHelper.ApplyPairSize(SizeLockButtonIcon, SizeLockButtonFilledIcon, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionIcon(AddButtonIcon, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(MoreButtonIcon, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(CloseButtonIcon, metrics);
 
         RootGrid.RowDefinitions[0].Height = metrics.RowHeight;
         QuickCaptureShell.SetTitleBarRowHeight(metrics.RowHeight);
         TitleBarGrid.Padding = metrics.InnerTitlePadding;
+    }
+
+    private void ApplyTitleActionButtonConfiguration()
+    {
+        var actions = SettingsService.ParseWidgetHoverButtonActions(_settingsService.Settings.WidgetHoverButtonActions);
+        PositionLockButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionLockPosition)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        SizeLockButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionLockSize)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        QuickCaptureShell.ShowAddButton = actions.Contains(SettingsService.WidgetHoverActionAdd);
+        MoreButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionMore)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CloseButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionDelete)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void ApplyLockActionIconState()
+    {
+        WidgetActionIconHelper.ApplyLockState(
+            PositionLockButtonIcon,
+            PositionLockButtonFilledIcon,
+            ViewModel.Config.IsPositionLocked,
+            SizeLockButtonIcon,
+            SizeLockButtonFilledIcon,
+            ViewModel.Config.IsSizeLocked);
     }
 
     private void ApplySearchVisualStyle(bool isDark, Windows.UI.Color accentColor)
@@ -3431,39 +3532,37 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private void ApplyEditOverlayStyle(bool isDark, Windows.UI.Color accentColor)
     {
-        var overlayBackground = BuildAccentSurfaceColor(
-            isDark,
-            accentColor,
-            isDark
-                ? ColorHelper.FromArgb(0xFF, 0x1F, 0x24, 0x2A)
-                : ColorHelper.FromArgb(0xFF, 0xFB, 0xFC, 0xFD),
-            accentMix: isDark ? 0.06 : 0.03,
-            overlayMix: isDark ? 0.03 : 0.02);
-        var inputBackground = BuildAccentSurfaceColor(
-            isDark,
-            accentColor,
-            isDark
-                ? ColorHelper.FromArgb(0xFF, 0x18, 0x1D, 0x22)
-                : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
-            accentMix: isDark ? 0.04 : 0.02,
-            overlayMix: isDark ? 0.02 : 0.0);
-
-        QuickCaptureInlineEditor.OverlaySurface.Background = new SolidColorBrush(WithAlpha(overlayBackground, 0xFF));
-        QuickCaptureInlineEditor.OverlaySurface.BorderBrush = new SolidColorBrush(isDark
-            ? ColorHelper.FromArgb(0x52, 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb(0x24, 0x00, 0x00, 0x00));
+        QuickCaptureInlineEditor.OverlaySurface.Background = new SolidColorBrush(GetNeutralOverlaySurfaceColor(isDark));
+        QuickCaptureInlineEditor.OverlaySurface.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         QuickCaptureInlineEditor.OverlaySurface.BorderThickness = new Thickness(0.8);
         QuickCaptureInlineEditor.Translation = new Vector3(0, 0, 16);
 
-        EditTextBox.Background = new SolidColorBrush(WithAlpha(inputBackground, 0xFF));
-        EditTextBox.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x52 : (byte)0x3A));
+        EditTextBox.Background = new SolidColorBrush(GetNeutralInputSurfaceColor(isDark));
+        EditTextBox.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         EditTextBox.Foreground = GetBrushResourceOrFallback(
             "TextFillColorPrimaryBrush",
             isDark ? Colors.White : Colors.Black);
+    }
 
-        ApplyConfirmCommandButtonTheme(EditCancelButton, isDark, accentColor, isPrimary: false);
-        ApplyConfirmCommandButtonTheme(EditSaveButton, isDark, accentColor, isPrimary: true);
-        ApplyActionButtonTheme(EditCloseButton, isDark, accentColor);
+    private static Windows.UI.Color GetNeutralOverlaySurfaceColor(bool isDark)
+    {
+        return isDark
+            ? ColorHelper.FromArgb(0xFF, 0x2A, 0x30, 0x38)
+            : ColorHelper.FromArgb(0xFF, 0xFB, 0xFC, 0xFD);
+    }
+
+    private static Windows.UI.Color GetNeutralInputSurfaceColor(bool isDark)
+    {
+        return isDark
+            ? ColorHelper.FromArgb(0xFF, 0x22, 0x28, 0x30)
+            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+    }
+
+    private static Brush GetNeutralOverlayBorderBrush(bool isDark)
+    {
+        return GetBrushResourceOrFallback(
+            "CardStrokeColorDefaultBrush",
+            isDark ? ColorHelper.FromArgb(0x52, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x24, 0x00, 0x00, 0x00));
     }
 
     private void PlayItemsViewTransition()

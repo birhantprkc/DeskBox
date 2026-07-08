@@ -52,6 +52,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private bool _hideShortcutArrowOverlay;
     private bool _showImageFilesAsIcons;
     private bool _showListItemDetails = true;
+    private bool _showFileItemPathTooltips = true;
     private string _modeLabel = string.Empty;
     private string _modeDescription = string.Empty;
     private string _emptyStateTitle = string.Empty;
@@ -174,6 +175,12 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     {
         get => _showListItemDetails;
         set => SetProperty(ref _showListItemDetails, value);
+    }
+
+    public bool ShowFileItemPathTooltips
+    {
+        get => _showFileItemPathTooltips;
+        set => SetProperty(ref _showFileItemPathTooltips, value);
     }
 
     public string ModeLabel
@@ -328,6 +335,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         _hideShortcutExtensionWhenShowingFileExtensions =
             _settingsService.Settings.HideShortcutExtensionWhenShowingFileExtensions;
         _showListItemDetails = _settingsService.Settings.ShowListItemDetails;
+        _showFileItemPathTooltips = _settingsService.Settings.ShowFileItemPathTooltips;
         _isPositionLocked = config.IsPositionLocked;
         _isSizeLocked = config.IsSizeLocked;
 
@@ -504,6 +512,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             SettingsService.MinWidgetOpacity,
             SettingsService.MaxWidgetOpacity);
         ShowListItemDetails = _settingsService.Settings.ShowListItemDetails;
+        ShowFileItemPathTooltips = _settingsService.Settings.ShowFileItemPathTooltips;
         ApplyLayoutSettings();
         UpdateDependentProperties();
 

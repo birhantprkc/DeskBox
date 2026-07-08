@@ -106,6 +106,27 @@ public sealed class TodoWidgetStore
                 item.UpdatedAt = item.CreatedAt;
             }
 
+            if (item.IsCompleted)
+            {
+                item.CompletedAt ??= item.UpdatedAt == default ? item.CreatedAt : item.UpdatedAt;
+            }
+            else
+            {
+                item.CompletedAt = null;
+            }
+
+            if (item.DueDate is null)
+            {
+                item.ReminderLastNotifiedAt = null;
+                item.ReminderDismissedForDueDate = null;
+            }
+            else if (item.ReminderDismissedForDueDate is { } dismissedForDueDate &&
+                     !DateTimeOffset.Equals(dismissedForDueDate, item.DueDate.Value))
+            {
+                item.ReminderLastNotifiedAt = null;
+                item.ReminderDismissedForDueDate = null;
+            }
+
             if (item.SortOrder < 0)
             {
                 item.SortOrder = fallbackSortOrder;

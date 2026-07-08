@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.2.5 - 2026-07-08
+
+### English
+
+- Improved the Todo widget with due times that keep hour/minute/second precision, native Windows reminder notifications, overdue suffix labels, completed-item sorting, click-to-copy, multi-select copying, and formatted clipboard output.
+- Added Todo and Quick Capture drag/drop conversion so text can be moved between the two feature widgets more naturally.
+- Added configurable Todo and Quick Capture tab styles, allowing each widget to use either the indicator-style tab bar or the segmented-button style.
+- Added configurable top-right widget hover actions under Appearance -> Window appearance details. Users can choose 1 to 3 actions from lock position, lock size, add, more, and delete.
+- Refined widget action icons with Fluent icon shapes, better lock-state icons, compact-title sizing, and clearer rendering. Resetting title styles now clears per-widget overrides so widgets follow the global title style again.
+- Improved Music widget details, including a horizontal system-volume flyout, light-theme styling fixes, click-away closing, wider slider behavior, and album-ambience corner alignment with the widget corner setting.
+- Added an optional file path tooltip switch under File widgets -> File display.
+- Improved Direct and Microsoft Store update-channel behavior and wording, including Store-aware manual checks and clearer Direct fallback guidance.
+- Expanded tests for Todo reminders, clipboard formatting, settings defaults, update behavior, and title-style reset behavior.
+
+### 中文
+
+- 优化待办格子：截止时间保留时分秒精度，支持 Windows 原生提醒通知、逾期标识、已完成排序、单击复制、多选复制，以及更适合粘贴到聊天和 Markdown 的复制格式。
+- 支持待办和随记之间拖拽转换文本，随记文本可以拖到待办生成任务，待办也可以拖到随记保存为记录。
+- 待办和随记新增可配置的顶部切换样式，可以分别选择指示条样式或分段按钮样式。
+- 在「外观 -> 窗口外观细节」新增右上角悬浮按钮内容配置，可从锁定位置、锁定尺寸、新增、更多、删除中选择 1 到 3 个操作。
+- 继续优化格子操作图标：替换为 Fluent 图标形态，锁定状态有独立图标，紧凑标题下图标更小更清晰；重置标题样式时会清除单个格子的覆盖值，让格子重新跟随全局标题样式。
+- 优化音乐格子细节：系统音量浮窗改为横向，补齐浅色模式样式，支持点击空白区域关闭，滑杆更宽，封面氛围背景圆角会跟随格子圆角设置。
+- 在「文件格子 -> 文件显示」中新增文件路径提示开关，可关闭鼠标移入文件时的完整路径提示。
+- 优化 Direct 和 Microsoft Store 两个更新渠道的文案与行为，商店版使用商店更新语义，Direct 版保留更清楚的备用下载引导。
+- 扩展自动化测试，覆盖待办提醒、复制格式、设置默认值、更新逻辑和标题样式重置行为。
+
 ## 1.2.4 - 2026-07-06
 
 ### English

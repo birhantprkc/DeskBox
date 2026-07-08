@@ -48,9 +48,26 @@
 dotnet build .\src\DeskBox\DeskBox.csproj `
   -c Debug `
   -p:Platform=x64 `
-  -p:RuntimeIdentifier=win-x64 `
   -v:minimal
 ```
+
+日常交互调试统一使用脚本启动：
+
+```powershell
+.\scripts\start-debug.ps1
+```
+
+如果希望启动前顺手重新构建：
+
+```powershell
+.\scripts\start-debug.ps1 -Build
+```
+
+注意：
+
+- 日常 Debug 启动脚本会固定运行 `src\DeskBox\bin\x64\Debug\<TargetFramework>\DeskBox.exe`。
+- 不要手动运行 `src\DeskBox\bin\x64\Debug\<TargetFramework>\win-x64\DeskBox.exe`，这个目录可能残留旧 RID 构建产物，容易出现“进程启动后立刻崩溃”或“跑的不是最新代码”。
+- 只有 Release 发布、Direct 安装器产物、Store/MSIX 打包检查需要显式使用 `RuntimeIdentifier`。
 
 预期：
 
@@ -143,7 +160,7 @@ dotnet test .\DeskBox.sln `
 
 3. 检查 Git 范围。
    - 可以提交：`src/`、`installer/`、`scripts/`、`tests/`、`docs/architecture/`、README、CHANGELOG。
-   - 不要提交：`.codex-temp/`、`artifacts/`、`bin/`、`obj/`、本地签名 MSIX、`.cer`、`.pfx`、临时截图和本地草稿。
+   - 不要提交：`.codex-temp/`、`artifacts/`、`bin/`、`obj/`、本地签名 MSIX、`.cer`、`.pfx`、`store-assets-html/`、临时截图和本地草稿。
    - 网站 `deskbox-site/` 是否提交要单独决定，不要混进应用发版提交里。
 
 ### 3.2 Direct 官网版打包
@@ -166,6 +183,61 @@ Direct 版继续走现有 Inno 链路。
 - 缺少运行时时，安装器提示和引导正确。
 - 开机自启开关有效。
 - 托盘、快捷键、多屏/DPI、文件拖拽、系统音量等底层能力正常。
+
+### 3.2.1 Direct 应用内更新发布清单
+
+Direct 应用内更新默认先读取：
+
+```text
+https://deskbox.fun/update/stable.json
+```
+
+如果该清单不可用，客户端会兜底读取 GitHub 最新 Release API。官网清单仍然是主通道，因为它可以控制稳定版本、国内网盘入口、SHA-256、灰度和回滚；GitHub 兜底只用于防止清单漏发时完全无法检查更新。
+
+每次发布 Direct 版本时必须执行：
+
+1. 发布 GitHub Release，并上传：
+   - `DeskBox_Setup_x.y.z_x64.exe`
+   - `DeskBox_Setup_x.y.z_x64.exe.sha256`
+
+2. 核对 GitHub Release 资产：
+   - tag 是 `vx.y.z`
+   - Release 不是 Draft
+   - Release 不是 Prerelease，除非刻意做预发布
+   - 安装包大小和本地 `Output` 一致
+   - 安装包 digest / `.sha256` 和本地 `Get-FileHash` 一致
+
+3. 更新并部署官网清单：
+   - `deskbox-site/public/update/stable.json`
+   - `version`
+   - `downloadUrl`
+   - `sha256`
+   - `size`
+   - `releaseNotesUrl`
+   - `summary`
+
+4. 部署后从公网验证：
+
+```powershell
+curl.exe -i https://deskbox.fun/update/stable.json
+```
+
+预期：
+
+- HTTP 200
+- `Content-Type` 是 JSON
+- `version`、`downloadUrl`、`sha256`、`size` 与 GitHub Release 完全一致
+
+5. 用旧版本实机验证完整链路：
+   - 检查更新
+   - 下载更新
+   - 点击安装
+   - DeskBox 退出
+   - 安装器继续执行
+   - 安装完成后 DeskBox 重启
+   - 数据和设置保留
+
+6. 如果后续更新流程、清单字段、下载源、网盘链接、安装器参数或 GitHub 兜底策略有调整，必须同步更新本文档。
 
 ### 3.3 Microsoft Store 版打包
 
@@ -194,6 +266,8 @@ Store 版必须显式传入 Store 通道：
 - `PublisherDisplayName`
 - 必要时同步 Store logo、tile、splash、隐私链接和应用说明。
 
+Store 产品页截图/图标素材如果使用 `store-assets-html/` 生成，该目录只作为本地 HTML 画布。导出的 PNG 可以手动上传 Partner Center，但 `store-assets-html/` 本身不要提交，也不要进入 Direct 安装包或 Store MSIX。
+
 验收清单：
 
 - 包内没有 `DeskBox.Updater.exe`。
@@ -213,7 +287,8 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($msix)
 $zip.Entries | Where-Object {
   $_.FullName -like "*DeskBox.Updater*" -or
-  $_.FullName -like "*donation-*"
+  $_.FullName -like "*donation-*" -or
+  $_.FullName -like "*store-assets-html*"
 } | Select-Object FullName
 $zip.Dispose()
 ```
@@ -284,6 +359,7 @@ Get-ChildItem Cert:\CurrentUser\My,Cert:\CurrentUser\Root,Cert:\CurrentUser\Trus
 - 应用代码、安装器、Store 包、更新服务走一个提交。
 - 官网内容、截图、SEO、下载页走另一个提交。
 - 微信文章、公众号草稿、本地截图不进 Git。
+- `store-assets-html/` 这类 Store 截图 HTML 画布不进 Git；需要保留给本机使用时依赖 `.gitignore` 排除。
 
 ## 六、推荐发布顺序
 

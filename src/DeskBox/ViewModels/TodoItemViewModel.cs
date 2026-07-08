@@ -16,7 +16,9 @@ public sealed partial class TodoItemViewModel : ObservableObject
     private bool _isImportant;
     private string? _colorMarker;
     private DateTimeOffset? _dueDate;
+    private DateTimeOffset? _completedAt;
     private bool _isEditing;
+    private bool _isCopySelected;
     private string _editText = string.Empty;
 
     public TodoItemViewModel(TodoItem item, LocalizationService? localizationService = null)
@@ -29,6 +31,7 @@ public sealed partial class TodoItemViewModel : ObservableObject
         _colorMarker = TodoItem.NormalizeColorMarker(item.ColorMarker);
         item.ColorMarker = _colorMarker;
         _dueDate = item.DueDate;
+        _completedAt = item.CompletedAt;
     }
 
     public TodoItem Item => _item;
@@ -87,6 +90,10 @@ public sealed partial class TodoItemViewModel : ObservableObject
                 OnPropertyChanged(nameof(CompletionGlyphOpacity));
                 OnPropertyChanged(nameof(DueStatusText));
                 OnPropertyChanged(nameof(IsOverdue));
+                OnPropertyChanged(nameof(DueStatusNormalVisibility));
+                OnPropertyChanged(nameof(DueStatusOverdueVisibility));
+                OnPropertyChanged(nameof(ContentOpacity));
+                OnPropertyChanged(nameof(TextDecorations));
             }
         }
     }
@@ -133,6 +140,20 @@ public sealed partial class TodoItemViewModel : ObservableObject
                 OnPropertyChanged(nameof(DueStatusText));
                 OnPropertyChanged(nameof(DueStatusVisibility));
                 OnPropertyChanged(nameof(IsOverdue));
+                OnPropertyChanged(nameof(DueStatusNormalVisibility));
+                OnPropertyChanged(nameof(DueStatusOverdueVisibility));
+            }
+        }
+    }
+
+    public DateTimeOffset? CompletedAt
+    {
+        get => _completedAt;
+        internal set
+        {
+            if (SetProperty(ref _completedAt, value))
+            {
+                _item.CompletedAt = value;
             }
         }
     }
@@ -156,6 +177,18 @@ public sealed partial class TodoItemViewModel : ObservableObject
         set => SetProperty(ref _editText, value);
     }
 
+    public bool IsCopySelected
+    {
+        get => _isCopySelected;
+        set
+        {
+            if (SetProperty(ref _isCopySelected, value))
+            {
+                OnPropertyChanged(nameof(CopySelectionVisibility));
+            }
+        }
+    }
+
     public string ImportantGlyph => IsImportant ? "\uE735" : "\uE734";
 
     public bool HasRedMarker => string.Equals(ColorMarker, TodoItem.RedColorMarker, StringComparison.Ordinal);
@@ -172,8 +205,14 @@ public sealed partial class TodoItemViewModel : ObservableObject
 
     public double CompletionGlyphOpacity => IsCompleted ? 1d : 0d;
 
+    public double ContentOpacity => IsCompleted ? 0.62d : 1d;
+
+    public Windows.UI.Text.TextDecorations TextDecorations => IsCompleted
+        ? Windows.UI.Text.TextDecorations.Strikethrough
+        : Windows.UI.Text.TextDecorations.None;
+
     public bool IsOverdue => DueDate is { } dueDate &&
-                             dueDate.Date < DateTimeOffset.Now.Date &&
+                             dueDate.ToLocalTime() < DateTimeOffset.Now &&
                              !IsCompleted;
 
     public string DueStatusText
@@ -185,28 +224,43 @@ public sealed partial class TodoItemViewModel : ObservableObject
                 return string.Empty;
             }
 
+            DateTimeOffset localDueDate = dueDate.ToLocalTime();
             var today = DateTimeOffset.Now.Date;
-            var due = dueDate.Date;
-            if (due < today && !IsCompleted)
-            {
-                return Format("Todo.Due.Overdue", due.ToString("yyyy/M/d"));
-            }
+            var due = localDueDate.Date;
+            string formattedDue = FormatDueDateTime(localDueDate);
+            string formattedTime = FormatDueTime(localDueDate);
+            string statusText;
 
             if (due == today)
             {
-                return LocalizedText("Todo.Due.Today");
+                statusText = Format("Todo.Due.TodayAt", formattedTime);
             }
-
-            if (due == today.AddDays(1))
+            else if (due == today.AddDays(1))
             {
-                return LocalizedText("Todo.Due.Tomorrow");
+                statusText = Format("Todo.Due.TomorrowAt", formattedTime);
+            }
+            else
+            {
+                statusText = Format("Todo.Due.Date", formattedDue);
             }
 
-            return Format("Todo.Due.Date", due.ToString("yyyy/M/d"));
+            return IsOverdue
+                ? $"{statusText} \u00B7 {LocalizedText("Todo.Due.OverdueSuffix")}"
+                : statusText;
         }
     }
 
     public Visibility DueStatusVisibility => DueDate is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility DueStatusNormalVisibility => DueDate is not null && !IsOverdue
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility DueStatusOverdueVisibility => IsOverdue
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility CopySelectionVisibility => IsCopySelected ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility TextVisibility => IsEditing ? Visibility.Collapsed : Visibility.Visible;
 
@@ -227,6 +281,8 @@ public sealed partial class TodoItemViewModel : ObservableObject
     internal void RefreshLocalizedText()
     {
         OnPropertyChanged(nameof(DueStatusText));
+        OnPropertyChanged(nameof(DueStatusNormalVisibility));
+        OnPropertyChanged(nameof(DueStatusOverdueVisibility));
     }
 
     private string LocalizedText(string key)
@@ -237,6 +293,20 @@ public sealed partial class TodoItemViewModel : ObservableObject
     private string Format(string key, params object[] args)
     {
         return _localizationService?.Format(key, args) ?? LocalizationService.DefaultFormat(key, args);
+    }
+
+    private static string FormatDueDateTime(DateTimeOffset dueDate)
+    {
+        return dueDate.Second == 0
+            ? dueDate.ToString("yyyy/M/d HH:mm")
+            : dueDate.ToString("yyyy/M/d HH:mm:ss");
+    }
+
+    private static string FormatDueTime(DateTimeOffset dueDate)
+    {
+        return dueDate.Second == 0
+            ? dueDate.ToString("HH:mm")
+            : dueDate.ToString("HH:mm:ss");
     }
 
     private static Windows.UI.Color ParseColor(string hex)

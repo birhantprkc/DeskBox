@@ -59,6 +59,13 @@ public sealed class SettingsService
     public const string WidgetTitleIconModeColor = WidgetTitleIconModeNames.Color;
     public const string WidgetTitleIconModeHidden = WidgetTitleIconModeNames.Hidden;
     public const string WidgetTitleIconModeTextLabel = WidgetTitleIconModeNames.TextLabel;
+    public const string WidgetHoverActionLockPosition = "LockPosition";
+    public const string WidgetHoverActionLockSize = "LockSize";
+    public const string WidgetHoverActionAdd = "Add";
+    public const string WidgetHoverActionMore = "More";
+    public const string WidgetHoverActionDelete = "Delete";
+    public const string DefaultWidgetHoverButtonActions =
+        WidgetHoverActionMore + "," + WidgetHoverActionDelete;
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
     public const string LanguageSystem = "System";
@@ -92,9 +99,14 @@ public sealed class SettingsService
     public const string TodoDefaultFilterToday = "Today";
     public const string TodoDefaultFilterImportant = "Important";
     public const string TodoDefaultFilterCompleted = "Completed";
+    public const int DefaultTodoReminderOffsetMinutes = 5;
+    public const int MinTodoReminderOffsetMinutes = 0;
+    public const int MaxTodoReminderOffsetMinutes = 1440;
     public const string QuickCaptureDefaultViewRecords = "Records";
     public const string QuickCaptureDefaultViewPinned = "Pinned";
     public const string QuickCaptureDefaultViewRecent = "Recent";
+    public const string WidgetTabStylePivot = "Pivot";
+    public const string WidgetTabStyleButton = "Button";
     public const string MusicRhythmStyleSoftWave = "SoftWave";
     public const string MusicRhythmStyleGlassSpectrum = "GlassSpectrum";
     public const string MusicRhythmStyleDotPulse = "DotPulse";
@@ -153,21 +165,26 @@ public sealed class SettingsService
         settings.ShowImageFilesAsIcons = false;
         settings.HideShortcutExtensionWhenShowingFileExtensions = true;
         settings.ShowHoverButtons = true;
+        settings.WidgetHoverButtonActions = DefaultWidgetHoverButtonActions;
         settings.AutoCheckForUpdates = true;
         settings.QuickCaptureClipboardEnabled = true;
         settings.QuickCaptureImageClipboardEnabled = true;
         settings.QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
         settings.QuickCaptureDefaultView = QuickCaptureDefaultViewRecords;
+        settings.QuickCaptureTabStyle = WidgetTabStylePivot;
         settings.TodoShowCompletedTasks = true;
         settings.TodoShowFooterStats = true;
         settings.TodoShowClearCompletedButton = true;
         settings.TodoConfirmBeforeDelete = false;
+        settings.TodoReminderEnabled = true;
+        settings.TodoDefaultReminderOffsetMinutes = DefaultTodoReminderOffsetMinutes;
         settings.MusicUseArtworkBackdrop = true;
         settings.MusicShowRhythmBars = true;
         settings.MusicRhythmStyle = MusicRhythmStyleSoftWave;
         settings.MusicEnableCoverHoverMotion = true;
         settings.TodoNewTaskPosition = TodoNewTaskPositionTop;
         settings.TodoDefaultFilter = TodoDefaultFilterAll;
+        settings.TodoTabStyle = WidgetTabStylePivot;
         settings.ManagedDropAction = ManagedDropActionMove;
         settings.GlobalHotkeyEnabled = DefaultGlobalHotkeyEnabled;
         settings.GlobalHotkeyModifiers = DefaultGlobalHotkeyModifiers;
@@ -175,6 +192,7 @@ public sealed class SettingsService
         settings.DoubleClickToOpen = true;
         settings.HideShortcutArrowOverlay = true;
         settings.ShowListItemDetails = false;
+        settings.ShowFileItemPathTooltips = true;
     }
 
     public SettingsService()
@@ -494,6 +512,13 @@ public sealed class SettingsService
             changed = true;
         }
 
+        string normalizedHoverActions = NormalizeWidgetHoverButtonActions(settings.WidgetHoverButtonActions);
+        if (!string.Equals(settings.WidgetHoverButtonActions, normalizedHoverActions, StringComparison.Ordinal))
+        {
+            settings.WidgetHoverButtonActions = normalizedHoverActions;
+            changed = true;
+        }
+
         double normalizedIconSize = NormalizeIconSize(settings.IconSize);
         if (Math.Abs(settings.IconSize - normalizedIconSize) > 0.0001)
         {
@@ -622,6 +647,52 @@ public sealed class SettingsService
     public static string NormalizeWidgetTitleIconModeSetting(string? value)
     {
         return WidgetTitleIconModeNames.NormalizeSettingValue(value);
+    }
+
+    public static string NormalizeWidgetHoverButtonActions(string? value)
+    {
+        var normalized = ParseWidgetHoverButtonActions(value);
+        return normalized.Count == 0
+            ? DefaultWidgetHoverButtonActions
+            : string.Join(",", normalized);
+    }
+
+    public static IReadOnlyList<string> ParseWidgetHoverButtonActions(string? value)
+    {
+        string[] allowed =
+        [
+            WidgetHoverActionLockPosition,
+            WidgetHoverActionLockSize,
+            WidgetHoverActionAdd,
+            WidgetHoverActionMore,
+            WidgetHoverActionDelete
+        ];
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [WidgetHoverActionMore, WidgetHoverActionDelete];
+        }
+
+        var selected = new List<string>();
+        foreach (string rawPart in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            string? normalized = allowed.FirstOrDefault(action =>
+                string.Equals(action, rawPart, StringComparison.OrdinalIgnoreCase));
+            if (normalized is null || selected.Contains(normalized))
+            {
+                continue;
+            }
+
+            selected.Add(normalized);
+            if (selected.Count == 3)
+            {
+                break;
+            }
+        }
+
+        return selected.Count == 0
+            ? [WidgetHoverActionMore, WidgetHoverActionDelete]
+            : selected;
     }
 
     public static string NormalizeWidgetLayerModeSetting(string? value)
@@ -889,6 +960,13 @@ public sealed class SettingsService
             changed = true;
         }
 
+        string normalizedTabStyle = NormalizeWidgetTabStyle(settings.QuickCaptureTabStyle);
+        if (!string.Equals(settings.QuickCaptureTabStyle, normalizedTabStyle, StringComparison.Ordinal))
+        {
+            settings.QuickCaptureTabStyle = normalizedTabStyle;
+            changed = true;
+        }
+
         return changed;
     }
 
@@ -912,7 +990,35 @@ public sealed class SettingsService
             changed = true;
         }
 
+        int normalizedReminderOffset = NormalizeTodoReminderOffsetMinutes(settings.TodoDefaultReminderOffsetMinutes);
+        if (settings.TodoDefaultReminderOffsetMinutes != normalizedReminderOffset)
+        {
+            settings.TodoDefaultReminderOffsetMinutes = normalizedReminderOffset;
+            changed = true;
+        }
+
+        string normalizedTabStyle = NormalizeWidgetTabStyle(settings.TodoTabStyle);
+        if (!string.Equals(settings.TodoTabStyle, normalizedTabStyle, StringComparison.Ordinal))
+        {
+            settings.TodoTabStyle = normalizedTabStyle;
+            changed = true;
+        }
+
         return changed;
+    }
+
+    public static string NormalizeWidgetTabStyle(string? style)
+    {
+        return style == WidgetTabStyleButton
+            ? WidgetTabStyleButton
+            : WidgetTabStylePivot;
+    }
+
+    public static int NormalizeTodoReminderOffsetMinutes(int minutes)
+    {
+        return minutes is 0 or 5 or 10 or 15 or 30 or 60 or 1440
+            ? minutes
+            : DefaultTodoReminderOffsetMinutes;
     }
 
     internal static bool NormalizeMusicSettings(AppSettings settings)

@@ -228,7 +228,9 @@ public sealed class SettingsServiceTests : IDisposable
               "todoShowCompletedTasks": false,
               "todoShowFooterStats": false,
               "todoShowClearCompletedButton": false,
-              "todoConfirmBeforeDelete": true
+              "todoConfirmBeforeDelete": true,
+              "todoReminderEnabled": false,
+              "todoDefaultReminderOffsetMinutes": 999
             }
             """);
 
@@ -241,6 +243,8 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.False(service.Settings.TodoShowFooterStats);
         Assert.False(service.Settings.TodoShowClearCompletedButton);
         Assert.True(service.Settings.TodoConfirmBeforeDelete);
+        Assert.False(service.Settings.TodoReminderEnabled);
+        Assert.Equal(SettingsService.DefaultTodoReminderOffsetMinutes, service.Settings.TodoDefaultReminderOffsetMinutes);
     }
 
     [Fact]
@@ -306,7 +310,18 @@ public sealed class SettingsServiceTests : IDisposable
         var restoredDefaults = new AppSettings
         {
             WidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade,
-            WidgetTitleIconMode = SettingsService.WidgetTitleIconModeHidden
+            WidgetTitleIconMode = SettingsService.WidgetTitleIconModeHidden,
+            QuickCaptureTabStyle = SettingsService.WidgetTabStyleButton,
+            TodoTabStyle = SettingsService.WidgetTabStyleButton,
+            TodoReminderEnabled = false,
+            TodoDefaultReminderOffsetMinutes = 999,
+            MusicRhythmStyle = SettingsService.MusicRhythmStyleStackedEqualizer,
+            ManagedDropAction = SettingsService.ManagedDropActionCopy,
+            GlobalHotkeyEnabled = false,
+            GlobalHotkeyModifiers = (int)HotkeyModifierKeys.Control,
+            GlobalHotkeyKey = (int)Windows.System.VirtualKey.A,
+            ShowFileItemPathTooltips = false,
+            WidgetHoverButtonActions = SettingsService.WidgetHoverActionAdd
         };
 
         SettingsService.ApplyDefaultPreferences(restoredDefaults);
@@ -317,6 +332,31 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.WidgetTitleIconMode, restoredDefaults.WidgetTitleIconMode);
         Assert.True(newUserDefaults.AutoCheckForUpdates);
         Assert.Equal(newUserDefaults.AutoCheckForUpdates, restoredDefaults.AutoCheckForUpdates);
+        Assert.True(newUserDefaults.TodoReminderEnabled);
+        Assert.Equal(SettingsService.DefaultTodoReminderOffsetMinutes, newUserDefaults.TodoDefaultReminderOffsetMinutes);
+        Assert.Equal(newUserDefaults.TodoReminderEnabled, restoredDefaults.TodoReminderEnabled);
+        Assert.Equal(newUserDefaults.TodoDefaultReminderOffsetMinutes, restoredDefaults.TodoDefaultReminderOffsetMinutes);
+        Assert.Equal(newUserDefaults.QuickCaptureTabStyle, restoredDefaults.QuickCaptureTabStyle);
+        Assert.Equal(newUserDefaults.TodoTabStyle, restoredDefaults.TodoTabStyle);
+        Assert.Equal(newUserDefaults.MusicRhythmStyle, restoredDefaults.MusicRhythmStyle);
+        Assert.Equal(newUserDefaults.ManagedDropAction, restoredDefaults.ManagedDropAction);
+        Assert.Equal(newUserDefaults.GlobalHotkeyEnabled, restoredDefaults.GlobalHotkeyEnabled);
+        Assert.Equal(newUserDefaults.GlobalHotkeyModifiers, restoredDefaults.GlobalHotkeyModifiers);
+        Assert.Equal(newUserDefaults.GlobalHotkeyKey, restoredDefaults.GlobalHotkeyKey);
+        Assert.Equal(newUserDefaults.ShowFileItemPathTooltips, restoredDefaults.ShowFileItemPathTooltips);
+        Assert.Equal(SettingsService.DefaultWidgetHoverButtonActions, newUserDefaults.WidgetHoverButtonActions);
+        Assert.Equal(newUserDefaults.WidgetHoverButtonActions, restoredDefaults.WidgetHoverButtonActions);
+    }
+
+    [Theory]
+    [InlineData(null, "More,Delete")]
+    [InlineData("", "More,Delete")]
+    [InlineData("Unknown", "More,Delete")]
+    [InlineData("add,More,delete,LockSize", "Add,More,Delete")]
+    [InlineData("Add,Add,LockSize", "Add,LockSize")]
+    public void NormalizeWidgetHoverButtonActions_ConstrainsSelection(string? value, string expected)
+    {
+        Assert.Equal(expected, SettingsService.NormalizeWidgetHoverButtonActions(value));
     }
 
     [Fact]

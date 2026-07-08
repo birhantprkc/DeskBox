@@ -61,8 +61,14 @@ public class AppSettings
     /// <summary>Default Quick Capture view used when the widget opens. Valid values: <c>"Records"</c>, <c>"Pinned"</c>, <c>"Recent"</c>.</summary>
     public string QuickCaptureDefaultView { get; set; } = "Records";
 
+    /// <summary>Quick Capture tab style. Valid values: <c>"Pivot"</c>, <c>"Button"</c>.</summary>
+    public string QuickCaptureTabStyle { get; set; } = "Pivot";
+
     /// <summary>Where newly added Todo tasks are inserted. Valid values: <c>"Top"</c>, <c>"Bottom"</c>.</summary>
     public string TodoNewTaskPosition { get; set; } = "Top";
+
+    /// <summary>Todo tab style. Valid values: <c>"Pivot"</c>, <c>"Button"</c>.</summary>
+    public string TodoTabStyle { get; set; } = "Pivot";
 
     /// <summary>Default Todo filter used when the widget opens. Valid values: <c>"All"</c>, <c>"Today"</c>, <c>"Important"</c>, <c>"Completed"</c>.</summary>
     public string TodoDefaultFilter { get; set; } = "All";
@@ -78,6 +84,12 @@ public class AppSettings
 
     /// <summary>Whether Todo delete and clear-completed commands ask for confirmation first.</summary>
     public bool TodoConfirmBeforeDelete { get; set; }
+
+    /// <summary>Whether Todo due-date reminders are shown while DeskBox is running.</summary>
+    public bool TodoReminderEnabled { get; set; } = true;
+
+    /// <summary>Default reminder lead time in minutes before a Todo due date.</summary>
+    public int TodoDefaultReminderOffsetMinutes { get; set; } = 5;
 
     /// <summary>Whether the Music widget uses album artwork color as a soft backdrop.</summary>
     public bool MusicUseArtworkBackdrop { get; set; } = true;
@@ -188,9 +200,20 @@ public class AppSettings
     public bool ShowHoverButtons { get; set; } = true;
 
     /// <summary>
+    /// Comma-separated widget title hover actions. Valid values: <c>"LockPosition"</c>,
+    /// <c>"LockSize"</c>, <c>"Add"</c>, <c>"More"</c>, <c>"Delete"</c>.
+    /// </summary>
+    public string WidgetHoverButtonActions { get; set; } = "More,Delete";
+
+    /// <summary>
     /// Whether list view should show secondary file details under item names.
     /// </summary>
     public bool ShowListItemDetails { get; set; }
+
+    /// <summary>
+    /// Whether file widgets show full path tooltips when hovering items.
+    /// </summary>
+    public bool ShowFileItemPathTooltips { get; set; } = true;
 
     /// <summary>
     /// How files should be handled when dropped into a managed storage widget.

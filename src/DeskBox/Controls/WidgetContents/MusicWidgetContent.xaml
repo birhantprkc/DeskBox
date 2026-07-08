@@ -176,12 +176,13 @@
 
     <Grid
         x:Name="RootGrid"
-        Padding="0">
+        Padding="0"
+        PointerPressed="RootGrid_PointerPressed">
         <Border
             x:Name="ArtworkBackdrop"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            CornerRadius="10"
+            CornerRadius="{Binding ArtworkBackdropCornerRadius}"
             IsHitTestVisible="False"
             Visibility="{Binding ArtworkBackdropVisibility}">
             <Border.Background>
@@ -721,25 +722,27 @@
 
         <Border
             x:Name="InlineVolumePanel"
-            Width="54"
-            Height="126"
-            Padding="7,8,7,9"
+            Width="198"
+            Height="48"
+            Padding="10,8"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Background="#E8262626"
-            BorderBrush="#34FFFFFF"
+            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
-            CornerRadius="9"
+            CornerRadius="8"
+            PointerPressed="InlineVolumePanel_PointerPressed"
             Visibility="Collapsed">
-            <Grid RowSpacing="6">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+            <Grid ColumnSpacing="9">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
                 <TextBlock
-                    Grid.Row="0"
+                    Grid.Column="0"
                     HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
                     FontSize="{Binding CaptionTextSize}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
@@ -748,15 +751,15 @@
 
                 <Slider
                     x:Name="InlineSystemVolumeSlider"
-                    Grid.Row="1"
-                    Width="32"
-                    Height="80"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Stretch"
+                    Grid.Column="1"
+                    Height="28"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Center"
+                    IsThumbToolTipEnabled="False"
                     LargeChange="0.1"
                     Maximum="1"
                     Minimum="0"
-                    Orientation="Vertical"
+                    Orientation="Horizontal"
                     SmallChange="0.01"
                     StepFrequency="0.01"
                     Value="{Binding SystemVolume, Mode=TwoWay}"

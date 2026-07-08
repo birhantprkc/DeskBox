@@ -10,7 +10,7 @@ namespace DeskBox.Controls.WidgetContents;
 /// Content adapter for the future Todo widget. This keeps Todo in the shared
 /// content pipeline without making the widget kind user-creatable yet.
 /// </summary>
-public sealed class TodoWidgetContentAdapter : IWidgetContent
+public sealed class TodoWidgetContentAdapter : IWidgetContent, IWidgetAddActionContent
 {
     private readonly Func<TodoWidgetViewModel, FrameworkElement> _viewFactory;
     private FrameworkElement? _view;
@@ -76,5 +76,15 @@ public sealed class TodoWidgetContentAdapter : IWidgetContent
 
     public void OnDeactivated()
     {
+    }
+
+    public Task AddFromTitleButtonAsync()
+    {
+        if (View is TodoWidgetContent todoContent)
+        {
+            todoContent.OpenAddEditor();
+        }
+
+        return Task.CompletedTask;
     }
 }

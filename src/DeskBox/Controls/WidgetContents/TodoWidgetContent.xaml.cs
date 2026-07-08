@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 
 namespace DeskBox.Controls.WidgetContents;
@@ -16,12 +17,17 @@ namespace DeskBox.Controls.WidgetContents;
 public sealed partial class TodoWidgetContent : UserControl
 {
     private const int UndoToastMs = 4200;
+    private const int CopyToastMs = 900;
+    private const int CopyTapDelayMs = 210;
 
     private string? _draggedTodoItemId;
     private TodoItemViewModel? _editingItem;
     private TodoItemViewModel? _customDueDateItem;
     private MenuFlyout? _pendingConfirmFlyout;
+    private TimeSpan _customDueTime = new(23, 59, 0);
+    private string? _copySelectionAnchorId;
     private long _undoToastGeneration;
+    private long _copyTapGeneration;
     private bool _isAddingFromInlineEditor;
 
     private TextBox TodoEditTextBox => TodoInlineEditor.EditorTextBox;
@@ -44,6 +50,24 @@ public sealed partial class TodoWidgetContent : UserControl
         : this()
     {
         ViewModel = viewModel;
+    }
+
+    public void RevealReminderItem(string? itemId, bool preferTodayFilter)
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        var item = ViewModel.FocusReminderItem(itemId, preferTodayFilter);
+        RefreshFilterButtons();
+        TodoListView.Focus(FocusState.Programmatic);
+
+        if (item is not null)
+        {
+            _copySelectionAnchorId = item.Id;
+            TodoListView.ScrollIntoView(item);
+        }
     }
 
     public TodoWidgetViewModel? ViewModel
@@ -90,13 +114,14 @@ public sealed partial class TodoWidgetContent : UserControl
         }
 
         App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;
+        _copyTapGeneration++;
         CloseTodoEdit();
         CloseCustomDueDateOverlay();
     }
 
     private void TodoFilterSegmented_Loaded(object sender, RoutedEventArgs e)
     {
-        ApplySegmentedLayout();
+        ApplySegmentedStyle();
     }
 
     private void TodoFilterSegmented_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -106,18 +131,43 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private void ApplySegmentedLayout()
     {
-        WidgetSegmentedLayoutHelper.ApplyEqualItemWidths(TodoFilterSegmented);
+        if (ViewModel?.TabStyle == SettingsService.WidgetTabStyleButton)
+        {
+            WidgetSegmentedLayoutHelper.ApplyEqualItemWidths(TodoFilterSegmented);
+        }
+        else
+        {
+            WidgetSegmentedLayoutHelper.ApplyNaturalItemWidths(TodoFilterSegmented);
+        }
+    }
+
+    private void ApplySegmentedStyle()
+    {
+        if (TodoFilterSegmented is null)
+        {
+            return;
+        }
+
+        WidgetSegmentedStyleHelper.Apply(TodoFilterSegmented, ViewModel?.TabStyle);
+        ApplySegmentedLayout();
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(TodoWidgetViewModel.SelectedFilter))
         {
+            ClearCopySelection();
             RefreshFilterButtons();
+        }
+
+        if (e.PropertyName == nameof(TodoWidgetViewModel.TabStyle))
+        {
+            ApplySegmentedStyle();
         }
 
         if (e.PropertyName == nameof(TodoWidgetViewModel.SelectedColorFilter))
         {
+            ClearCopySelection();
             RefreshFilterButtons();
         }
 
@@ -166,8 +216,9 @@ public sealed partial class TodoWidgetContent : UserControl
         }
     }
 
-    private void ExpandInputButton_Click(object sender, RoutedEventArgs e)
+    public void OpenAddEditor()
     {
+        ClearCopySelection();
         CloseCustomDueDateOverlay();
         _editingItem = null;
         _isAddingFromInlineEditor = true;
@@ -176,6 +227,11 @@ public sealed partial class TodoWidgetContent : UserControl
         ApplyEditorVisualStyle();
         TodoInlineEditor.Visibility = Visibility.Visible;
         TodoInlineEditor.FocusEditor(moveCaretToEnd: true);
+    }
+
+    private void ExpandInputButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenAddEditor();
     }
 
     private void TodoFilterSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -331,7 +387,20 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private void TodoListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
-        _draggedTodoItemId = e.Items.OfType<TodoItemViewModel>().FirstOrDefault()?.Id;
+        if (HasCopySelection())
+        {
+            e.Cancel = true;
+            _draggedTodoItemId = null;
+            return;
+        }
+
+        var draggedItem = e.Items.OfType<TodoItemViewModel>().FirstOrDefault();
+        _draggedTodoItemId = draggedItem?.Id;
+        if (draggedItem is not null)
+        {
+            DeskBoxDragData.SetText(e.Data, draggedItem.Text, DeskBoxDragData.SourceTodo);
+            e.Data.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
+        }
     }
 
     private void TodoItem_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
@@ -367,6 +436,135 @@ public sealed partial class TodoWidgetContent : UserControl
         finally
         {
             _draggedTodoItemId = null;
+        }
+    }
+
+    private async void RootGrid_DragOver(object sender, DragEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_draggedTodoItemId))
+        {
+            return;
+        }
+
+        await HandleExternalTextDragOverAsync(e);
+    }
+
+    private async void TodoListView_DragOver(object sender, DragEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_draggedTodoItemId))
+        {
+            return;
+        }
+
+        await HandleExternalTextDragOverAsync(e);
+    }
+
+    private async Task HandleExternalTextDragOverAsync(DragEventArgs e)
+    {
+        if (ViewModel is null)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        var deferral = e.GetDeferral();
+        try
+        {
+            e.AcceptedOperation = await HasDroppedTodoTextAsync(e.DataView)
+                ? DataPackageOperation.Copy
+                : DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = e.AcceptedOperation != DataPackageOperation.None;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private async void RootGrid_Drop(object sender, DragEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_draggedTodoItemId))
+        {
+            return;
+        }
+
+        var deferral = e.GetDeferral();
+        try
+        {
+            string? text = await TryGetDroppedTodoTextAsync(e.DataView);
+            if (string.IsNullOrWhiteSpace(text) || ViewModel is null)
+            {
+                e.AcceptedOperation = DataPackageOperation.None;
+                return;
+            }
+
+            await ViewModel.AddItemAsync(text);
+            ShowUndoToast(
+                App.Current.LocalizationService.T("Todo.Dropped"),
+                durationMs: CopyToastMs,
+                clearUndoOnHide: false);
+            e.AcceptedOperation = DataPackageOperation.Copy;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Todo] Failed to import dropped text: {ex}");
+            ShowUndoToast(
+                App.Current.LocalizationService.T("Todo.DropFailed"),
+                durationMs: UndoToastMs,
+                clearUndoOnHide: false);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private static async Task<bool> HasDroppedTodoTextAsync(DataPackageView dataView)
+    {
+        string? text = await TryGetDroppedTodoTextAsync(dataView);
+        return !string.IsNullOrWhiteSpace(text);
+    }
+
+    private static async Task<string?> TryGetDroppedTodoTextAsync(DataPackageView dataView)
+    {
+        if (dataView.Contains(StandardDataFormats.StorageItems))
+        {
+            return null;
+        }
+
+        string? text = await DeskBoxDragData.TryGetTextAsync(dataView);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        text = text.Trim();
+        return text.Length <= QuickCaptureClipboardService.MaxClipboardTextCharacters
+            ? text
+            : text[..QuickCaptureClipboardService.MaxClipboardTextCharacters].Trim();
+    }
+
+    private void TodoListView_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        bool isCtrlPressed = Win32Helper.IsKeyPressed(VirtualKey.Control);
+        if (isCtrlPressed && e.Key == VirtualKey.A)
+        {
+            SelectAllVisibleTodoItems();
+            e.Handled = true;
+            return;
+        }
+
+        if (isCtrlPressed && e.Key == VirtualKey.C)
+        {
+            CopySelectedTodoItems();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == VirtualKey.Escape && HasCopySelection())
+        {
+            ClearCopySelection();
+            e.Handled = true;
         }
     }
 
@@ -411,8 +609,9 @@ public sealed partial class TodoWidgetContent : UserControl
         _ = localization;
     }
 
-    private void TodoItemText_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private void TodoItemContent_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        _copyTapGeneration++;
         if (ViewModel is null ||
             sender is not FrameworkElement element ||
             element.DataContext is not TodoItemViewModel item)
@@ -424,12 +623,68 @@ public sealed partial class TodoWidgetContent : UserControl
         e.Handled = true;
     }
 
+    private async void TodoItemContent_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element ||
+            element.DataContext is not TodoItemViewModel item)
+        {
+            return;
+        }
+
+        TodoListView.Focus(FocusState.Programmatic);
+        bool isCtrlPressed = Win32Helper.IsKeyPressed(VirtualKey.Control);
+        bool isShiftPressed = Win32Helper.IsKeyPressed(VirtualKey.Shift);
+        if (isCtrlPressed || isShiftPressed)
+        {
+            _copyTapGeneration++;
+            if (isShiftPressed)
+            {
+                SelectTodoRange(item);
+            }
+            else
+            {
+                ToggleTodoSelection(item);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (HasCopySelection())
+        {
+            ClearCopySelection();
+        }
+
+        long generation = ++_copyTapGeneration;
+        await Task.Delay(CopyTapDelayMs);
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (generation != _copyTapGeneration)
+            {
+                return;
+            }
+
+            CopyTodoItemText(item);
+        });
+
+        e.Handled = true;
+    }
+
     private void TodoItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (sender is not FrameworkElement element ||
             element.DataContext is not TodoItemViewModel item)
         {
             return;
+        }
+
+        TodoListView.Focus(FocusState.Programmatic);
+        if (!item.IsCopySelected)
+        {
+            ClearCopySelection();
+            item.IsCopySelected = true;
+            _copySelectionAnchorId = item.Id;
         }
 
         CreateItemFlyout(item, element).ShowAt(element, e.GetPosition(element));
@@ -440,6 +695,19 @@ public sealed partial class TodoWidgetContent : UserControl
     {
         var flyout = new MenuFlyout();
         var localization = App.Current.LocalizationService;
+        var selectedItems = GetSelectedCopyItemsInVisibleOrder();
+
+        if (selectedItems.Count > 1 && item.IsCopySelected)
+        {
+            var copySelectedItem = new MenuFlyoutItem
+            {
+                Text = localization.Format("Todo.Menu.CopySelected", selectedItems.Count),
+                Icon = new FontIcon { Glyph = "\uE8C8" }
+            };
+            copySelectedItem.Click += (_, _) => CopySelectedTodoItems(selectedItems);
+            flyout.Items.Add(copySelectedItem);
+            flyout.Items.Add(new MenuFlyoutSeparator());
+        }
 
         var editItem = new MenuFlyoutItem
         {
@@ -448,6 +716,14 @@ public sealed partial class TodoWidgetContent : UserControl
         };
         editItem.Click += (_, _) => BeginItemEdit(item);
         flyout.Items.Add(editItem);
+
+        var copyItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Todo.Menu.Copy"),
+            Icon = new FontIcon { Glyph = "\uE8C8" }
+        };
+        copyItem.Click += (_, _) => CopyTodoItemText(item);
+        flyout.Items.Add(copyItem);
 
         var completeItem = new MenuFlyoutItem
         {
@@ -592,6 +868,181 @@ public sealed partial class TodoWidgetContent : UserControl
         return dueItem;
     }
 
+    private void CopyTodoItemText(TodoItemViewModel item)
+    {
+        string text = TodoClipboardFormatter.FormatSingleText(item);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            SetClipboardText(text);
+            ShowUndoToast(
+                App.Current.LocalizationService.T("Todo.Copied"),
+                durationMs: CopyToastMs,
+                clearUndoOnHide: false);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Todo] Failed to copy item {item.Id}: {ex}");
+            ShowUndoToast(
+                App.Current.LocalizationService.T("Todo.CopyFailed"),
+                durationMs: UndoToastMs,
+                clearUndoOnHide: false);
+        }
+    }
+
+    private void CopySelectedTodoItems()
+    {
+        CopySelectedTodoItems(GetSelectedCopyItemsInVisibleOrder());
+    }
+
+    private void CopySelectedTodoItems(IReadOnlyList<TodoItemViewModel> selectedItems)
+    {
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        if (selectedItems.Count == 1)
+        {
+            CopyTodoItemText(selectedItems[0]);
+            return;
+        }
+
+        var localization = App.Current.LocalizationService;
+        string text = TodoClipboardFormatter.FormatBatch(selectedItems, localization);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            SetClipboardText(text);
+            ShowUndoToast(
+                localization.Format("Todo.CopiedCount", selectedItems.Count),
+                durationMs: CopyToastMs,
+                clearUndoOnHide: false);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Todo] Failed to copy {selectedItems.Count} selected items: {ex}");
+            ShowUndoToast(
+                localization.T("Todo.CopyFailed"),
+                durationMs: UndoToastMs,
+                clearUndoOnHide: false);
+        }
+    }
+
+    private static void SetClipboardText(string text)
+    {
+        var dataPackage = new DataPackage
+        {
+            RequestedOperation = DataPackageOperation.Copy
+        };
+        dataPackage.SetText(text);
+        Clipboard.SetContent(dataPackage);
+    }
+
+    private void ToggleTodoSelection(TodoItemViewModel item)
+    {
+        item.IsCopySelected = !item.IsCopySelected;
+        _copySelectionAnchorId = item.Id;
+    }
+
+    private void SelectTodoRange(TodoItemViewModel item)
+    {
+        if (ViewModel is null || ViewModel.VisibleItems.Count == 0)
+        {
+            return;
+        }
+
+        int endIndex = ViewModel.VisibleItems.IndexOf(item);
+        if (endIndex < 0)
+        {
+            return;
+        }
+
+        int startIndex = endIndex;
+        if (!string.IsNullOrWhiteSpace(_copySelectionAnchorId))
+        {
+            for (int index = 0; index < ViewModel.VisibleItems.Count; index++)
+            {
+                if (string.Equals(ViewModel.VisibleItems[index].Id, _copySelectionAnchorId, StringComparison.Ordinal))
+                {
+                    startIndex = index;
+                    break;
+                }
+            }
+        }
+
+        int first = Math.Min(startIndex, endIndex);
+        int last = Math.Max(startIndex, endIndex);
+        ClearCopySelection();
+        for (int index = first; index <= last; index++)
+        {
+            ViewModel.VisibleItems[index].IsCopySelected = true;
+        }
+
+        _copySelectionAnchorId = ViewModel.VisibleItems[startIndex].Id;
+    }
+
+    private void SelectAllVisibleTodoItems()
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        foreach (var item in ViewModel.Items)
+        {
+            item.IsCopySelected = false;
+        }
+
+        foreach (var item in ViewModel.VisibleItems)
+        {
+            item.IsCopySelected = true;
+        }
+
+        _copySelectionAnchorId = ViewModel.VisibleItems.FirstOrDefault()?.Id;
+    }
+
+    private void ClearCopySelection()
+    {
+        if (ViewModel is null)
+        {
+            _copySelectionAnchorId = null;
+            return;
+        }
+
+        foreach (var item in ViewModel.Items)
+        {
+            item.IsCopySelected = false;
+        }
+
+        _copySelectionAnchorId = null;
+    }
+
+    private bool HasCopySelection()
+    {
+        return ViewModel?.Items.Any(item => item.IsCopySelected) == true;
+    }
+
+    private IReadOnlyList<TodoItemViewModel> GetSelectedCopyItemsInVisibleOrder()
+    {
+        if (ViewModel is null)
+        {
+            return [];
+        }
+
+        return ViewModel.VisibleItems
+            .Where(item => item.IsCopySelected)
+            .ToList();
+    }
+
     private Task PickCustomDueDateAsync(TodoItemViewModel item)
     {
         if (ViewModel is null)
@@ -602,8 +1053,10 @@ public sealed partial class TodoWidgetContent : UserControl
         CloseTodoEdit();
         _pendingConfirmFlyout?.Hide();
         _customDueDateItem = item;
+        DateTimeOffset dueDate = item.DueDate ?? GetDefaultCustomDueDate();
         CustomDueDatePicker.MinDate = DateTimeOffset.Now.Date;
-        CustomDueDatePicker.Date = item.DueDate ?? DateTimeOffset.Now;
+        CustomDueDatePicker.Date = dueDate;
+        SetCustomDueTime(dueDate);
         ApplyLocalizedText();
         ApplyEditorVisualStyle();
         CustomDueDateOverlay.Visibility = Visibility.Visible;
@@ -616,6 +1069,26 @@ public sealed partial class TodoWidgetContent : UserControl
         CloseCustomDueDateOverlay();
     }
 
+    private void CustomDueTimeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var flyout = new TimePickerFlyout
+        {
+            ClockIdentifier = "24HourClock",
+            MinuteIncrement = 1,
+            Time = _customDueTime
+        };
+        flyout.TimePicked += (_, args) =>
+        {
+            _customDueTime = args.NewTime;
+            UpdateCustomDueTimeText();
+        };
+
+        flyout.ShowAt(CustomDueTimeButton, new FlyoutShowOptions
+        {
+            Placement = FlyoutPlacementMode.Top
+        });
+    }
+
     private async void CustomDueDateSaveButton_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel is null || _customDueDateItem is null)
@@ -626,8 +1099,9 @@ public sealed partial class TodoWidgetContent : UserControl
 
         string itemId = _customDueDateItem.Id;
         DateTimeOffset selectedDate = CustomDueDatePicker.Date ?? DateTimeOffset.Now;
+        DateTimeOffset selectedDueDate = CombineCustomDueDateAndTime(selectedDate);
         CloseCustomDueDateOverlay();
-        await ViewModel.SetDueDateAsync(itemId, selectedDate);
+        await ViewModel.SetDueDateAsync(itemId, selectedDueDate);
     }
 
     private void CloseCustomDueDateOverlay()
@@ -637,6 +1111,42 @@ public sealed partial class TodoWidgetContent : UserControl
         {
             CustomDueDateOverlay.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void SetCustomDueTime(DateTimeOffset dueDate)
+    {
+        DateTimeOffset localDueDate = dueDate.ToLocalTime();
+        _customDueTime = new TimeSpan(localDueDate.Hour, localDueDate.Minute, 0);
+        UpdateCustomDueTimeText();
+    }
+
+    private void UpdateCustomDueTimeText()
+    {
+        if (CustomDueTimeText is not null)
+        {
+            CustomDueTimeText.Text = $"{_customDueTime.Hours:00}:{_customDueTime.Minutes:00}";
+        }
+    }
+
+    private DateTimeOffset CombineCustomDueDateAndTime(DateTimeOffset selectedDate)
+    {
+        DateTimeOffset localDate = selectedDate.ToLocalTime();
+        var localDateTime = new DateTime(
+            localDate.Year,
+            localDate.Month,
+            localDate.Day,
+            _customDueTime.Hours,
+            _customDueTime.Minutes,
+            0,
+            DateTimeKind.Local);
+
+        return new DateTimeOffset(localDateTime);
+    }
+
+    private static DateTimeOffset GetDefaultCustomDueDate()
+    {
+        DateTime today = DateTime.Now.Date;
+        return new DateTimeOffset(new DateTime(today.Year, today.Month, today.Day, 23, 59, 0, DateTimeKind.Local));
     }
 
     private async Task DeleteItemAsync(TodoItemViewModel item, FrameworkElement anchor)
@@ -681,6 +1191,7 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private void BeginItemEdit(TodoItemViewModel item)
     {
+        ClearCopySelection();
         CloseCustomDueDateOverlay();
         _isAddingFromInlineEditor = false;
         _editingItem = item;
@@ -841,78 +1352,39 @@ public sealed partial class TodoWidgetContent : UserControl
         }
 
         bool isDark = ActualTheme == ElementTheme.Dark;
-        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor;
-        var overlayBackground = BuildAccentSurfaceColor(
-            isDark,
-            accentColor,
-            isDark ? ColorHelper.FromArgb(0xFF, 0x1F, 0x24, 0x2A) : ColorHelper.FromArgb(0xFF, 0xFB, 0xFC, 0xFD),
-            accentMix: isDark ? 0.06 : 0.03,
-            overlayMix: isDark ? 0.03 : 0.02);
-        var inputBackground = BuildAccentSurfaceColor(
-            isDark,
-            accentColor,
-            isDark ? ColorHelper.FromArgb(0xFF, 0x18, 0x1D, 0x22) : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
-            accentMix: isDark ? 0.04 : 0.02,
-            overlayMix: isDark ? 0.02 : 0.0);
-
-        TodoInlineEditor.OverlaySurface.Background = new SolidColorBrush(WithAlpha(overlayBackground, 0xFF));
-        TodoInlineEditor.OverlaySurface.BorderBrush = new SolidColorBrush(isDark
-            ? ColorHelper.FromArgb(0x52, 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb(0x24, 0x00, 0x00, 0x00));
+        TodoInlineEditor.OverlaySurface.Background = new SolidColorBrush(GetNeutralOverlaySurfaceColor(isDark));
+        TodoInlineEditor.OverlaySurface.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         TodoInlineEditor.OverlaySurface.BorderThickness = new Thickness(0.8);
-        TodoEditTextBox.Background = new SolidColorBrush(WithAlpha(inputBackground, 0xFF));
-        TodoEditTextBox.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x52 : (byte)0x3A));
+        TodoEditTextBox.Background = new SolidColorBrush(GetNeutralInputSurfaceColor(isDark));
+        TodoEditTextBox.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         TodoEditTextBox.Foreground = GetBrushResourceOrFallback(
             "TextFillColorPrimaryBrush",
             isDark ? Colors.White : Colors.Black);
-        ApplyEditorCommandButtonTheme(TodoEditCancelButton, isDark, accentColor, isPrimary: false);
-        ApplyEditorCommandButtonTheme(TodoEditSaveButton, isDark, accentColor, isPrimary: true);
-        ApplyActionButtonTheme(TodoEditCloseButton, isDark, accentColor);
 
-        CustomDueDateOverlay.Background = new SolidColorBrush(WithAlpha(overlayBackground, 0xFF));
-        CustomDueDateOverlay.BorderBrush = new SolidColorBrush(isDark
-            ? ColorHelper.FromArgb(0x52, 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb(0x24, 0x00, 0x00, 0x00));
+        CustomDueDateOverlay.Background = new SolidColorBrush(GetNeutralOverlaySurfaceColor(isDark));
+        CustomDueDateOverlay.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         CustomDueDateOverlay.BorderThickness = new Thickness(0.8);
-        ApplyEditorCommandButtonTheme(CustomDueDateCancelButton, isDark, accentColor, isPrimary: false);
-        ApplyEditorCommandButtonTheme(CustomDueDateSaveButton, isDark, accentColor, isPrimary: true);
-        ApplyActionButtonTheme(CustomDueDateCloseButton, isDark, accentColor);
     }
 
-    private static void ApplyEditorCommandButtonTheme(Button button, bool isDark, Windows.UI.Color accentColor, bool isPrimary)
+    private static Windows.UI.Color GetNeutralOverlaySurfaceColor(bool isDark)
     {
-        var transparent = new SolidColorBrush(Colors.Transparent);
-        var background = new SolidColorBrush(WithAlpha(
-            BuildAccentSurfaceColor(
-                isDark,
-                accentColor,
-                isDark ? ColorHelper.FromArgb(0xFF, 0x24, 0x29, 0x30) : ColorHelper.FromArgb(0xFF, 0xFA, 0xFB, 0xFD),
-                accentMix: isPrimary ? (isDark ? 0.16 : 0.08) : (isDark ? 0.04 : 0.02),
-                overlayMix: isDark ? 0.02 : 0.01),
-            0xFF));
-        var hoverBackground = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x24 : (byte)0x18));
-        var pressedBackground = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x36 : (byte)0x24));
-        var border = new SolidColorBrush(WithAlpha(accentColor, isPrimary ? (isDark ? (byte)0x64 : (byte)0x42) : (byte)0x28));
-        var foreground = new SolidColorBrush(isPrimary
-            ? WithAlpha(accentColor, isDark ? (byte)0xF0 : (byte)0xE2)
-            : isDark
-                ? ColorHelper.FromArgb(0xE8, 0xF4, 0xF7, 0xFB)
-                : ColorHelper.FromArgb(0xE8, 0x1D, 0x1F, 0x23));
+        return isDark
+            ? ColorHelper.FromArgb(0xFF, 0x2A, 0x30, 0x38)
+            : ColorHelper.FromArgb(0xFF, 0xFB, 0xFC, 0xFD);
+    }
 
-        button.Background = background;
-        button.BorderBrush = border;
-        button.Foreground = foreground;
-        button.Resources["ButtonBackground"] = background;
-        button.Resources["ButtonBackgroundPointerOver"] = hoverBackground;
-        button.Resources["ButtonBackgroundPressed"] = pressedBackground;
-        button.Resources["ButtonBackgroundDisabled"] = transparent;
-        button.Resources["ButtonBorderBrush"] = border;
-        button.Resources["ButtonBorderBrushPointerOver"] = border;
-        button.Resources["ButtonBorderBrushPressed"] = border;
-        button.Resources["ButtonBorderBrushDisabled"] = transparent;
-        button.Resources["ButtonForeground"] = foreground;
-        button.Resources["ButtonForegroundPointerOver"] = foreground;
-        button.Resources["ButtonForegroundPressed"] = foreground;
+    private static Windows.UI.Color GetNeutralInputSurfaceColor(bool isDark)
+    {
+        return isDark
+            ? ColorHelper.FromArgb(0xFF, 0x22, 0x28, 0x30)
+            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+    }
+
+    private static Brush GetNeutralOverlayBorderBrush(bool isDark)
+    {
+        return GetBrushResourceOrFallback(
+            "CardStrokeColorDefaultBrush",
+            isDark ? ColorHelper.FromArgb(0x52, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x24, 0x00, 0x00, 0x00));
     }
 
     private static void ApplyActionButtonTheme(Button button, bool isDark, Windows.UI.Color accentColor)
@@ -1094,7 +1566,11 @@ public sealed partial class TodoWidgetContent : UserControl
         HideUndoToast(clearUndo: true);
     }
 
-    private void ShowUndoToast(string text, string? actionText = null, int durationMs = UndoToastMs)
+    private void ShowUndoToast(
+        string text,
+        string? actionText = null,
+        int durationMs = UndoToastMs,
+        bool clearUndoOnHide = true)
     {
         long generation = ++_undoToastGeneration;
         UndoToastText.Text = text;
@@ -1104,17 +1580,17 @@ public sealed partial class TodoWidgetContent : UserControl
             : Visibility.Visible;
         UndoToast.IsHitTestVisible = !string.IsNullOrWhiteSpace(actionText);
         UndoToast.Opacity = 1;
-        _ = HideUndoToastAfterDelayAsync(generation, durationMs);
+        _ = HideUndoToastAfterDelayAsync(generation, durationMs, clearUndoOnHide);
     }
 
-    private async Task HideUndoToastAfterDelayAsync(long generation, int durationMs)
+    private async Task HideUndoToastAfterDelayAsync(long generation, int durationMs, bool clearUndo)
     {
         await Task.Delay(durationMs);
         DispatcherQueue.TryEnqueue(() =>
         {
             if (generation == _undoToastGeneration)
             {
-                HideUndoToast(clearUndo: true);
+                HideUndoToast(clearUndo);
             }
         });
     }

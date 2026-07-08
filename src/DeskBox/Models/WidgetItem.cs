@@ -13,67 +13,67 @@ public partial class WidgetItem : ObservableObject
 {
     /// <summary>Display name (typically the filename without extension for shortcuts).</summary>
     [ObservableProperty]
-    private string _name = string.Empty;
+    public partial string Name { get; set; } = string.Empty;
 
     /// <summary>Absolute path to the item on disk.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FullPath))]
-    private string _path = string.Empty;
+    public partial string Path { get; set; } = string.Empty;
 
     public string FullPath => Path;
 
     /// <summary>Resolved target path when the item is a .lnk shortcut.</summary>
     [ObservableProperty]
-    private string _targetPath = string.Empty;
+    public partial string TargetPath { get; set; } = string.Empty;
 
     /// <summary>Thumbnail / icon image for display in the widget.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IconVisibility))]
     [NotifyPropertyChangedFor(nameof(FallbackIconVisibility))]
-    private BitmapImage? _icon;
+    public partial BitmapImage? Icon { get; set; }
 
     /// <summary>File size in bytes (0 for folders).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
-    private long _fileSize;
+    public partial long FileSize { get; set; }
 
     /// <summary>Number of visible direct children when this item represents a folder.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
-    private int _folderItemCount;
+    public partial int FolderItemCount { get; set; }
 
     /// <summary>Whether the visible child count has been loaded for a folder item.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
-    private bool _isFolderItemCountLoaded = true;
+    public partial bool IsFolderItemCountLoaded { get; set; } = true;
 
     /// <summary>Last modification timestamp.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
-    private DateTime _lastModified;
+    public partial DateTime LastModified { get; set; }
 
     /// <summary>Whether this item is a .lnk shortcut file.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FallbackGlyph))]
-    private bool _isShortcut;
+    public partial bool IsShortcut { get; set; }
 
     /// <summary>Whether this item represents a directory.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SecondaryInfo))]
     [NotifyPropertyChangedFor(nameof(FallbackGlyph))]
-    private bool _isFolder;
+    public partial bool IsFolder { get; set; }
 
     /// <summary>Display order within the parent widget.</summary>
     [ObservableProperty]
-    private int _sortOrder;
+    public partial int SortOrder { get; set; }
 
     /// <summary>Whether the item is currently selected inside the widget.</summary>
     [ObservableProperty]
-    private bool _isSelected;
+    public partial bool IsSelected { get; set; }
 
     /// <summary>Whether the item is currently marked as cut.</summary>
     [ObservableProperty]
-    private bool _isCut;
+    public partial bool IsCut { get; set; }
 
     public string SecondaryInfo
     {

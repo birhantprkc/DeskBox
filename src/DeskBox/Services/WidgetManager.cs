@@ -1,5 +1,6 @@
 using DeskBox.Models;
 using DeskBox.Helpers;
+using DeskBox.Controls.WidgetContents;
 using DeskBox.ViewModels;
 using DeskBox.Views;
 using Microsoft.UI.Dispatching;
@@ -628,6 +629,31 @@ public sealed class WidgetManager
         await _settingsService.SaveAsync();
 
         return await CreateContentWidgetFromConfigAsync(config, revealAfterCreate: true);
+    }
+
+    public async Task ShowTodoReminderTargetAsync(string? widgetId, string? itemId, bool preferTodayFilter)
+    {
+        ContentWidgetWindow? window = null;
+        if (!string.IsNullOrWhiteSpace(widgetId))
+        {
+            var config = _settingsService.Settings.Widgets.FirstOrDefault(widget =>
+                widget.WidgetKind == WidgetKind.Todo &&
+                string.Equals(widget.Id, widgetId, StringComparison.Ordinal) &&
+                !IsDeleted(widget.Id));
+
+            if (config is not null)
+            {
+                SetFeatureWidgetEnabledState(WidgetKind.Todo, true);
+                await ShowContentWidgetAsync(config, reveal: true);
+                _contentWidgets.TryGetValue(config.Id, out window);
+            }
+        }
+
+        window ??= await CreateTodoWidgetAsync();
+        if (window.CurrentContent?.View is TodoWidgetContent todoContent)
+        {
+            todoContent.RevealReminderItem(itemId, preferTodayFilter);
+        }
     }
 
     private string GetDefaultFeatureWidgetTitle(WidgetKind kind, WidgetContentDescriptor descriptor)

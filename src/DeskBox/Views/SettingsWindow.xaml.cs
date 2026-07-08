@@ -31,6 +31,7 @@ public sealed partial class SettingsWindow : Window
     private const double NarrowTitleThreshold = 560;
     private const double NavigationCompactThreshold = 760;
     private static readonly TimeSpan ResizeSettleDelay = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan SectionLayoutSettleDelay = TimeSpan.FromMilliseconds(90);
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcDestroy = 0x0082;
     private static readonly UIntPtr SettingsWindowSubclassId = new(1);
@@ -44,6 +45,7 @@ public sealed partial class SettingsWindow : Window
     private readonly List<Grid> _metricRows = [];
     private readonly HashSet<Slider> _pressedAppearanceSliders = [];
     private readonly DispatcherTimer _resizeSettleTimer = new() { Interval = ResizeSettleDelay };
+    private readonly DispatcherTimer _sectionLayoutSettleTimer = new() { Interval = SectionLayoutSettleDelay };
     private bool _isSubclassInstalled;
     private bool _isAppearanceSliderDragging;
     private bool _isRecordingHotkey;
@@ -146,11 +148,14 @@ public sealed partial class SettingsWindow : Window
         };
 
         _resizeSettleTimer.Tick += ResizeSettleTimer_Tick;
+        _sectionLayoutSettleTimer.Tick += SectionLayoutSettleTimer_Tick;
 
         Closed += (_, _) =>
         {
             _resizeSettleTimer.Stop();
             _resizeSettleTimer.Tick -= ResizeSettleTimer_Tick;
+            _sectionLayoutSettleTimer.Stop();
+            _sectionLayoutSettleTimer.Tick -= SectionLayoutSettleTimer_Tick;
             Win32Helper.ClearWindowTopMost(_hWnd);
             RemoveMinimumSizeHook();
             _themeService.AppearanceChanged -= OnAppearanceChanged;
@@ -283,8 +288,7 @@ public sealed partial class SettingsWindow : Window
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             PageScroller.ChangeView(null, 0, null, disableAnimation: true);
-            CollectResponsiveRows(SettingsRoot);
-            UpdateResponsiveLayout(GetWindowWidth());
+            RestartSectionLayoutSettleTimer();
         });
     }
 
@@ -387,11 +391,20 @@ public sealed partial class SettingsWindow : Window
             case "QuickCaptureDefaultView":
                 ViewModel.SelectedQuickCaptureDefaultView = ViewModel.AvailableQuickCaptureDefaultViews[combo.SelectedIndex];
                 break;
+            case "QuickCaptureTabStyle":
+                ViewModel.SelectedQuickCaptureTabStyle = ViewModel.AvailableWidgetTabStyles[combo.SelectedIndex];
+                break;
             case "TodoNewTaskPosition":
                 ViewModel.SelectedTodoNewTaskPosition = ViewModel.AvailableTodoNewTaskPositions[combo.SelectedIndex];
                 break;
             case "TodoDefaultFilter":
                 ViewModel.SelectedTodoDefaultFilter = ViewModel.AvailableTodoDefaultFilters[combo.SelectedIndex];
+                break;
+            case "TodoTabStyle":
+                ViewModel.SelectedTodoTabStyle = ViewModel.AvailableWidgetTabStyles[combo.SelectedIndex];
+                break;
+            case "TodoReminderOffset":
+                ViewModel.SelectedTodoReminderOffsetMinutes = ViewModel.AvailableTodoReminderOffsetMinutes[combo.SelectedIndex];
                 break;
             case "MusicRhythmStyle":
                 ViewModel.SelectedMusicRhythmStyle = ViewModel.AvailableMusicRhythmStyles[combo.SelectedIndex];
@@ -489,6 +502,119 @@ public sealed partial class SettingsWindow : Window
         }
 
         flyout.ShowAt(button);
+    }
+
+    private void HoverButtonActionsDropDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DropDownButton button)
+        {
+            return;
+        }
+
+        double flyoutWidth = Math.Max(220, Math.Max(button.ActualWidth, button.MinWidth));
+        var panel = new StackPanel
+        {
+            Width = flyoutWidth,
+            Padding = new Thickness(6),
+            Spacing = 2
+        };
+
+        foreach (string action in ViewModel.AvailableWidgetHoverButtonActions)
+        {
+            panel.Children.Add(CreateHoverButtonActionFlyoutRow(action, flyoutWidth));
+        }
+
+        var flyout = new Flyout
+        {
+            Content = panel,
+            Placement = FlyoutPlacementMode.BottomEdgeAlignedRight,
+            ShouldConstrainToRootBounds = false,
+            FlyoutPresenterStyle = new Style(typeof(FlyoutPresenter))
+            {
+                Setters =
+                {
+                    new Setter(Control.PaddingProperty, new Thickness(0)),
+                    new Setter(FrameworkElement.MinWidthProperty, flyoutWidth)
+                }
+            }
+        };
+        flyout.ShowAt(button);
+    }
+
+    private Button CreateHoverButtonActionFlyoutRow(string action, double flyoutWidth)
+    {
+        var checkIcon = new FontIcon
+        {
+            Width = 18,
+            FontSize = 13,
+            Glyph = "\uE73E",
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = ViewModel.IsHoverButtonActionSelected(action)
+                ? Visibility.Visible
+                : Visibility.Collapsed
+        };
+        var textBlock = new TextBlock
+        {
+            Text = ViewModel.GetHoverButtonActionDisplayName(action),
+            FontSize = 13,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var rowContent = new Grid
+        {
+            ColumnSpacing = 8
+        };
+        rowContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
+        rowContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(checkIcon, 0);
+        Grid.SetColumn(textBlock, 1);
+        rowContent.Children.Add(checkIcon);
+        rowContent.Children.Add(textBlock);
+
+        var rowButton = new Button
+        {
+            Tag = action,
+            Content = rowContent,
+            Width = flyoutWidth - 12,
+            MinHeight = 34,
+            Padding = new Thickness(10, 0, 10, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Style = (Style)Application.Current.Resources["SubtleButtonStyle"],
+            Opacity = ViewModel.CanToggleHoverButtonAction(action) ? 1.0 : 0.48
+        };
+        rowButton.Click += (_, _) =>
+        {
+            if (!ViewModel.CanToggleHoverButtonAction(action))
+            {
+                return;
+            }
+
+            ViewModel.ToggleHoverButtonAction(action);
+            RefreshHoverButtonActionsFlyout((StackPanel)rowButton.Parent);
+        };
+        return rowButton;
+    }
+
+    private void RefreshHoverButtonActionsFlyout(StackPanel panel)
+    {
+        foreach (var child in panel.Children.OfType<Button>())
+        {
+            if (child.Tag is not string action)
+            {
+                continue;
+            }
+
+            child.Opacity = ViewModel.CanToggleHoverButtonAction(action) ? 1.0 : 0.48;
+            if (child.Content is Grid rowContent &&
+                rowContent.Children.OfType<FontIcon>().FirstOrDefault() is FontIcon checkIcon)
+            {
+                checkIcon.Visibility = ViewModel.IsHoverButtonActionSelected(action)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+        }
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1239,9 +1365,9 @@ public sealed partial class SettingsWindow : Window
 
     private void OpenManualUpdateDownloadButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(ViewModel.ManualUpdateDownloadUrl))
+        if (!string.IsNullOrWhiteSpace(ViewModel.UpdateFallbackUrl))
         {
-            Win32Helper.OpenFile(ViewModel.ManualUpdateDownloadUrl);
+            Win32Helper.OpenFile(ViewModel.UpdateFallbackUrl);
         }
     }
 
@@ -1972,6 +2098,20 @@ public sealed partial class SettingsWindow : Window
     {
         _resizeSettleTimer.Stop();
         _resizeSettleTimer.Start();
+    }
+
+    private void RestartSectionLayoutSettleTimer()
+    {
+        _sectionLayoutSettleTimer.Stop();
+        _sectionLayoutSettleTimer.Start();
+    }
+
+    private void SectionLayoutSettleTimer_Tick(object? sender, object e)
+    {
+        _sectionLayoutSettleTimer.Stop();
+
+        CollectResponsiveRows(SettingsRoot);
+        UpdateResponsiveLayout(GetWindowWidth());
     }
 
     private void ResizeSettleTimer_Tick(object? sender, object e)

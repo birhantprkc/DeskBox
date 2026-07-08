@@ -88,11 +88,12 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         ContentWidgetShell.TitleIconKind = WidgetTitleIconKindNames.FromWidgetKind(_config.WidgetKind);
         ContentWidgetShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
         ContentWidgetShell.IsTitleEditable = true;
+        ApplyLocalizedTitleActionTooltips();
 
         ConfigureWindow();
         ApplyTitleBarLayout();
         SetupEventHandlers();
-        _ = _contentHost.SetContentAsync(content);
+        _ = LoadContentAsync(content);
 
         App.Current.LocalizationService.LanguageChanged += OnLanguageChanged;
     }
@@ -100,6 +101,23 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
     private void OnLanguageChanged()
     {
         _titleViewModel.RefreshDisplayName();
+        ApplyLocalizedTitleActionTooltips();
+    }
+
+    private async Task LoadContentAsync(IWidgetContent content)
+    {
+        await _contentHost.SetContentAsync(content);
+        ApplyTitleActionButtonConfiguration();
+    }
+
+    private void ApplyLocalizedTitleActionTooltips()
+    {
+        var localization = App.Current.LocalizationService;
+        ToolTipService.SetToolTip(ContentWidgetShell.PositionLockActionButton, localization.T("Widget.LockPosition"));
+        ToolTipService.SetToolTip(ContentWidgetShell.SizeLockActionButton, localization.T("Widget.LockSize"));
+        ToolTipService.SetToolTip(ContentWidgetShell.AddActionButton, localization.T("Widget.Tooltip.Add"));
+        ToolTipService.SetToolTip(ContentWidgetShell.MoreActionButton, localization.T("Widget.Tooltip.More"));
+        ToolTipService.SetToolTip(ContentWidgetShell.CloseActionButton, localization.T("Widget.Tooltip.DeleteWidget"));
     }
 
     public IntPtr WindowHandle => _hWnd;
@@ -109,6 +127,8 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
     public Windows.Foundation.Rect AnimationBounds => _diagnostics.AnimationBounds;
 
     public WidgetConfig Config => _config;
+
+    internal IWidgetContent? CurrentContent => _contentHost.CurrentContent;
 
     private bool _isVisibleOnDesktop;
     private bool _isAtDesktopLayer;
@@ -140,6 +160,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         ApplyWindowCornerPreference();
         ApplyBackdropPreference();
         ApplySurfaceStyle();
+        ContentWidgetShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
         ApplyTitleBarLayout();
         _contentHost.ApplyAppearance();
     }
@@ -531,17 +552,68 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         ContentWidgetShell.ChromeMode = chromeMode;
         ContentWidgetShell.TitleIconElement.IconSize = metrics.TitleIconSize;
         ContentWidgetShell.TitleTextElement.FontSize = metrics.TitleTextSize;
+        ApplyTitleActionButtonConfiguration();
+        ApplyLockActionIconState();
 
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(ContentWidgetShell.PositionLockActionButton, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(ContentWidgetShell.SizeLockActionButton, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionButton(ContentWidgetShell.AddActionButton, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionButton(ContentWidgetShell.MoreActionButton, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionButton(ContentWidgetShell.CloseActionButton, metrics);
 
+        WidgetActionIconHelper.ApplyPairSize(
+            ContentWidgetShell.PositionLockActionIcon,
+            ContentWidgetShell.PositionLockFilledActionIcon,
+            metrics);
+        WidgetActionIconHelper.ApplyPairSize(
+            ContentWidgetShell.SizeLockActionIcon,
+            ContentWidgetShell.SizeLockFilledActionIcon,
+            metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(ContentWidgetShell.AddActionIcon, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(ContentWidgetShell.MoreActionIcon, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(ContentWidgetShell.CloseActionIcon, metrics);
 
         ContentWidgetShell.SetTitleBarRowHeight(metrics.RowHeight);
         ContentWidgetShell.SetTitleBarPadding(WidgetTitleBarMetricsCalculator.CreateOuterPadding(chromeMode));
+    }
+
+    private void ApplyTitleActionButtonConfiguration()
+    {
+        var actions = SettingsService.ParseWidgetHoverButtonActions(_settingsService.Settings.WidgetHoverButtonActions);
+        bool contentCanAdd = _contentHost.CurrentContent is IWidgetAddActionContent;
+        ContentWidgetShell.PositionLockActionButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionLockPosition)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ContentWidgetShell.SizeLockActionButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionLockSize)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ContentWidgetShell.ShowAddButton = contentCanAdd &&
+            actions.Contains(SettingsService.WidgetHoverActionAdd);
+        ContentWidgetShell.MoreActionButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionMore)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ContentWidgetShell.CloseActionButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionDelete)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void ApplyLockActionIconState()
+    {
+        WidgetActionIconHelper.ApplyLockState(
+            ContentWidgetShell.PositionLockActionIcon,
+            ContentWidgetShell.PositionLockFilledActionIcon,
+            _config.IsPositionLocked,
+            ContentWidgetShell.SizeLockActionIcon,
+            ContentWidgetShell.SizeLockFilledActionIcon,
+            _config.IsSizeLocked);
+    }
+
+    private async void AddButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_contentHost.CurrentContent is IWidgetAddActionContent addActionContent)
+        {
+            await addActionContent.AddFromTitleButtonAsync();
+        }
     }
 
     private void ShowWithoutActivation(bool persistVisibility)
@@ -1233,6 +1305,18 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         ShowFlyoutWithInteraction(CreateMoreFlyout(), target);
     }
 
+    private void PositionLockButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetPositionLocked(!_config.IsPositionLocked);
+        ApplyLockActionIconState();
+    }
+
+    private void SizeLockButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetSizeLocked(!_config.IsSizeLocked);
+        ApplyLockActionIconState();
+    }
+
     private void TitleBarGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         ShowFlyoutWithInteraction(CreateMoreFlyout(), ContentWidgetShell.TitleBar, e.GetPosition(ContentWidgetShell.TitleBar));
@@ -1262,7 +1346,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
             SetPositionLocked));
         flyout.Items.Add(CreateToggleMenuItem(
             App.Current.LocalizationService.T("Widget.LockSize"),
-            "\uE740",
+            "\uE9CE",
             _config.IsSizeLocked,
             SetSizeLocked));
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -1380,6 +1464,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
 
         _config.IsPositionLocked = value;
         _settingsService.UpdateWidget(_config);
+        ApplyLockActionIconState();
     }
 
     private void SetSizeLocked(bool value)
@@ -1391,6 +1476,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
 
         _config.IsSizeLocked = value;
         _settingsService.UpdateWidget(_config);
+        ApplyLockActionIconState();
     }
 
     private void StartTitleRename()

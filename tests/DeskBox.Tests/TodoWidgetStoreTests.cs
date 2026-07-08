@@ -77,6 +77,7 @@ public sealed class TodoWidgetStoreTests : IDisposable
                 Assert.Equal("first task", item.Text);
                 Assert.True(item.IsCompleted);
                 Assert.Equal(dueDate, item.DueDate);
+                Assert.Equal(updatedAt, item.CompletedAt);
                 Assert.Equal(1, item.SortOrder);
             });
     }
@@ -147,6 +148,7 @@ public sealed class TodoWidgetStoreTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(data.Items[1].Id));
         Assert.Equal("new id", data.Items[1].Text);
         Assert.Equal(TodoItem.BlueColorMarker, data.Items[1].ColorMarker);
+        Assert.Null(data.Items[1].CompletedAt);
         Assert.Equal(1, data.Items[1].SortOrder);
         Assert.NotEqual(default, data.Items[1].CreatedAt);
         Assert.NotEqual(default, data.Items[1].UpdatedAt);

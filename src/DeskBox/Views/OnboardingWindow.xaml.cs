@@ -66,10 +66,7 @@ public sealed partial class OnboardingWindow : Window
         InitializeComponent();
         _localizationService.LanguageChanged += OnLanguageChanged;
 
-        SystemBackdrop = new MicaBackdrop
-        {
-            Kind = MicaKind.BaseAlt
-        };
+        SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarHost);

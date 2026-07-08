@@ -406,6 +406,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private void ApplyLocalizedText()
     {
         TitleEditBox.PlaceholderText = _localizationService.T("Widget.TitlePlaceholder");
+        ToolTipService.SetToolTip(PositionLockButton, _localizationService.T("Widget.LockPosition"));
+        ToolTipService.SetToolTip(SizeLockButton, _localizationService.T("Widget.LockSize"));
+        ToolTipService.SetToolTip(FileWidgetShell.PositionLockActionButton, _localizationService.T("Widget.LockPosition"));
+        ToolTipService.SetToolTip(FileWidgetShell.SizeLockActionButton, _localizationService.T("Widget.LockSize"));
         ToolTipService.SetToolTip(AddButton, _localizationService.T("Widget.Tooltip.Add"));
         ToolTipService.SetToolTip(MoreButton, _localizationService.T("Widget.Tooltip.More"));
         ToolTipService.SetToolTip(CloseButton, _localizationService.T("Widget.Tooltip.DeleteWidget"));
@@ -1467,8 +1471,53 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         foreach (var border in FindInteractiveSurfaceBorders(RootGrid))
         {
             ApplyWidgetItemLayout(border);
+            ApplyWidgetItemTooltip(border);
             ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Normal);
         }
+    }
+
+    private void ApplyWidgetItemTooltip(Border border)
+    {
+        if (!ViewModel.ShowFileItemPathTooltips || border.DataContext is not WidgetItem item)
+        {
+            ToolTipService.SetToolTip(border, null);
+            return;
+        }
+
+        var tooltipText = new TextBlock
+        {
+            Text = item.FullPath
+        };
+
+        if (Application.Current.Resources.TryGetValue("WidgetTooltipTextStyle", out object? textStyleResource)
+            && textStyleResource is Style textStyle)
+        {
+            tooltipText.Style = textStyle;
+        }
+
+        var tooltipContent = new Border
+        {
+            Child = tooltipText
+        };
+
+        if (Application.Current.Resources.TryGetValue("WidgetTooltipCardStyle", out object? cardStyleResource)
+            && cardStyleResource is Style cardStyle)
+        {
+            tooltipContent.Style = cardStyle;
+        }
+
+        var tooltip = new ToolTip
+        {
+            Content = tooltipContent
+        };
+
+        if (Application.Current.Resources.TryGetValue("RoundedToolTipStyle", out object? tooltipStyleResource)
+            && tooltipStyleResource is Style tooltipStyle)
+        {
+            tooltip.Style = tooltipStyle;
+        }
+
+        ToolTipService.SetToolTip(border, tooltip);
     }
 
     private void ApplyTitleBarLayout()
@@ -1488,7 +1537,6 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         FileWidgetShell.ChromeMode = chromeMode;
         FileWidgetShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
-        FileWidgetShell.ShowAddButton = ViewModel.TopAddButtonVisibility == Visibility.Visible;
         FileWidgetShell.TitleGlyph = ViewModel.IconGlyph;
         FileWidgetShell.TitleIconKind = ViewModel.TitleIconKind;
         FileWidgetShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;
@@ -1498,6 +1546,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             ? null
             : TitleBarGrid;
         ApplyLegacyTitleActionButtonVisibility(chromeMode);
+        ApplyLockActionIconState();
 
         FileTitleIcon.IconSize = metrics.TitleIconSize;
         FileTitleIcon.Glyph = ViewModel.IconGlyph;
@@ -1507,17 +1556,84 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         TitleText.FontSize = metrics.TitleTextSize;
         TitleEditBox.FontSize = Math.Max(metrics.TitleTextSize - 1, 11);
 
+        ApplyTitleActionButtonConfiguration(chromeMode);
+
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(PositionLockButton, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(SizeLockButton, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionButton(AddButton, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionButton(MoreButton, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionButton(CloseButton, metrics);
 
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(FileWidgetShell.PositionLockActionButton, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(FileWidgetShell.SizeLockActionButton, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(FileWidgetShell.AddActionButton, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(FileWidgetShell.MoreActionButton, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionButton(FileWidgetShell.CloseActionButton, metrics);
+
+        WidgetTitleBarMetricsCalculator.ApplyActionIcon(PositionLockButtonIcon, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionIcon(PositionLockButtonFilledIcon, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionIcon(SizeLockButtonIcon, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionIcon(SizeLockButtonFilledIcon, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(AddButtonIcon, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(MoreButtonIcon, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(CloseButtonIcon, metrics);
 
+        WidgetActionIconHelper.ApplyPairSize(
+            FileWidgetShell.PositionLockActionIcon,
+            FileWidgetShell.PositionLockFilledActionIcon,
+            metrics);
+        WidgetActionIconHelper.ApplyPairSize(
+            FileWidgetShell.SizeLockActionIcon,
+            FileWidgetShell.SizeLockFilledActionIcon,
+            metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionIcon(FileWidgetShell.AddActionIcon, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionIcon(FileWidgetShell.MoreActionIcon, metrics);
+        WidgetTitleBarMetricsCalculator.ApplyActionIcon(FileWidgetShell.CloseActionIcon, metrics);
+
         RootGrid.RowDefinitions[0].Height = metrics.RowHeight;
         FileWidgetShell.SetTitleBarRowHeight(metrics.RowHeight);
         TitleBarGrid.Padding = metrics.InnerTitlePadding;
+    }
+
+    private void ApplyTitleActionButtonConfiguration(WidgetChromeMode chromeMode)
+    {
+        var actions = SettingsService.ParseWidgetHoverButtonActions(_settingsService.Settings.WidgetHoverButtonActions);
+        bool showPositionLock = actions.Contains(SettingsService.WidgetHoverActionLockPosition);
+        bool showSizeLock = actions.Contains(SettingsService.WidgetHoverActionLockSize);
+        bool showAdd = actions.Contains(SettingsService.WidgetHoverActionAdd) &&
+            ViewModel.TopAddButtonVisibility == Visibility.Visible;
+        bool showMore = actions.Contains(SettingsService.WidgetHoverActionMore);
+        bool showDelete = actions.Contains(SettingsService.WidgetHoverActionDelete);
+
+        PositionLockButton.Visibility = showPositionLock ? Visibility.Visible : Visibility.Collapsed;
+        SizeLockButton.Visibility = showSizeLock ? Visibility.Visible : Visibility.Collapsed;
+        AddButton.Visibility = showAdd ? Visibility.Visible : Visibility.Collapsed;
+        MoreButton.Visibility = showMore ? Visibility.Visible : Visibility.Collapsed;
+        CloseButton.Visibility = showDelete ? Visibility.Visible : Visibility.Collapsed;
+
+        FileWidgetShell.PositionLockActionButton.Visibility = showPositionLock ? Visibility.Visible : Visibility.Collapsed;
+        FileWidgetShell.SizeLockActionButton.Visibility = showSizeLock ? Visibility.Visible : Visibility.Collapsed;
+        FileWidgetShell.ShowAddButton = showAdd;
+        FileWidgetShell.MoreActionButton.Visibility = showMore ? Visibility.Visible : Visibility.Collapsed;
+        FileWidgetShell.CloseActionButton.Visibility = showDelete ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ApplyLockActionIconState()
+    {
+        WidgetActionIconHelper.ApplyLockState(
+            PositionLockButtonIcon,
+            PositionLockButtonFilledIcon,
+            ViewModel.IsPositionLocked,
+            SizeLockButtonIcon,
+            SizeLockButtonFilledIcon,
+            ViewModel.IsSizeLocked);
+        WidgetActionIconHelper.ApplyLockState(
+            FileWidgetShell.PositionLockActionIcon,
+            FileWidgetShell.PositionLockFilledActionIcon,
+            ViewModel.IsPositionLocked,
+            FileWidgetShell.SizeLockActionIcon,
+            FileWidgetShell.SizeLockFilledActionIcon,
+            ViewModel.IsSizeLocked);
     }
 
     private void ApplyLegacyTitleActionButtonVisibility(WidgetChromeMode chromeMode)
@@ -1859,6 +1975,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             or nameof(WidgetViewModel.IconViewVisibility)
             or nameof(WidgetViewModel.ListViewVisibility)
             or nameof(WidgetViewModel.ShowListItemDetails)
+            or nameof(WidgetViewModel.ShowFileItemPathTooltips)
             or nameof(WidgetViewModel.IconTileWidth)
             or nameof(WidgetViewModel.IconTileHeight)
             or nameof(WidgetViewModel.IconTileMargin)
@@ -3527,6 +3644,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         if (sender is Border border)
         {
             ApplyWidgetItemLayout(border);
+            ApplyWidgetItemTooltip(border);
             ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Normal);
         }
     }
@@ -4384,7 +4502,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         var sizeLock = new ToggleMenuFlyoutItem
         {
             Text = _localizationService.T("Widget.LockSize"),
-            Icon = new FontIcon { Glyph = "\uE740" },
+            Icon = new FontIcon { Glyph = "\uE9CE" },
             IsChecked = ViewModel.IsSizeLocked
         };
         sizeLock.Click += ToggleSizeLock_Click;
@@ -4980,11 +5098,13 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private void TogglePositionLock_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.TogglePositionLockCommand.Execute(null);
+        ApplyLockActionIconState();
     }
 
     private void ToggleSizeLock_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.ToggleSizeLockCommand.Execute(null);
+        ApplyLockActionIconState();
     }
 
     private void DeleteWidget_Click(object sender, RoutedEventArgs e)
@@ -5477,7 +5597,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return true;
         }
 
-        return !IsWithin(source, AddButton) &&
+        return !IsWithin(source, PositionLockButton) &&
+               !IsWithin(source, SizeLockButton) &&
+               !IsWithin(source, AddButton) &&
                !IsWithin(source, MoreButton) &&
                !IsWithin(source, CloseButton) &&
                !IsWithin(source, TitleEditBox);
@@ -5542,7 +5664,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return true;
         }
 
-        return !IsWithin(source, AddButton) &&
+        return !IsWithin(source, PositionLockButton) &&
+               !IsWithin(source, SizeLockButton) &&
+               !IsWithin(source, AddButton) &&
                !IsWithin(source, MoreButton) &&
                !IsWithin(source, CloseButton) &&
                !IsWithin(source, TitleEditBox) &&

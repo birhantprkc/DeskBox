@@ -163,6 +163,7 @@ public sealed class TodoWidgetViewModelTests : IDisposable
 
         Assert.True(completed);
         Assert.True(item.IsCompleted);
+        Assert.NotNull(item.CompletedAt);
         Assert.Equal(0, viewModel.ActiveCount);
         Assert.Equal(1, viewModel.CompletedCount);
         Assert.True(viewModel.HasCompletedItems);
@@ -175,6 +176,26 @@ public sealed class TodoWidgetViewModelTests : IDisposable
         var reloaded = CreateViewModel("todo-widget");
         await reloaded.InitializeAsync();
         Assert.True(Assert.Single(reloaded.Items).IsCompleted);
+        Assert.NotNull(Assert.Single(reloaded.Items).CompletedAt);
+    }
+
+    [Fact]
+    public async Task SetCompletedAsync_StoresAndClearsCompletedAt()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        var item = await viewModel.AddItemAsync("task");
+        Assert.NotNull(item);
+
+        Assert.True(await viewModel.SetCompletedAsync(item.Id, true));
+        Assert.NotNull(item.CompletedAt);
+        Assert.True(item.ContentOpacity < 1);
+        Assert.Equal(Windows.UI.Text.TextDecorations.Strikethrough, item.TextDecorations);
+
+        Assert.True(await viewModel.SetCompletedAsync(item.Id, false));
+        Assert.Null(item.CompletedAt);
+        Assert.Equal(1, item.ContentOpacity);
+        Assert.Equal(Windows.UI.Text.TextDecorations.None, item.TextDecorations);
     }
 
     [Fact]
@@ -400,6 +421,53 @@ public sealed class TodoWidgetViewModelTests : IDisposable
 
         Assert.Single(viewModel.VisibleItems);
         Assert.Equal(today.Id, viewModel.VisibleItems[0].Id);
+    }
+
+    [Fact]
+    public async Task SetDueDateAsync_PreservesTimePrecision()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        var item = await viewModel.AddItemAsync("timed task");
+        Assert.NotNull(item);
+        var dueDate = new DateTimeOffset(2026, 7, 9, 18, 30, 15, TimeSpan.FromHours(8));
+
+        Assert.True(await viewModel.SetDueDateAsync(item.Id, dueDate));
+
+        Assert.Equal(dueDate, item.DueDate);
+        Assert.Contains("18:30:15", item.DueStatusText, StringComparison.Ordinal);
+
+        var reloaded = CreateViewModel("todo-widget");
+        await reloaded.InitializeAsync();
+        Assert.Equal(dueDate, Assert.Single(reloaded.Items).DueDate);
+    }
+
+    [Fact]
+    public async Task VisibleItems_SortActiveByDueDateAndCompletedAfterActive()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        var noDue = await viewModel.AddItemAsync("no due");
+        var later = await viewModel.AddItemAsync("later");
+        var sooner = await viewModel.AddItemAsync("sooner");
+        var completed = await viewModel.AddItemAsync("completed");
+        Assert.NotNull(noDue);
+        Assert.NotNull(later);
+        Assert.NotNull(sooner);
+        Assert.NotNull(completed);
+        var now = DateTimeOffset.Now;
+
+        await viewModel.SetDueDateAsync(later.Id, now.AddHours(3));
+        await viewModel.SetDueDateAsync(sooner.Id, now.AddHours(1));
+        await viewModel.SetCompletedAsync(completed.Id, true);
+        viewModel.SelectedFilter = TodoFilter.All;
+
+        Assert.Collection(
+            viewModel.VisibleItems,
+            item => Assert.Equal(sooner.Id, item.Id),
+            item => Assert.Equal(later.Id, item.Id),
+            item => Assert.Equal(noDue.Id, item.Id),
+            item => Assert.Equal(completed.Id, item.Id));
     }
 
     [Fact]

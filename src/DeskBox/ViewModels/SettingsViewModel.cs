@@ -56,8 +56,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedWidgetTitleIconMode = SettingsService.WidgetTitleIconModeColor;
     private string _selectedWidgetLayerMode = SettingsService.WidgetLayerModeDynamic;
     private string _selectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
+    private string _selectedQuickCaptureTabStyle = SettingsService.WidgetTabStylePivot;
     private string _selectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
     private string _selectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
+    private string _selectedTodoTabStyle = SettingsService.WidgetTabStylePivot;
+    private int _selectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
     private string _selectedMusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
     private bool _useSystemAccentColor;
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
@@ -76,6 +79,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private bool _canClearQuickCaptureImageCache;
     private bool _isRestoringDefaults;
     private bool _isApplyingSettingsSnapshot;
+    private bool _isUpdatingHoverButtonActionSelection;
 
     private string[]? _cachedTrayIconStyleDisplayNames;
     private string[]? _cachedThemeDisplayNames;
@@ -90,8 +94,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string[]? _cachedWidgetTitleIconModeDisplayNames;
     private string[]? _cachedWidgetLayerModeDisplayNames;
     private string[]? _cachedQuickCaptureDefaultViewDisplayNames;
+    private string[]? _cachedQuickCaptureTabStyleDisplayNames;
     private string[]? _cachedTodoNewTaskPositionDisplayNames;
     private string[]? _cachedTodoDefaultFilterDisplayNames;
+    private string[]? _cachedTodoTabStyleDisplayNames;
+    private string[]? _cachedTodoReminderOffsetDisplayNames;
     private string[]? _cachedMusicRhythmStyleDisplayNames;
 
     [ObservableProperty] private bool _autoStart;
@@ -102,7 +109,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _hideShortcutArrowOverlay;
     [ObservableProperty] private bool _showImageFilesAsIcons;
     [ObservableProperty] private bool _showHoverButtons = true;
+    [ObservableProperty] private bool _showHoverActionLockPosition;
+    [ObservableProperty] private bool _showHoverActionLockSize;
+    [ObservableProperty] private bool _showHoverActionAdd;
+    [ObservableProperty] private bool _showHoverActionMore = true;
+    [ObservableProperty] private bool _showHoverActionDelete = true;
     [ObservableProperty] private bool _showListItemDetails;
+    [ObservableProperty] private bool _showFileItemPathTooltips = true;
     [ObservableProperty] private double _widgetOpacity = SettingsService.DefaultWidgetOpacity;
     [ObservableProperty] private double _iconSize = SettingsService.DefaultIconSize;
     [ObservableProperty] private double _textSize = SettingsService.DefaultTextSize;
@@ -118,6 +131,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _todoShowFooterStats = true;
     [ObservableProperty] private bool _todoShowClearCompletedButton = true;
     [ObservableProperty] private bool _todoConfirmBeforeDelete;
+    [ObservableProperty] private bool _todoReminderEnabled = true;
     [ObservableProperty] private bool _musicUseArtworkBackdrop = true;
     [ObservableProperty] private bool _musicShowRhythmBars = true;
     [ObservableProperty] private bool _musicEnableCoverHoverMotion = true;
@@ -448,6 +462,26 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string SelectedWidgetTitleIconModeText => GetWidgetTitleIconModeDisplayName(SelectedWidgetTitleIconMode);
     public int SelectedWidgetTitleIconModeIndex => Array.IndexOf(AvailableWidgetTitleIconModes, _selectedWidgetTitleIconMode);
 
+    public bool CanToggleHoverActionLockPosition => CanToggleHoverButtonAction(ShowHoverActionLockPosition);
+    public bool CanToggleHoverActionLockSize => CanToggleHoverButtonAction(ShowHoverActionLockSize);
+    public bool CanToggleHoverActionAdd => CanToggleHoverButtonAction(ShowHoverActionAdd);
+    public bool CanToggleHoverActionMore => CanToggleHoverButtonAction(ShowHoverActionMore);
+    public bool CanToggleHoverActionDelete => CanToggleHoverButtonAction(ShowHoverActionDelete);
+    public string HoverButtonActionsSummaryText => string.Join(
+        _localizationService.IsEnglish ? ", " : "、",
+        AvailableWidgetHoverButtonActions
+            .Where(IsHoverButtonActionSelected)
+            .Select(GetHoverButtonActionDisplayName));
+
+    public string[] AvailableWidgetHoverButtonActions { get; } =
+    [
+        SettingsService.WidgetHoverActionLockPosition,
+        SettingsService.WidgetHoverActionLockSize,
+        SettingsService.WidgetHoverActionAdd,
+        SettingsService.WidgetHoverActionMore,
+        SettingsService.WidgetHoverActionDelete
+    ];
+
     public string SelectedWidgetLayerMode
     {
         get => _selectedWidgetLayerMode;
@@ -492,8 +526,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         int changed = ResetWidgetChromeOverrides(
             _settingsService.Settings,
             _widgetContentFactory,
-            category,
-            mode);
+            category);
 
         if (changed > 0)
         {
@@ -507,14 +540,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         AppSettings settings,
         WidgetContentFactory widgetContentFactory,
         WidgetChromeCategory category,
-        string mode)
+        string? mode = null)
     {
-        var fallback = category == WidgetChromeCategory.Display
-            ? WidgetChromeMode.Overlay
-            : WidgetChromeMode.Standard;
-        var normalizedMode = WidgetChromeModeNames.NormalizeMode(
-            NormalizeWidgetChromeModeSetting(mode, fallback),
-            fallback);
         int changed = 0;
 
         foreach (var widget in settings.Widgets)
@@ -534,16 +561,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 continue;
             }
 
-            var allowedMode = WidgetChromeModeResolver.CoerceAllowedMode(normalizedMode, descriptor);
-            string targetValue = WidgetChromeModeNames.ToSettingValue(allowedMode);
-            widget.Metadata ??= [];
-            widget.Metadata.TryGetValue(WidgetChromeModeNames.MetadataKey, out string? currentValue);
-            if (string.Equals(currentValue, targetValue, StringComparison.Ordinal))
+            if (widget.Metadata is null ||
+                !widget.Metadata.ContainsKey(WidgetChromeModeNames.MetadataKey))
             {
                 continue;
             }
 
-            WidgetChromeModeNames.SetOverrideMode(widget, allowedMode);
+            WidgetChromeModeNames.SetOverrideMode(widget, WidgetChromeMode.System);
             changed++;
         }
 
@@ -598,6 +622,31 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string SelectedQuickCaptureDefaultViewText => GetQuickCaptureDefaultViewDisplayName(SelectedQuickCaptureDefaultView);
     public int SelectedQuickCaptureDefaultViewIndex => Array.IndexOf(AvailableQuickCaptureDefaultViews, _selectedQuickCaptureDefaultView);
 
+    public string SelectedQuickCaptureTabStyle
+    {
+        get => _selectedQuickCaptureTabStyle;
+        set
+        {
+            if (!SetProperty(ref _selectedQuickCaptureTabStyle, SettingsService.NormalizeWidgetTabStyle(value)))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.QuickCaptureTabStyle = _selectedQuickCaptureTabStyle;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleText));
+            OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleIndex));
+        }
+    }
+
+    public string SelectedQuickCaptureTabStyleText => GetWidgetTabStyleDisplayName(SelectedQuickCaptureTabStyle);
+    public int SelectedQuickCaptureTabStyleIndex => Array.IndexOf(AvailableWidgetTabStyles, _selectedQuickCaptureTabStyle);
+
     public string SelectedTodoDefaultFilter
     {
         get => _selectedTodoDefaultFilter;
@@ -621,6 +670,56 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string SelectedTodoDefaultFilterText => GetTodoDefaultFilterDisplayName(SelectedTodoDefaultFilter);
     public int SelectedTodoDefaultFilterIndex => Array.IndexOf(AvailableTodoDefaultFilters, _selectedTodoDefaultFilter);
+
+    public string SelectedTodoTabStyle
+    {
+        get => _selectedTodoTabStyle;
+        set
+        {
+            if (!SetProperty(ref _selectedTodoTabStyle, SettingsService.NormalizeWidgetTabStyle(value)))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.TodoTabStyle = _selectedTodoTabStyle;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedTodoTabStyleText));
+            OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
+        }
+    }
+
+    public string SelectedTodoTabStyleText => GetWidgetTabStyleDisplayName(SelectedTodoTabStyle);
+    public int SelectedTodoTabStyleIndex => Array.IndexOf(AvailableWidgetTabStyles, _selectedTodoTabStyle);
+
+    public int SelectedTodoReminderOffsetMinutes
+    {
+        get => _selectedTodoReminderOffsetMinutes;
+        set
+        {
+            int normalizedValue = SettingsService.NormalizeTodoReminderOffsetMinutes(value);
+            if (!SetProperty(ref _selectedTodoReminderOffsetMinutes, normalizedValue))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.TodoDefaultReminderOffsetMinutes = normalizedValue;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
+        }
+    }
+
+    public string SelectedTodoReminderOffsetMinutesText => GetTodoReminderOffsetDisplayName(SelectedTodoReminderOffsetMinutes);
+    public int SelectedTodoReminderOffsetMinutesIndex => Array.IndexOf(AvailableTodoReminderOffsetMinutes, _selectedTodoReminderOffsetMinutes);
 
     public string SelectedMusicRhythmStyle
     {
@@ -1014,10 +1113,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     QuickCaptureImageClipboardEnabled = true;
                     QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
                     SelectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
+                    SelectedQuickCaptureTabStyle = SettingsService.WidgetTabStylePivot;
                     _settingsService.Settings.QuickCaptureClipboardEnabled = true;
                     _settingsService.Settings.QuickCaptureImageClipboardEnabled = true;
                     _settingsService.Settings.QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
                     _settingsService.Settings.QuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
+                    _settingsService.Settings.QuickCaptureTabStyle = SettingsService.WidgetTabStylePivot;
                     App.Current?.QuickCaptureClipboardService?.Refresh();
                     App.Current?.QuickCaptureClipboardService?.CaptureCurrent();
                     RefreshQuickCaptureClipboardDiagnostics();
@@ -1029,12 +1130,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     TodoConfirmBeforeDelete = false;
                     SelectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
                     SelectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
+                    SelectedTodoTabStyle = SettingsService.WidgetTabStylePivot;
                     _settingsService.Settings.TodoShowCompletedTasks = true;
                     _settingsService.Settings.TodoShowFooterStats = true;
                     _settingsService.Settings.TodoShowClearCompletedButton = true;
                     _settingsService.Settings.TodoConfirmBeforeDelete = false;
                     _settingsService.Settings.TodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
                     _settingsService.Settings.TodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
+                    _settingsService.Settings.TodoTabStyle = SettingsService.WidgetTabStylePivot;
                     break;
                 case WidgetKind.Music:
                     MusicUseArtworkBackdrop = true;
@@ -1068,6 +1171,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(QuickCaptureRecentLimitInput));
                 OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewText));
                 OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewIndex));
+                OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleText));
+                OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleIndex));
                 break;
             case WidgetKind.Todo:
                 OnPropertyChanged(nameof(TodoEnabled));
@@ -1075,6 +1180,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(SelectedTodoNewTaskPositionIndex));
                 OnPropertyChanged(nameof(SelectedTodoDefaultFilterText));
                 OnPropertyChanged(nameof(SelectedTodoDefaultFilterIndex));
+                OnPropertyChanged(nameof(SelectedTodoTabStyleText));
+                OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
                 break;
             case WidgetKind.Music:
                 OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
@@ -1194,6 +1301,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string[] AvailableQuickCaptureDefaultViewDisplayNames => _cachedQuickCaptureDefaultViewDisplayNames ??= AvailableQuickCaptureDefaultViews.Select(GetQuickCaptureDefaultViewDisplayName).ToArray();
 
+    public string[] AvailableWidgetTabStyles { get; } =
+    [
+        SettingsService.WidgetTabStylePivot,
+        SettingsService.WidgetTabStyleButton
+    ];
+
+    public string[] AvailableQuickCaptureTabStyleDisplayNames => _cachedQuickCaptureTabStyleDisplayNames ??= AvailableWidgetTabStyles.Select(GetWidgetTabStyleDisplayName).ToArray();
+
     public string[] AvailableTodoNewTaskPositions { get; } =
     [
         SettingsService.TodoNewTaskPositionTop,
@@ -1211,6 +1326,21 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     ];
 
     public string[] AvailableTodoDefaultFilterDisplayNames => _cachedTodoDefaultFilterDisplayNames ??= AvailableTodoDefaultFilters.Select(GetTodoDefaultFilterDisplayName).ToArray();
+
+    public string[] AvailableTodoTabStyleDisplayNames => _cachedTodoTabStyleDisplayNames ??= AvailableWidgetTabStyles.Select(GetWidgetTabStyleDisplayName).ToArray();
+
+    public int[] AvailableTodoReminderOffsetMinutes { get; } =
+    [
+        0,
+        5,
+        10,
+        15,
+        30,
+        60,
+        1440
+    ];
+
+    public string[] AvailableTodoReminderOffsetDisplayNames => _cachedTodoReminderOffsetDisplayNames ??= AvailableTodoReminderOffsetMinutes.Select(GetTodoReminderOffsetDisplayName).ToArray();
 
     public string[] AvailableMusicRhythmStyles { get; } =
     [
@@ -1253,6 +1383,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             "Settings.About.Developer",
             RepositoryUrl.Replace("https://", string.Empty).Replace("http://", string.Empty).TrimEnd('/'));
     public string AvailableUpdateReleaseNotesUrl => _availableUpdateManifest?.ReleaseNotesUrl ?? string.Empty;
+        public string UpdateFallbackUrl => RepositoryUrl + "/releases";
+
     public string ManualUpdateDownloadUrl => GetManualUpdateDownloadUrl(_availableUpdateManifest);
     public Visibility UpdateProgressVisibility => IsDownloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
     public Visibility UpdateProgressTextVisibility => IsDownloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
@@ -1816,7 +1948,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
         _showImageFilesAsIcons = settings.ShowImageFilesAsIcons;
         _showHoverButtons = settings.ShowHoverButtons;
+        ApplyHoverButtonActionSelection(settings.WidgetHoverButtonActions);
         _showListItemDetails = settings.ShowListItemDetails;
+        _showFileItemPathTooltips = settings.ShowFileItemPathTooltips;
         _widgetOpacity = settings.WidgetOpacity;
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerDefault or CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
@@ -1847,12 +1981,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _todoShowFooterStats = settings.TodoShowFooterStats;
         _todoShowClearCompletedButton = settings.TodoShowClearCompletedButton;
         _todoConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
+        _todoReminderEnabled = settings.TodoReminderEnabled;
         _musicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
         _musicShowRhythmBars = settings.MusicShowRhythmBars;
         _selectedMusicRhythmStyle = SettingsService.NormalizeMusicRhythmStyle(settings.MusicRhythmStyle);
         _musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
         _selectedTodoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
         _selectedTodoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);
+        _selectedTodoReminderOffsetMinutes = SettingsService.NormalizeTodoReminderOffsetMinutes(settings.TodoDefaultReminderOffsetMinutes);
         _managedStorageRootPath = settings.DefaultManagedStorageRootPath;
 
         ApplyCachedUpdateResult();
@@ -1939,24 +2075,31 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             ShowImageFilesAsIcons = false;
             HideShortcutExtensionWhenShowingFileExtensions = true;
             ShowHoverButtons = true;
+            ApplyHoverButtonActionSelection(SettingsService.DefaultWidgetHoverButtonActions);
             AutoCheckForUpdates = true;
             QuickCaptureClipboardEnabled = true;
             QuickCaptureImageClipboardEnabled = true;
             QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
             SelectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
+            SelectedQuickCaptureTabStyle = SettingsService.WidgetTabStylePivot;
             TodoShowCompletedTasks = true;
             TodoShowFooterStats = true;
             TodoShowClearCompletedButton = true;
             TodoConfirmBeforeDelete = false;
+            TodoReminderEnabled = true;
+            SelectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
             MusicUseArtworkBackdrop = true;
             MusicShowRhythmBars = true;
             SelectedMusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
             MusicEnableCoverHoverMotion = true;
             SelectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
             SelectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
+            SelectedTodoTabStyle = SettingsService.WidgetTabStylePivot;
             DoubleClickToOpen = true;
+            GlobalHotkeyEnabled = SettingsService.DefaultGlobalHotkeyEnabled;
             HideShortcutArrowOverlay = true;
             ShowListItemDetails = false;
+            ShowFileItemPathTooltips = true;
 
             RefreshAccentPreview();
             RefreshNumberInputs();
@@ -2092,6 +2235,19 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         };
     }
 
+    public string GetHoverButtonActionDisplayName(string action)
+    {
+        return action switch
+        {
+            SettingsService.WidgetHoverActionLockPosition => _localizationService.T("Settings.HoverButtonActions.LockPosition"),
+            SettingsService.WidgetHoverActionLockSize => _localizationService.T("Settings.HoverButtonActions.LockSize"),
+            SettingsService.WidgetHoverActionAdd => _localizationService.T("Settings.HoverButtonActions.Add"),
+            SettingsService.WidgetHoverActionMore => _localizationService.T("Settings.HoverButtonActions.More"),
+            SettingsService.WidgetHoverActionDelete => _localizationService.T("Settings.HoverButtonActions.Delete"),
+            _ => action
+        };
+    }
+
     public string GetWidgetLayerModeDisplayName(string mode)
     {
         return SettingsService.NormalizeWidgetLayerModeSetting(mode) switch
@@ -2108,6 +2264,15 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SettingsService.QuickCaptureDefaultViewPinned => _localizationService.T("Settings.QuickCapture.DefaultView.Pinned"),
             SettingsService.QuickCaptureDefaultViewRecent => _localizationService.T("Settings.QuickCapture.DefaultView.Recent"),
             _ => _localizationService.T("Settings.QuickCapture.DefaultView.Records")
+        };
+    }
+
+    public string GetWidgetTabStyleDisplayName(string style)
+    {
+        return SettingsService.NormalizeWidgetTabStyle(style) switch
+        {
+            SettingsService.WidgetTabStyleButton => _localizationService.T("Settings.WidgetTabStyle.Button"),
+            _ => _localizationService.T("Settings.WidgetTabStyle.Pivot")
         };
     }
 
@@ -2128,6 +2293,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SettingsService.TodoDefaultFilterImportant => _localizationService.T("Settings.Todo.DefaultFilter.Important"),
             SettingsService.TodoDefaultFilterCompleted => _localizationService.T("Settings.Todo.DefaultFilter.Completed"),
             _ => _localizationService.T("Settings.Todo.DefaultFilter.All")
+        };
+    }
+
+    public string GetTodoReminderOffsetDisplayName(int minutes)
+    {
+        return SettingsService.NormalizeTodoReminderOffsetMinutes(minutes) switch
+        {
+            0 => _localizationService.T("Settings.Todo.ReminderOffset.AtDueTime"),
+            60 => _localizationService.T("Settings.Todo.ReminderOffset.OneHour"),
+            1440 => _localizationService.T("Settings.Todo.ReminderOffset.OneDay"),
+            var value => _localizationService.Format("Settings.Todo.ReminderOffset.Minutes", value)
         };
     }
 
@@ -2172,17 +2348,21 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         bool quickCaptureImageClipboardEnabled = settings.QuickCaptureImageClipboardEnabled;
         int quickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
         string quickCaptureDefaultView = NormalizeQuickCaptureDefaultView(settings.QuickCaptureDefaultView);
+        string quickCaptureTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.QuickCaptureTabStyle);
         bool todoEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo);
         bool todoShowCompletedTasks = settings.TodoShowCompletedTasks;
         bool todoShowFooterStats = settings.TodoShowFooterStats;
         bool todoShowClearCompletedButton = settings.TodoShowClearCompletedButton;
         bool todoConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
+        bool todoReminderEnabled = settings.TodoReminderEnabled;
         bool musicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
         bool musicShowRhythmBars = settings.MusicShowRhythmBars;
         string musicRhythmStyle = SettingsService.NormalizeMusicRhythmStyle(settings.MusicRhythmStyle);
         bool musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
         bool showImageFilesAsIcons = settings.ShowImageFilesAsIcons;
+        bool showFileItemPathTooltips = settings.ShowFileItemPathTooltips;
         bool showHoverButtons = settings.ShowHoverButtons;
+        string hoverButtonActions = SettingsService.NormalizeWidgetHoverButtonActions(settings.WidgetHoverButtonActions);
         bool autoCheckForUpdates = settings.AutoCheckForUpdates;
         string displayWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.DisplayWidgetChromeMode, WidgetChromeMode.Overlay);
         string interactiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
@@ -2190,6 +2370,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         string widgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(settings.WidgetLayerMode);
         string todoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
         string todoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);
+        string todoTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.TodoTabStyle);
+        int todoReminderOffsetMinutes = SettingsService.NormalizeTodoReminderOffsetMinutes(settings.TodoDefaultReminderOffsetMinutes);
         string managedStorageRootPath = SettingsService.NormalizeManagedStorageRootPath(settings.DefaultManagedStorageRootPath);
 
         _isApplyingSettingsSnapshot = true;
@@ -2226,6 +2408,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 SelectedQuickCaptureDefaultView = quickCaptureDefaultView;
             }
 
+            if (!string.Equals(SelectedQuickCaptureTabStyle, quickCaptureTabStyle, StringComparison.Ordinal))
+            {
+                SelectedQuickCaptureTabStyle = quickCaptureTabStyle;
+            }
+
             if (TodoEnabled != todoEnabled)
             {
                 TodoEnabled = todoEnabled;
@@ -2249,6 +2436,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             if (TodoConfirmBeforeDelete != todoConfirmBeforeDelete)
             {
                 TodoConfirmBeforeDelete = todoConfirmBeforeDelete;
+            }
+
+            if (TodoReminderEnabled != todoReminderEnabled)
+            {
+                TodoReminderEnabled = todoReminderEnabled;
             }
 
             if (MusicUseArtworkBackdrop != musicUseArtworkBackdrop)
@@ -2276,10 +2468,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 ShowImageFilesAsIcons = showImageFilesAsIcons;
             }
 
+            if (ShowFileItemPathTooltips != showFileItemPathTooltips)
+            {
+                ShowFileItemPathTooltips = showFileItemPathTooltips;
+            }
+
             if (ShowHoverButtons != showHoverButtons)
             {
                 ShowHoverButtons = showHoverButtons;
             }
+
+            ApplyHoverButtonActionSelection(hoverButtonActions);
 
             if (AutoCheckForUpdates != autoCheckForUpdates)
             {
@@ -2315,6 +2514,16 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 SelectedTodoDefaultFilter = todoDefaultFilter;
             }
+
+            if (!string.Equals(SelectedTodoTabStyle, todoTabStyle, StringComparison.Ordinal))
+            {
+                SelectedTodoTabStyle = todoTabStyle;
+            }
+
+            if (SelectedTodoReminderOffsetMinutes != todoReminderOffsetMinutes)
+            {
+                SelectedTodoReminderOffsetMinutes = todoReminderOffsetMinutes;
+            }
         }
         finally
         {
@@ -2323,10 +2532,16 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewText));
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewIndex));
+        OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleText));
+        OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleIndex));
         OnPropertyChanged(nameof(SelectedTodoNewTaskPositionText));
         OnPropertyChanged(nameof(SelectedTodoNewTaskPositionIndex));
         OnPropertyChanged(nameof(SelectedTodoDefaultFilterText));
         OnPropertyChanged(nameof(SelectedTodoDefaultFilterIndex));
+        OnPropertyChanged(nameof(SelectedTodoTabStyleText));
+        OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
+        OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
+        OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesIndex));
         OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
         OnPropertyChanged(nameof(SelectedMusicRhythmStyleIndex));
         OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeText));
@@ -2337,6 +2552,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedWidgetTitleIconModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetLayerModeText));
         OnPropertyChanged(nameof(SelectedWidgetLayerModeIndex));
+        NotifyHoverButtonActionPropertiesChanged();
+        OnPropertyChanged(nameof(HoverButtonActionsSummaryText));
         OnPropertyChanged(nameof(QuickCaptureStatusText));
         OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
         OnPropertyChanged(nameof(FeatureWidgetEntries));
@@ -2399,8 +2616,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _cachedWidgetTitleIconModeDisplayNames = null;
         _cachedWidgetLayerModeDisplayNames = null;
         _cachedQuickCaptureDefaultViewDisplayNames = null;
+        _cachedQuickCaptureTabStyleDisplayNames = null;
         _cachedTodoNewTaskPositionDisplayNames = null;
         _cachedTodoDefaultFilterDisplayNames = null;
+        _cachedTodoTabStyleDisplayNames = null;
+        _cachedTodoReminderOffsetDisplayNames = null;
         _cachedMusicRhythmStyleDisplayNames = null;
         OnPropertyChanged(nameof(AvailableThemeDisplayNames));
         OnPropertyChanged(nameof(AvailableTrayIconStyleDisplayNames));
@@ -2415,8 +2635,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AvailableWidgetTitleIconModeDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetLayerModeDisplayNames));
         OnPropertyChanged(nameof(AvailableQuickCaptureDefaultViewDisplayNames));
+        OnPropertyChanged(nameof(AvailableQuickCaptureTabStyleDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoNewTaskPositionDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoDefaultFilterDisplayNames));
+        OnPropertyChanged(nameof(AvailableTodoTabStyleDisplayNames));
+        OnPropertyChanged(nameof(AvailableTodoReminderOffsetDisplayNames));
         OnPropertyChanged(nameof(AvailableMusicRhythmStyleDisplayNames));
         OnPropertyChanged(nameof(SelectedThemeText));
         OnPropertyChanged(nameof(SelectedThemeIndex));
@@ -2445,14 +2668,211 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedWidgetTitleIconModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetLayerModeText));
         OnPropertyChanged(nameof(SelectedWidgetLayerModeIndex));
+        NotifyHoverButtonActionPropertiesChanged();
+        OnPropertyChanged(nameof(HoverButtonActionsSummaryText));
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewText));
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewIndex));
+        OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleText));
+        OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleIndex));
         OnPropertyChanged(nameof(SelectedTodoNewTaskPositionText));
         OnPropertyChanged(nameof(SelectedTodoNewTaskPositionIndex));
         OnPropertyChanged(nameof(SelectedTodoDefaultFilterText));
         OnPropertyChanged(nameof(SelectedTodoDefaultFilterIndex));
+        OnPropertyChanged(nameof(SelectedTodoTabStyleText));
+        OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
+        OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
+        OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesIndex));
         OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
         OnPropertyChanged(nameof(SelectedMusicRhythmStyleIndex));
+    }
+
+    private bool CanToggleHoverButtonAction(bool isSelected)
+    {
+        int selectedCount = GetSelectedHoverButtonActionCount();
+        return isSelected
+            ? selectedCount > 1
+            : selectedCount < 3;
+    }
+
+    public bool IsHoverButtonActionSelected(string action)
+    {
+        return action switch
+        {
+            SettingsService.WidgetHoverActionLockPosition => ShowHoverActionLockPosition,
+            SettingsService.WidgetHoverActionLockSize => ShowHoverActionLockSize,
+            SettingsService.WidgetHoverActionAdd => ShowHoverActionAdd,
+            SettingsService.WidgetHoverActionMore => ShowHoverActionMore,
+            SettingsService.WidgetHoverActionDelete => ShowHoverActionDelete,
+            _ => false
+        };
+    }
+
+    public bool CanToggleHoverButtonAction(string action)
+    {
+        return CanToggleHoverButtonAction(IsHoverButtonActionSelected(action));
+    }
+
+    public void ToggleHoverButtonAction(string action)
+    {
+        switch (action)
+        {
+            case SettingsService.WidgetHoverActionLockPosition:
+                ShowHoverActionLockPosition = !ShowHoverActionLockPosition;
+                break;
+            case SettingsService.WidgetHoverActionLockSize:
+                ShowHoverActionLockSize = !ShowHoverActionLockSize;
+                break;
+            case SettingsService.WidgetHoverActionAdd:
+                ShowHoverActionAdd = !ShowHoverActionAdd;
+                break;
+            case SettingsService.WidgetHoverActionMore:
+                ShowHoverActionMore = !ShowHoverActionMore;
+                break;
+            case SettingsService.WidgetHoverActionDelete:
+                ShowHoverActionDelete = !ShowHoverActionDelete;
+                break;
+        }
+    }
+
+    private void ApplyHoverButtonActionSelection(string? value)
+    {
+        var selected = SettingsService.ParseWidgetHoverButtonActions(value);
+        bool previousUpdating = _isUpdatingHoverButtonActionSelection;
+        _isUpdatingHoverButtonActionSelection = true;
+        try
+        {
+            ShowHoverActionLockPosition = selected.Contains(SettingsService.WidgetHoverActionLockPosition);
+            ShowHoverActionLockSize = selected.Contains(SettingsService.WidgetHoverActionLockSize);
+            ShowHoverActionAdd = selected.Contains(SettingsService.WidgetHoverActionAdd);
+            ShowHoverActionMore = selected.Contains(SettingsService.WidgetHoverActionMore);
+            ShowHoverActionDelete = selected.Contains(SettingsService.WidgetHoverActionDelete);
+        }
+        finally
+        {
+            _isUpdatingHoverButtonActionSelection = previousUpdating;
+        }
+
+        NotifyHoverButtonActionPropertiesChanged();
+    }
+
+    private void OnHoverButtonActionSelectionChanged(string action, bool value)
+    {
+        if (_isUpdatingHoverButtonActionSelection)
+        {
+            return;
+        }
+
+        int selectedCount = GetSelectedHoverButtonActionCount();
+        if ((!value && selectedCount == 0) || (value && selectedCount > 3))
+        {
+            RevertHoverButtonActionSelection(action, !value);
+            return;
+        }
+
+        NotifyHoverButtonActionPropertiesChanged();
+
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.WidgetHoverButtonActions = BuildHoverButtonActionSettingValue();
+        SaveAppearanceChange();
+    }
+
+    private void RevertHoverButtonActionSelection(string action, bool value)
+    {
+        bool previousUpdating = _isUpdatingHoverButtonActionSelection;
+        _isUpdatingHoverButtonActionSelection = true;
+        try
+        {
+            switch (action)
+            {
+                case SettingsService.WidgetHoverActionLockPosition:
+                    ShowHoverActionLockPosition = value;
+                    break;
+                case SettingsService.WidgetHoverActionLockSize:
+                    ShowHoverActionLockSize = value;
+                    break;
+                case SettingsService.WidgetHoverActionAdd:
+                    ShowHoverActionAdd = value;
+                    break;
+                case SettingsService.WidgetHoverActionMore:
+                    ShowHoverActionMore = value;
+                    break;
+                case SettingsService.WidgetHoverActionDelete:
+                    ShowHoverActionDelete = value;
+                    break;
+            }
+        }
+        finally
+        {
+            _isUpdatingHoverButtonActionSelection = previousUpdating;
+        }
+
+        NotifyHoverButtonActionPropertiesChanged();
+    }
+
+    private int GetSelectedHoverButtonActionCount()
+    {
+        int count = 0;
+        if (ShowHoverActionLockPosition)
+        {
+            count++;
+        }
+
+        if (ShowHoverActionLockSize)
+        {
+            count++;
+        }
+
+        if (ShowHoverActionAdd)
+        {
+            count++;
+        }
+
+        if (ShowHoverActionMore)
+        {
+            count++;
+        }
+
+        if (ShowHoverActionDelete)
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private string BuildHoverButtonActionSettingValue()
+    {
+        var selected = new List<string>(capacity: 3);
+        AddHoverButtonActionIfSelected(selected, SettingsService.WidgetHoverActionLockPosition, ShowHoverActionLockPosition);
+        AddHoverButtonActionIfSelected(selected, SettingsService.WidgetHoverActionLockSize, ShowHoverActionLockSize);
+        AddHoverButtonActionIfSelected(selected, SettingsService.WidgetHoverActionAdd, ShowHoverActionAdd);
+        AddHoverButtonActionIfSelected(selected, SettingsService.WidgetHoverActionMore, ShowHoverActionMore);
+        AddHoverButtonActionIfSelected(selected, SettingsService.WidgetHoverActionDelete, ShowHoverActionDelete);
+        return selected.Count == 0
+            ? SettingsService.DefaultWidgetHoverButtonActions
+            : string.Join(",", selected);
+    }
+
+    private static void AddHoverButtonActionIfSelected(ICollection<string> selected, string action, bool isSelected)
+    {
+        if (isSelected && selected.Count < 3)
+        {
+            selected.Add(action);
+        }
+    }
+
+    private void NotifyHoverButtonActionPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(CanToggleHoverActionLockPosition));
+        OnPropertyChanged(nameof(CanToggleHoverActionLockSize));
+        OnPropertyChanged(nameof(CanToggleHoverActionAdd));
+        OnPropertyChanged(nameof(CanToggleHoverActionMore));
+        OnPropertyChanged(nameof(CanToggleHoverActionDelete));
+        OnPropertyChanged(nameof(HoverButtonActionsSummaryText));
     }
 
     private string GetDragDropPermissionSummaryText()
@@ -2744,6 +3164,31 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _settingsService.SaveDebounced();
     }
 
+    partial void OnShowHoverActionLockPositionChanged(bool value)
+    {
+        OnHoverButtonActionSelectionChanged(SettingsService.WidgetHoverActionLockPosition, value);
+    }
+
+    partial void OnShowHoverActionLockSizeChanged(bool value)
+    {
+        OnHoverButtonActionSelectionChanged(SettingsService.WidgetHoverActionLockSize, value);
+    }
+
+    partial void OnShowHoverActionAddChanged(bool value)
+    {
+        OnHoverButtonActionSelectionChanged(SettingsService.WidgetHoverActionAdd, value);
+    }
+
+    partial void OnShowHoverActionMoreChanged(bool value)
+    {
+        OnHoverButtonActionSelectionChanged(SettingsService.WidgetHoverActionMore, value);
+    }
+
+    partial void OnShowHoverActionDeleteChanged(bool value)
+    {
+        OnHoverButtonActionSelectionChanged(SettingsService.WidgetHoverActionDelete, value);
+    }
+
     partial void OnShowListItemDetailsChanged(bool value)
     {
         if (_isRestoringDefaults)
@@ -2752,6 +3197,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.Settings.ShowListItemDetails = value;
+        _settingsService.SaveDebounced();
+    }
+
+    partial void OnShowFileItemPathTooltipsChanged(bool value)
+    {
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.ShowFileItemPathTooltips = value;
         _settingsService.SaveDebounced();
     }
 
@@ -2871,6 +3327,21 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         _settingsService.Settings.TodoConfirmBeforeDelete = value;
         _settingsService.SaveDebounced();
+    }
+
+    partial void OnTodoReminderEnabledChanged(bool value)
+    {
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.TodoReminderEnabled = value;
+        _settingsService.SaveDebounced();
+        if (value && App.Current?.TodoReminderService is { } reminderService)
+        {
+            _ = reminderService.CheckNowAsync(DateTimeOffset.Now);
+        }
     }
 
     partial void OnMusicUseArtworkBackdropChanged(bool value)
@@ -3374,6 +3845,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             _settingsService.RequestAppearancePreview();
             return;
+        }
+
+        if (!SuppressAppearanceNotifications)
+        {
+            _settingsService.RequestAppearancePreview();
         }
 
         _settingsService.SaveDebounced(notifySubscribers: !SuppressAppearanceNotifications);

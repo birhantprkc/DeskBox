@@ -15,17 +15,18 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.2.4
+Current release: 1.2.5
 
-- [DeskBox_Setup_1.2.4_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.4/DeskBox_Setup_1.2.4_x64.exe)
+- [DeskBox_Setup_1.2.5_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.5/DeskBox_Setup_1.2.5_x64.exe)
 
 The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.2.4
+## What's New In 1.2.5
 
-- Fixed the in-app update installation handoff after an update has been downloaded.
-- Runs the update helper from a detached local cache directory, so the installer can safely overwrite the DeskBox install directory.
-- Adjusted installer packaging so old versions can update without the running updater locking `DeskBox.Updater.*`.
+- Todo now supports due time precision, native Windows reminder notifications, overdue labels, click-to-copy, multi-select copying, and drag/drop conversion with Quick Capture.
+- Widget chrome controls are more flexible: configurable hover actions, refreshed Fluent action icons, compact-title icon sizing, and reset-to-follow-global behavior.
+- Music and file widgets received smaller interaction fixes, including a horizontal volume flyout, better light-theme volume styling, ambience corner alignment, and an optional file path tooltip switch.
+- Update handling is clearer across Direct and Store channels, with Store-aware update wording and improved fallback guidance for Direct users.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -130,7 +131,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.2.4_x64.exe
+Output\DeskBox_Setup_1.2.5_x64.exe
 ```
 
 ## Project Structure

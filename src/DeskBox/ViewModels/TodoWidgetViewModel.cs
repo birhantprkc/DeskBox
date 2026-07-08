@@ -49,6 +49,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
     private string _inputText = string.Empty;
     private double _textSize = SettingsService.DefaultTextSize;
     private string _newTaskPosition = SettingsService.TodoNewTaskPositionTop;
+    private string _tabStyle = SettingsService.WidgetTabStylePivot;
     private bool _showCompletedTasks = true;
     private bool _showFooterStats = true;
     private bool _showClearCompletedButton = true;
@@ -249,6 +250,12 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
     public bool IsBlueColorFilterSelected => SelectedColorFilter == TodoColorFilter.Blue;
 
     public bool IsPurpleColorFilterSelected => SelectedColorFilter == TodoColorFilter.Purple;
+
+    public string TabStyle
+    {
+        get => _tabStyle;
+        private set => SetProperty(ref _tabStyle, SettingsService.NormalizeWidgetTabStyle(value));
+    }
 
     public string NewTaskPosition
     {
@@ -456,7 +463,9 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
         }
 
         item.IsCompleted = isCompleted;
-        item.UpdatedAt = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.UtcNow;
+        item.CompletedAt = isCompleted ? now : null;
+        item.UpdatedAt = now;
         RefreshVisibleItems();
         RefreshCountProperties();
         await SaveAsync();
@@ -515,12 +524,14 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
         }
 
         DateTimeOffset? normalizedDueDate = NormalizeDueDate(dueDate);
-        if (Nullable.Equals(item.DueDate?.Date, normalizedDueDate?.Date))
+        if (Nullable.Equals(item.DueDate, normalizedDueDate))
         {
             return true;
         }
 
         item.DueDate = normalizedDueDate;
+        item.Item.ReminderLastNotifiedAt = null;
+        item.Item.ReminderDismissedForDueDate = null;
         item.UpdatedAt = DateTimeOffset.UtcNow;
         RefreshVisibleItems();
         RefreshCountProperties();
@@ -534,9 +545,9 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
         int daysUntilSunday = ((int)DayOfWeek.Sunday - (int)today.DayOfWeek + 7) % 7;
         DateTimeOffset? dueDate = preset switch
         {
-            TodoDuePreset.Today => today,
-            TodoDuePreset.Tomorrow => today.AddDays(1),
-            TodoDuePreset.ThisWeek => today.AddDays(daysUntilSunday),
+            TodoDuePreset.Today => WithEndOfDay(today),
+            TodoDuePreset.Tomorrow => WithEndOfDay(today.AddDays(1)),
+            TodoDuePreset.ThisWeek => WithEndOfDay(today.AddDays(daysUntilSunday)),
             TodoDuePreset.Clear => null,
             _ => null
         };
@@ -713,6 +724,38 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
         SelectedColorFilter = filter;
     }
 
+    public TodoItemViewModel? FocusReminderItem(string? itemId, bool preferTodayFilter)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return null;
+        }
+
+        var item = FindItem(itemId);
+        if (item is null)
+        {
+            return null;
+        }
+
+        SelectedColorFilter = TodoColorFilter.All;
+        SelectedFilter = preferTodayFilter && IsDueToday(item)
+            ? TodoFilter.Today
+            : TodoFilter.All;
+
+        if (!VisibleItems.Contains(item))
+        {
+            SelectedFilter = TodoFilter.All;
+        }
+
+        foreach (var visibleItem in Items)
+        {
+            visibleItem.IsCopySelected = false;
+        }
+
+        item.IsCopySelected = true;
+        return item;
+    }
+
     public void ApplyAppearance()
     {
         if (_settingsService is null)
@@ -751,7 +794,10 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
     private void RefreshVisibleItems()
     {
         VisibleItems.Clear();
-        foreach (var item in Items.Where(ShouldShowItem))
+        var visibleItems = Items.Where(ShouldShowItem).ToList();
+        visibleItems.Sort(CompareVisibleItems);
+
+        foreach (var item in visibleItems)
         {
             VisibleItems.Add(item);
         }
@@ -856,6 +902,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
     private void ApplyTodoSettings(AppSettings settings, bool updateFilter)
     {
         NewTaskPosition = settings.TodoNewTaskPosition;
+        TabStyle = settings.TodoTabStyle;
         ShowCompletedTasks = settings.TodoShowCompletedTasks;
         ShowFooterStats = settings.TodoShowFooterStats;
         ShowClearCompletedButton = settings.TodoShowClearCompletedButton;
@@ -892,13 +939,81 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
 
     private static DateTimeOffset? NormalizeDueDate(DateTimeOffset? dueDate)
     {
-        return dueDate?.Date;
+        if (dueDate is not { } value)
+        {
+            return null;
+        }
+
+        return new DateTimeOffset(
+            value.Year,
+            value.Month,
+            value.Day,
+            value.Hour,
+            value.Minute,
+            value.Second,
+            value.Offset);
     }
 
     private static bool IsDueToday(TodoItemViewModel item)
     {
         return item.DueDate is { } dueDate &&
-               dueDate.Date == DateTimeOffset.Now.Date;
+               dueDate.ToLocalTime().Date == DateTimeOffset.Now.Date;
+    }
+
+    private static DateTimeOffset WithEndOfDay(DateTimeOffset date)
+    {
+        return new DateTimeOffset(
+            date.Year,
+            date.Month,
+            date.Day,
+            23,
+            59,
+            0,
+            date.Offset);
+    }
+
+    private static int CompareVisibleItems(TodoItemViewModel? left, TodoItemViewModel? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left is null)
+        {
+            return 1;
+        }
+
+        if (right is null)
+        {
+            return -1;
+        }
+
+        if (left.IsCompleted != right.IsCompleted)
+        {
+            return left.IsCompleted ? 1 : -1;
+        }
+
+        if (left.IsCompleted)
+        {
+            int completedCompare = (right.CompletedAt ?? right.UpdatedAt)
+                .CompareTo(left.CompletedAt ?? left.UpdatedAt);
+            return completedCompare != 0
+                ? completedCompare
+                : left.SortOrder.CompareTo(right.SortOrder);
+        }
+
+        int dueCompare = (left.DueDate ?? DateTimeOffset.MaxValue)
+            .CompareTo(right.DueDate ?? DateTimeOffset.MaxValue);
+        if (dueCompare != 0)
+        {
+            return dueCompare;
+        }
+
+        int sortCompare = left.SortOrder.CompareTo(right.SortOrder);
+        return sortCompare != 0
+            ? sortCompare
+            : right.UpdatedAt.CompareTo(left.UpdatedAt);
     }
 
     private bool ShouldCountInNonCompletedFilter(TodoItemViewModel item)
@@ -981,6 +1096,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
             IsImportant = item.IsImportant,
             ColorMarker = item.ColorMarker,
             DueDate = item.DueDate,
+            CompletedAt = item.CompletedAt,
             SortOrder = item.SortOrder,
             CreatedAt = item.CreatedAt,
             UpdatedAt = item.UpdatedAt

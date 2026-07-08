@@ -7,7 +7,7 @@ namespace DeskBox.Services;
 
 public sealed class StoreAppUpdateService : IAppUpdateService
 {
-    private const string StoreUpdateUri = "ms-windows-store://downloadsandupdates";
+    public const string StoreUpdateUri = "ms-windows-store://downloadsandupdates";
     private const string StoreNotPackagedError = "STORE_NOT_PACKAGED";
     private const string StoreCanceledError = "STORE_CANCELED";
     private const string StoreUnavailableError = "STORE_UNAVAILABLE";

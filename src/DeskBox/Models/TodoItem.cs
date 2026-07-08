@@ -31,6 +31,12 @@ public sealed class TodoItem
 
     public DateTimeOffset? DueDate { get; set; }
 
+    public DateTimeOffset? CompletedAt { get; set; }
+
+    public DateTimeOffset? ReminderLastNotifiedAt { get; set; }
+
+    public DateTimeOffset? ReminderDismissedForDueDate { get; set; }
+
     public int SortOrder { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

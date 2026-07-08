@@ -7,7 +7,7 @@ namespace DeskBox.Tests;
 public sealed class SettingsViewModelChromeModeTests
 {
     [Fact]
-    public void ResetWidgetChromeOverrides_UpdatesOnlyDisplayWidgets()
+    public void ResetWidgetChromeOverrides_ClearsOnlyDisplayWidgetOverrides()
     {
         using var scope = new TempSettingsScope();
         var settingsService = scope.CreateSettingsService();
@@ -26,14 +26,14 @@ public sealed class SettingsViewModelChromeModeTests
             SettingsService.WidgetChromeModeOverlay);
 
         Assert.Equal(2, changed);
-        AssertChromeMode(settingsService.Settings.Widgets[0], SettingsService.WidgetChromeModeOverlay);
-        AssertChromeMode(settingsService.Settings.Widgets[1], SettingsService.WidgetChromeModeOverlay);
+        AssertSystemChromeMode(settingsService.Settings.Widgets[0]);
+        AssertSystemChromeMode(settingsService.Settings.Widgets[1]);
         AssertChromeMode(settingsService.Settings.Widgets[2], SettingsService.WidgetChromeModeHidden);
         AssertChromeMode(settingsService.Settings.Widgets[3], SettingsService.WidgetChromeModeHidden);
     }
 
     [Fact]
-    public void ResetWidgetChromeOverrides_UpdatesOnlyInteractiveWidgets()
+    public void ResetWidgetChromeOverrides_ClearsOnlyInteractiveWidgetOverrides()
     {
         using var scope = new TempSettingsScope();
         var settingsService = scope.CreateSettingsService();
@@ -52,9 +52,9 @@ public sealed class SettingsViewModelChromeModeTests
             SettingsService.WidgetChromeModeCompact);
 
         Assert.Equal(3, changed);
-        AssertChromeMode(settingsService.Settings.Widgets[0], SettingsService.WidgetChromeModeCompact);
-        AssertChromeMode(settingsService.Settings.Widgets[1], SettingsService.WidgetChromeModeCompact);
-        AssertChromeMode(settingsService.Settings.Widgets[2], SettingsService.WidgetChromeModeCompact);
+        AssertSystemChromeMode(settingsService.Settings.Widgets[0]);
+        AssertSystemChromeMode(settingsService.Settings.Widgets[1]);
+        AssertSystemChromeMode(settingsService.Settings.Widgets[2]);
         AssertChromeMode(settingsService.Settings.Widgets[3], SettingsService.WidgetChromeModeStandard);
     }
 
@@ -74,6 +74,11 @@ public sealed class SettingsViewModelChromeModeTests
     {
         Assert.True(config.Metadata.TryGetValue(WidgetChromeModeNames.MetadataKey, out string? actual));
         Assert.Equal(expected, actual);
+    }
+
+    private static void AssertSystemChromeMode(WidgetConfig config)
+    {
+        Assert.True(config.Metadata is null || !config.Metadata.ContainsKey(WidgetChromeModeNames.MetadataKey));
     }
 
     private sealed class TempSettingsScope : IDisposable

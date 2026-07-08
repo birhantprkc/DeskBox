@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
@@ -11,6 +12,7 @@ namespace DeskBox.Services;
 public sealed class AppUpdateService : IAppUpdateService
 {
     public const string DefaultManifestUrl = "https://deskbox.fun/update/stable.json";
+    public const string DefaultGitHubLatestReleaseApiUrl = "https://api.github.com/repos/Tianyu199509/DeskBox/releases/latest";
     public const string DefaultManualDownloadUrl = "https://pan.quark.cn/s/f7a6769cdaf3";
 
     private static readonly JsonSerializerOptions s_jsonOptions = new(JsonSerializerDefaults.Web)
@@ -20,9 +22,14 @@ public sealed class AppUpdateService : IAppUpdateService
 
     private readonly HttpClient _httpClient;
     private readonly string _manifestUrl;
+    private readonly string _githubLatestReleaseApiUrl;
     private readonly string _updateRootPath;
 
-    public AppUpdateService(HttpClient? httpClient = null, string? manifestUrl = null, string? updateRootPath = null)
+    public AppUpdateService(
+        HttpClient? httpClient = null,
+        string? manifestUrl = null,
+        string? updateRootPath = null,
+        string? githubLatestReleaseApiUrl = null)
     {
         _httpClient = httpClient ?? new HttpClient();
         _httpClient.Timeout = TimeSpan.FromSeconds(20);
@@ -32,6 +39,9 @@ public sealed class AppUpdateService : IAppUpdateService
         _manifestUrl = string.IsNullOrWhiteSpace(manifestUrl)
             ? DefaultManifestUrl
             : manifestUrl;
+        _githubLatestReleaseApiUrl = string.IsNullOrWhiteSpace(githubLatestReleaseApiUrl)
+            ? DefaultGitHubLatestReleaseApiUrl
+            : githubLatestReleaseApiUrl;
         _updateRootPath = string.IsNullOrWhiteSpace(updateRootPath)
             ? DeskBoxDataPathService.Current.UpdatesDirectory
             : updateRootPath;
@@ -50,6 +60,23 @@ public sealed class AppUpdateService : IAppUpdateService
 
     public async Task<AppUpdateCheckResult> CheckForUpdatesAsync(string currentVersion, CancellationToken cancellationToken = default)
     {
+        var manifestResult = await CheckManifestForUpdatesAsync(currentVersion, cancellationToken);
+        if (manifestResult.Status is AppUpdateCheckStatus.UpdateAvailable or AppUpdateCheckStatus.UpToDate)
+        {
+            return SetLastCheckResult(manifestResult);
+        }
+
+        var githubResult = await CheckGitHubLatestReleaseForUpdatesAsync(currentVersion, cancellationToken);
+        if (githubResult.Status is AppUpdateCheckStatus.UpdateAvailable or AppUpdateCheckStatus.UpToDate)
+        {
+            return SetLastCheckResult(githubResult);
+        }
+
+        return SetLastCheckResult(manifestResult);
+    }
+
+    private async Task<AppUpdateCheckResult> CheckManifestForUpdatesAsync(string currentVersion, CancellationToken cancellationToken)
+    {
         try
         {
             using var response = await _httpClient.GetAsync(_manifestUrl, cancellationToken);
@@ -59,20 +86,49 @@ public sealed class AppUpdateService : IAppUpdateService
             var manifest = await JsonSerializer.DeserializeAsync<AppUpdateManifest>(stream, s_jsonOptions, cancellationToken);
             if (!IsManifestUsable(manifest))
             {
-                return SetLastCheckResult(new AppUpdateCheckResult(
+                return new AppUpdateCheckResult(
                     AppUpdateCheckStatus.InvalidManifest,
                     currentVersion,
                     manifest,
-                    "The update manifest is missing required fields."));
+                    "The update manifest is missing required fields.");
             }
 
-            return SetLastCheckResult(IsRemoteVersionNewer(currentVersion, manifest!.Version)
+            return IsRemoteVersionNewer(currentVersion, manifest!.Version)
                 ? new AppUpdateCheckResult(AppUpdateCheckStatus.UpdateAvailable, currentVersion, manifest)
-                : new AppUpdateCheckResult(AppUpdateCheckStatus.UpToDate, currentVersion, manifest));
+                : new AppUpdateCheckResult(AppUpdateCheckStatus.UpToDate, currentVersion, manifest);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException)
         {
-            return SetLastCheckResult(new AppUpdateCheckResult(AppUpdateCheckStatus.Failed, currentVersion, errorMessage: ex.Message));
+            return new AppUpdateCheckResult(AppUpdateCheckStatus.Failed, currentVersion, errorMessage: ex.Message);
+        }
+    }
+
+    private async Task<AppUpdateCheckResult> CheckGitHubLatestReleaseForUpdatesAsync(string currentVersion, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync(_githubLatestReleaseApiUrl, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var release = await JsonSerializer.DeserializeAsync<GitHubReleaseResponse>(stream, s_jsonOptions, cancellationToken);
+            var manifest = await CreateManifestFromGitHubReleaseAsync(release, cancellationToken);
+            if (!IsManifestUsable(manifest) || string.IsNullOrWhiteSpace(manifest!.Sha256))
+            {
+                return new AppUpdateCheckResult(
+                    AppUpdateCheckStatus.InvalidManifest,
+                    currentVersion,
+                    manifest,
+                    "The GitHub release metadata is missing required fields.");
+            }
+
+            return IsRemoteVersionNewer(currentVersion, manifest.Version)
+                ? new AppUpdateCheckResult(AppUpdateCheckStatus.UpdateAvailable, currentVersion, manifest)
+                : new AppUpdateCheckResult(AppUpdateCheckStatus.UpToDate, currentVersion, manifest);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException)
+        {
+            return new AppUpdateCheckResult(AppUpdateCheckStatus.Failed, currentVersion, errorMessage: ex.Message);
         }
     }
 
@@ -292,6 +348,67 @@ public sealed class AppUpdateService : IAppUpdateService
             Uri.TryCreate(manifest.DownloadUrl, UriKind.Absolute, out _);
     }
 
+    private async Task<AppUpdateManifest?> CreateManifestFromGitHubReleaseAsync(
+        GitHubReleaseResponse? release,
+        CancellationToken cancellationToken)
+    {
+        if (release is null || string.IsNullOrWhiteSpace(release.TagName))
+        {
+            return null;
+        }
+
+        var installerAsset = release.Assets.FirstOrDefault(IsInstallerAsset);
+        if (installerAsset is null || string.IsNullOrWhiteSpace(installerAsset.BrowserDownloadUrl))
+        {
+            return null;
+        }
+
+        string sha256 = ExtractSha256FromDigest(installerAsset.Digest);
+        if (string.IsNullOrWhiteSpace(sha256))
+        {
+            var shaAsset = release.Assets.FirstOrDefault(asset =>
+                string.Equals(asset.Name, installerAsset.Name + ".sha256", StringComparison.OrdinalIgnoreCase));
+            sha256 = await DownloadSha256FromAssetAsync(shaAsset, cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(sha256))
+        {
+            return null;
+        }
+
+        string version = NormalizeVersionText(release.TagName);
+        return new AppUpdateManifest
+        {
+            SchemaVersion = 1,
+            Channel = "stable",
+            Version = version,
+            DownloadUrl = installerAsset.BrowserDownloadUrl,
+            ManualDownloadUrl = DefaultManualDownloadUrl,
+            MirrorUrl = DefaultManualDownloadUrl,
+            Sha256 = sha256,
+            Size = Math.Max(0, installerAsset.Size),
+            ReleaseNotesUrl = release.HtmlUrl,
+            Summary =
+            {
+                ["zh-CN"] = $"DeskBox {version} 已发布，可从 GitHub Releases 下载更新。",
+                ["en-US"] = $"DeskBox {version} is available from GitHub Releases."
+            }
+        };
+    }
+
+    private async Task<string> DownloadSha256FromAssetAsync(GitHubReleaseAsset? shaAsset, CancellationToken cancellationToken)
+    {
+        if (shaAsset is null || string.IsNullOrWhiteSpace(shaAsset.BrowserDownloadUrl))
+        {
+            return string.Empty;
+        }
+
+        using var response = await _httpClient.GetAsync(shaAsset.BrowserDownloadUrl, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        string content = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ExtractSha256FromText(content);
+    }
+
     private AppUpdateCheckResult SetLastCheckResult(AppUpdateCheckResult result)
     {
         LastCheckResult = result;
@@ -323,7 +440,63 @@ public sealed class AppUpdateService : IAppUpdateService
     {
         return sha256.Replace(" ", string.Empty, StringComparison.Ordinal)
             .Replace("-", string.Empty, StringComparison.Ordinal)
-            .Trim();
+            .Trim()
+            .ToUpperInvariant();
+    }
+
+    private static bool IsInstallerAsset(GitHubReleaseAsset asset)
+    {
+        return asset.Name.StartsWith("DeskBox_Setup_", StringComparison.OrdinalIgnoreCase) &&
+            asset.Name.EndsWith("_x64.exe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ExtractSha256FromDigest(string? digest)
+    {
+        if (string.IsNullOrWhiteSpace(digest))
+        {
+            return string.Empty;
+        }
+
+        const string prefix = "sha256:";
+        string value = digest.Trim();
+        if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            value = value[prefix.Length..];
+        }
+
+        return IsSha256Hex(value) ? NormalizeSha256(value) : string.Empty;
+    }
+
+    private static string ExtractSha256FromText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        foreach (var token in value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string normalized = NormalizeSha256(token);
+            if (IsSha256Hex(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static bool IsSha256Hex(string value)
+    {
+        return value.Length == 64 && value.All(Uri.IsHexDigit);
+    }
+
+    private static string NormalizeVersionText(string value)
+    {
+        string normalized = value.Trim();
+        return normalized.StartsWith('v') || normalized.StartsWith('V')
+            ? normalized[1..]
+            : normalized;
     }
 
     private static void TryDelete(string path)
@@ -338,5 +511,28 @@ public sealed class AppUpdateService : IAppUpdateService
         catch
         {
         }
+    }
+
+    private sealed class GitHubReleaseResponse
+    {
+        [JsonPropertyName("tag_name")]
+        public string TagName { get; set; } = string.Empty;
+
+        [JsonPropertyName("html_url")]
+        public string HtmlUrl { get; set; } = string.Empty;
+
+        public GitHubReleaseAsset[] Assets { get; set; } = [];
+    }
+
+    private sealed class GitHubReleaseAsset
+    {
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("browser_download_url")]
+        public string BrowserDownloadUrl { get; set; } = string.Empty;
+
+        public long Size { get; set; }
+
+        public string Digest { get; set; } = string.Empty;
     }
 }
