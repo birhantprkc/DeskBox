@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
-
+using Microsoft.UI.Xaml.Media;
 namespace DeskBox.Controls.WidgetContents;
 
 public sealed partial class MusicWidgetContent : UserControl
@@ -14,9 +14,9 @@ public sealed partial class MusicWidgetContent : UserControl
     private const double AlbumArtHoverOffset = 3.0;
     private const double TitleMarqueeGap = 32.0;
     private const double TitleMarqueeStartDelayMs = 900.0;
-    private const double TitleMarqueeSpeedPixelsPerSecond = 28.0;
+    private const double TitleMarqueeSpeedPixelsPerSecond = 50.0;
     private const double TitleMarqueeOverflowTolerance = 4.0;
-    private const int TitleMarqueeDeferredMeasureMs = 180;
+    private const int TitleMarqueeDeferredMeasureMs = 300;
     private const double MinimumResponsiveWidth = 200.0;
     private const double WideResponsiveWidth = 320.0;
     private const double WideAlbumArtSize = 82.0;
@@ -457,7 +457,7 @@ public sealed partial class MusicWidgetContent : UserControl
         }
 
         _titleMarqueeTimer = DispatcherQueue.CreateTimer();
-        _titleMarqueeTimer.Interval = TimeSpan.FromMilliseconds(33);
+        _titleMarqueeTimer.Interval = TimeSpan.FromMilliseconds(16);
         _titleMarqueeTimer.IsRepeating = true;
         _titleMarqueeTimer.Tick += TitleMarqueeTimer_Tick;
     }
@@ -563,6 +563,15 @@ public sealed partial class MusicWidgetContent : UserControl
 
     private double MeasureTitleWidth()
     {
+        // Use ViewModel's Title directly to avoid binding propagation timing issues
+        string? title = ViewModel?.Title;
+        if (string.IsNullOrEmpty(title))
+        {
+            return 0;
+        }
+
+        // Ensure the measure text block has the latest text
+        TitleMeasureText.Text = title;
         TitleMeasureText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         double desiredWidth = TitleMeasureText.DesiredSize.Width;
         if (double.IsFinite(desiredWidth) && desiredWidth > 0)

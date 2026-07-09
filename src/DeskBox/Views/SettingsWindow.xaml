@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="DeskBox.Views.SettingsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -466,6 +466,7 @@
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
+                            IsEnabled="{Binding IsOpacitySliderEnabled, Mode=OneWay}"
                             svc:Localized.HeaderKey="Settings.Opacity.Title">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE9D2;" />
@@ -540,7 +541,31 @@
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
+                                    svc:Localized.DescriptionKey="Settings.Material.Description"
+                                    svc:Localized.HeaderKey="Settings.Material.Title">
+                                    <ComboBox
+                                        MinWidth="176"
+                                        ItemsSource="{Binding AvailableWidgetMaterialTypeDisplayNames}"
+                                        SelectedIndex="{Binding SelectedWidgetMaterialTypeIndex, Mode=OneWay}"
+                                        SelectionChanged="SettingsComboBox_SelectionChanged"
+                                        Tag="WidgetMaterial" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Border.Description"
+                                    svc:Localized.HeaderKey="Settings.Border.Title">
+                                    <ComboBox
+                                        MinWidth="176"
+                                        ItemsSource="{Binding AvailableWidgetBorderStyleDisplayNames}"
+                                        SelectedIndex="{Binding SelectedWidgetBorderStyleIndex, Mode=OneWay}"
+                                        SelectionChanged="SettingsComboBox_SelectionChanged"
+                                        Tag="WidgetBorder" />
+                                </toolkit:SettingsCard>
+
+<toolkit:SettingsCard
+HorizontalContentAlignment="Right"
+svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.HeaderKey="Settings.DefaultWidth.Title">
                                     <NumberBox
                                         Style="{StaticResource CompactNumberBoxStyle}"

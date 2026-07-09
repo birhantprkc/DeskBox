@@ -16,6 +16,13 @@ public sealed class SettingsService
     public const double DefaultWidgetOpacity = 0.80;
     public const double MinWidgetOpacity = 0.0;
     public const double MaxWidgetOpacity = 1.0;
+    public const string WidgetMaterialTypeMica = "Mica";
+    public const string WidgetMaterialTypeAcrylic = "Acrylic";
+    public const string WidgetMaterialTypeSolid = "Solid";
+    public const string WidgetBorderStyleNone = "None";
+    public const string WidgetBorderStyleThin = "Thin";
+    public const string WidgetBorderStyleMedium = "Medium";
+    public const string WidgetBorderStyleThick = "Thick";
     public const string WidgetCornerPreferenceDefault = "Default";
     public const string WidgetCornerPreferenceSquare = "Square";
     public const string WidgetCornerPreferenceSmall = "Small";
@@ -145,6 +152,8 @@ public sealed class SettingsService
         settings.DefaultWidgetWidth = DefaultWidgetWidth;
         settings.DefaultWidgetHeight = DefaultWidgetHeight;
         settings.WidgetCornerPreference = WidgetCornerPreferenceSmall;
+        settings.WidgetMaterialType = WidgetMaterialTypeAcrylic;
+        settings.WidgetBorderStyle = WidgetBorderStyleThin;
         settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
         settings.WidgetAnimationSpeed = WidgetAnimationSpeedStandard;
         settings.WidgetAnimationSlideDirection = WidgetAnimationSlideDirectionRight;
@@ -446,6 +455,33 @@ public sealed class SettingsService
             WidgetCornerPreferenceRound))
         {
             settings.WidgetCornerPreference = WidgetCornerPreferenceSmall;
+            changed = true;
+        }
+
+        if (settings.WidgetMaterialType is not (
+            WidgetMaterialTypeMica or
+            WidgetMaterialTypeAcrylic or
+            WidgetMaterialTypeSolid))
+        {
+            // Migrate legacy "Auto" to "Acrylic"
+            if (settings.WidgetMaterialType == "Auto")
+            {
+                settings.WidgetMaterialType = WidgetMaterialTypeAcrylic;
+            }
+            else
+            {
+                settings.WidgetMaterialType = WidgetMaterialTypeAcrylic;
+            }
+            changed = true;
+        }
+
+        if (settings.WidgetBorderStyle is not (
+            WidgetBorderStyleNone or
+            WidgetBorderStyleThin or
+            WidgetBorderStyleMedium or
+            WidgetBorderStyleThick))
+        {
+            settings.WidgetBorderStyle = WidgetBorderStyleThin;
             changed = true;
         }
 

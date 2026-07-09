@@ -203,7 +203,7 @@
             Opacity="{Binding RhythmBarsOpacity}"
             Visibility="{Binding RhythmBarsVisibility}">
             <ItemsControl
-                Margin="2,0,2,7"
+                Margin="12,0,12,7"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -224,10 +224,13 @@
                             Height="{Binding Height}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Bottom"
-                            CornerRadius="3"
+                            CornerRadius="2"
                             Opacity="{Binding Opacity}">
                             <Border.Background>
-                                <SolidColorBrush Color="{Binding AccentColor}" />
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Offset="0" Color="{Binding AccentColor}" />
+                                    <GradientStop Offset="1" Color="{Binding GlassEndColor}" />
+                                </LinearGradientBrush>
                             </Border.Background>
                         </Border>
                     </DataTemplate>
@@ -235,7 +238,7 @@
             </ItemsControl>
 
             <ItemsControl
-                Margin="2,0,2,7"
+                Margin="12,0,12,7"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -275,7 +278,7 @@
             </ItemsControl>
 
             <ItemsControl
-                Margin="2,0,2,9"
+                Margin="12,0,12,9"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -296,7 +299,9 @@
                             Height="{Binding DotSize}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Bottom"
-                            Opacity="{Binding Opacity}">
+                            Opacity="{Binding Opacity}"
+                            Stroke="{Binding GlassStrokeColor}"
+                            StrokeThickness="0.5">
                             <Ellipse.Fill>
                                 <SolidColorBrush Color="{Binding AccentColor}" />
                             </Ellipse.Fill>
@@ -306,7 +311,7 @@
             </ItemsControl>
 
             <ItemsControl
-                Margin="2,0,2,5"
+                Margin="12,0,12,5"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -330,7 +335,10 @@
                             CornerRadius="1"
                             Opacity="{Binding Opacity}">
                             <Border.Background>
-                                <SolidColorBrush Color="{Binding AccentColor}" />
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Offset="0" Color="{Binding AccentColor}" />
+                                    <GradientStop Offset="1" Color="{Binding GlassMidColor}" />
+                                </LinearGradientBrush>
                             </Border.Background>
                         </Border>
                     </DataTemplate>
@@ -338,7 +346,7 @@
             </ItemsControl>
 
             <ItemsControl
-                Margin="2,0,2,5"
+                Margin="12,0,12,5"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 ItemsSource="{Binding VisualizerBars}"
@@ -578,7 +586,7 @@
                 <Grid
                     x:Name="ProgressHost"
                     Grid.Column="1"
-                    Height="18"
+                    Height="24"
                     MinWidth="44"
                     Background="Transparent"
                     HorizontalAlignment="Stretch"
@@ -589,14 +597,14 @@
                     PointerReleased="ProgressHost_PointerReleased">
                     <Border
                         x:Name="ProgressTrack"
-                        Height="3"
+                        Height="4"
                         VerticalAlignment="Center"
                         Background="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
                         CornerRadius="2"
                         Opacity="0.36" />
                     <Border
                         x:Name="ProgressFill"
-                        Height="3"
+                        Height="4"
                         Width="0"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
@@ -722,7 +730,7 @@
 
         <Border
             x:Name="InlineVolumePanel"
-            Width="198"
+            Width="238"
             Height="48"
             Padding="10,8"
             HorizontalAlignment="Left"
@@ -743,7 +751,7 @@
                     Grid.Column="0"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    FontSize="{Binding CaptionTextSize}"
+                    FontSize="{Binding VolumeTextSize}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                     Text="{Binding SystemVolumeText}"
@@ -753,6 +761,7 @@
                     x:Name="InlineSystemVolumeSlider"
                     Grid.Column="1"
                     Height="28"
+                    Margin="0,-4,0,0"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Center"
                     IsThumbToolTipEnabled="False"

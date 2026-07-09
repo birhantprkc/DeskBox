@@ -28,6 +28,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string CornerSquare = SettingsService.WidgetCornerPreferenceSquare;
     private const string CornerSmall = SettingsService.WidgetCornerPreferenceSmall;
     private const string CornerRound = SettingsService.WidgetCornerPreferenceRound;
+    private const string MaterialMica = SettingsService.WidgetMaterialTypeMica;
+    private const string MaterialAcrylic = SettingsService.WidgetMaterialTypeAcrylic;
+    private const string MaterialSolid = SettingsService.WidgetMaterialTypeSolid;
+    private const string BorderNone = SettingsService.WidgetBorderStyleNone;
+    private const string BorderThin = SettingsService.WidgetBorderStyleThin;
+    private const string BorderMedium = SettingsService.WidgetBorderStyleMedium;
+    private const string BorderThick = SettingsService.WidgetBorderStyleThick;
     private const string RepositoryUrl = "https://github.com/Tianyu199509/DeskBox";
     private const string OfficialWebsiteUrl = "https://deskbox.fun";
 
@@ -47,6 +54,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedTrayIconStyle = TrayIconStyleSystem;
     private string _selectedLanguage = SettingsService.LanguageSystem;
     private string _selectedWidgetCornerPreference = CornerSmall;
+    private string _selectedWidgetMaterialType = MaterialAcrylic;
+    private string _selectedWidgetBorderStyle = BorderThin;
     private string _selectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade;
     private string _selectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
     private string _selectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
@@ -85,6 +94,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string[]? _cachedThemeDisplayNames;
     private string[]? _cachedLanguageDisplayNames;
     private string[]? _cachedWidgetCornerPreferenceDisplayNames;
+    private string[]? _cachedWidgetMaterialTypeDisplayNames;
+    private string[]? _cachedWidgetBorderStyleDisplayNames;
     private string[]? _cachedWidgetAnimationEffectDisplayNames;
     private string[]? _cachedWidgetAnimationSpeedDisplayNames;
     private string[]? _cachedWidgetAnimationSlideDirectionDisplayNames;
@@ -281,6 +292,65 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string SelectedWidgetCornerPreferenceText => GetCornerDisplayName(SelectedWidgetCornerPreference);
     public int SelectedWidgetCornerPreferenceIndex => Array.IndexOf(AvailableWidgetCornerPreferences, _selectedWidgetCornerPreference);
+
+    public string SelectedWidgetMaterialType
+    {
+        get => _selectedWidgetMaterialType;
+        set
+        {
+            if (!SetProperty(ref _selectedWidgetMaterialType, value))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetMaterialType = value is MaterialMica or MaterialAcrylic or MaterialSolid
+                ? value
+                : SettingsService.WidgetMaterialTypeAcrylic;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedWidgetMaterialTypeText));
+            OnPropertyChanged(nameof(IsOpacitySliderEnabled));
+        }
+    }
+
+public string SelectedWidgetMaterialTypeText => GetMaterialTypeDisplayName(SelectedWidgetMaterialType);
+public int SelectedWidgetMaterialTypeIndex => Array.IndexOf(AvailableWidgetMaterialTypes, _selectedWidgetMaterialType);
+
+/// <summary>
+/// Whether the opacity slider is enabled. Disabled for Mica (too subtle to control).
+/// </summary>
+public bool IsOpacitySliderEnabled =>
+    _selectedWidgetMaterialType is not MaterialMica;
+
+    public string SelectedWidgetBorderStyle
+    {
+        get => _selectedWidgetBorderStyle;
+        set
+        {
+            if (!SetProperty(ref _selectedWidgetBorderStyle, value))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetBorderStyle = value is BorderNone or BorderThin or BorderMedium or BorderThick
+                ? value
+                : SettingsService.WidgetBorderStyleThin;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedWidgetBorderStyleText));
+        }
+    }
+
+    public string SelectedWidgetBorderStyleText => GetBorderStyleDisplayName(SelectedWidgetBorderStyle);
+    public int SelectedWidgetBorderStyleIndex => Array.IndexOf(AvailableWidgetBorderStyles, _selectedWidgetBorderStyle);
 
     public string SelectedWidgetAnimationEffect
     {
@@ -1219,6 +1289,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public string[] AvailableLanguageDisplayNames => _cachedLanguageDisplayNames ??= AvailableLanguages.Select(_localizationService.GetLanguageDisplayName).ToArray();
     public string[] AvailableWidgetCornerPreferences { get; } = [CornerSmall, CornerRound, CornerSquare];
     public string[] AvailableWidgetCornerPreferenceDisplayNames => _cachedWidgetCornerPreferenceDisplayNames ??= AvailableWidgetCornerPreferences.Select(GetCornerDisplayName).ToArray();
+
+    public string[] AvailableWidgetMaterialTypes { get; } = [MaterialAcrylic, MaterialMica, MaterialSolid];
+    public string[] AvailableWidgetMaterialTypeDisplayNames => _cachedWidgetMaterialTypeDisplayNames ??= AvailableWidgetMaterialTypes.Select(GetMaterialTypeDisplayName).ToArray();
+
+    public string[] AvailableWidgetBorderStyles { get; } = [BorderThin, BorderMedium, BorderThick, BorderNone];
+    public string[] AvailableWidgetBorderStyleDisplayNames => _cachedWidgetBorderStyleDisplayNames ??= AvailableWidgetBorderStyles.Select(GetBorderStyleDisplayName).ToArray();
     public string[] AvailableWidgetAnimationEffects { get; } =
     [
         SettingsService.WidgetAnimationEffectSlideFade,
@@ -1954,6 +2030,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerDefault or CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
             : CornerSmall;
+        _selectedWidgetMaterialType = settings.WidgetMaterialType is MaterialMica or MaterialAcrylic or MaterialSolid
+            ? settings.WidgetMaterialType
+            : MaterialAcrylic;
+        _selectedWidgetBorderStyle = settings.WidgetBorderStyle is BorderNone or BorderThin or BorderMedium or BorderThick
+            ? settings.WidgetBorderStyle
+            : BorderThin;
         _selectedWidgetAnimationEffect = NormalizeWidgetAnimationEffect(settings.WidgetAnimationEffect);
         _selectedWidgetAnimationSpeed = NormalizeWidgetAnimationSpeed(settings.WidgetAnimationSpeed);
         _selectedWidgetAnimationSlideDirection = NormalizeWidgetAnimationSlideDirection(settings.WidgetAnimationSlideDirection);
@@ -2055,6 +2137,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             DefaultWidth = SettingsService.DefaultWidgetWidth;
             DefaultHeight = SettingsService.DefaultWidgetHeight;
             SelectedWidgetCornerPreference = CornerSmall;
+            SelectedWidgetMaterialType = MaterialAcrylic;
+            SelectedWidgetBorderStyle = BorderThin;
             SelectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectSlideFade;
             SelectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
             SelectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
@@ -2151,6 +2235,27 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             CornerSquare => _localizationService.T("Settings.Corner.Square"),
             CornerRound => _localizationService.T("Settings.Corner.Round"),
             _ => _localizationService.T("Settings.Corner.Small")
+        };
+    }
+
+    public string GetMaterialTypeDisplayName(string material)
+    {
+        return material switch
+        {
+            MaterialMica => _localizationService.T("Settings.Material.Mica"),
+            MaterialSolid => _localizationService.T("Settings.Material.Solid"),
+            _ => _localizationService.T("Settings.Material.Acrylic")
+        };
+    }
+
+    public string GetBorderStyleDisplayName(string style)
+    {
+        return style switch
+        {
+            BorderNone => _localizationService.T("Settings.Border.None"),
+            BorderMedium => _localizationService.T("Settings.Border.Medium"),
+            BorderThick => _localizationService.T("Settings.Border.Thick"),
+            _ => _localizationService.T("Settings.Border.Thin")
         };
     }
 
@@ -2312,8 +2417,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             SettingsService.MusicRhythmStyleGlassSpectrum => _localizationService.T("Settings.Music.RhythmStyle.GlassSpectrum"),
             SettingsService.MusicRhythmStyleDotPulse => _localizationService.T("Settings.Music.RhythmStyle.DotPulse"),
             SettingsService.MusicRhythmStyleLineSpectrum => _localizationService.T("Settings.Music.RhythmStyle.LineSpectrum"),
-            SettingsService.MusicRhythmStyleStackedEqualizer => _localizationService.T("Settings.Music.RhythmStyle.StackedEqualizer"),
-            _ => _localizationService.T("Settings.Music.RhythmStyle.SoftWave")
+        SettingsService.MusicRhythmStyleStackedEqualizer => _localizationService.T("Settings.Music.RhythmStyle.StackedEqualizer"),
+        _ => _localizationService.T("Settings.Music.RhythmStyle.SoftWave")
         };
     }
 
@@ -2605,6 +2710,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _cachedTrayIconStyleDisplayNames = null;
         _cachedLanguageDisplayNames = null;
         _cachedWidgetCornerPreferenceDisplayNames = null;
+        _cachedWidgetMaterialTypeDisplayNames = null;
+        _cachedWidgetBorderStyleDisplayNames = null;
         _cachedWidgetAnimationEffectDisplayNames = null;
         _cachedWidgetAnimationSpeedDisplayNames = null;
         _cachedWidgetAnimationSlideDirectionDisplayNames = null;
@@ -2624,6 +2731,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AvailableTrayIconStyleDisplayNames));
         OnPropertyChanged(nameof(AvailableLanguageDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetMaterialTypeDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetBorderStyleDisplayNames));
+        OnPropertyChanged(nameof(IsOpacitySliderEnabled));
         OnPropertyChanged(nameof(AvailableWidgetAnimationEffectDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetAnimationSpeedDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetAnimationSlideDirectionDisplayNames));
@@ -2647,6 +2757,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedLanguageIndex));
         OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceText));
         OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceIndex));
+        OnPropertyChanged(nameof(SelectedWidgetMaterialTypeText));
+        OnPropertyChanged(nameof(SelectedWidgetMaterialTypeIndex));
+        OnPropertyChanged(nameof(SelectedWidgetBorderStyleText));
+        OnPropertyChanged(nameof(SelectedWidgetBorderStyleIndex));
         OnPropertyChanged(nameof(SelectedWidgetAnimationEffectText));
         OnPropertyChanged(nameof(SelectedWidgetAnimationEffectIndex));
         OnPropertyChanged(nameof(IsDirectionEnabled));

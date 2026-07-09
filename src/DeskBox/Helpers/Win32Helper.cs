@@ -546,6 +546,10 @@ public static partial class Win32Helper
     public const int DWMWA_BORDER_COLOR = 34;
     public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     public const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    public const int DWMWA_NCRENDERING_POLICY = 2;
+    public const int DWMNCRP_USEWINDOWSTYLE = 0;
+    public const int DWMNCRP_DISABLED = 1;
+    public const int DWMNCRP_ENABLED = 2;
     public const int DWMWCP_DEFAULT = 0;
     public const int DWMWCP_DONOTROUND = 1;
     public const int DWMWCP_ROUND = 2;
@@ -582,6 +586,15 @@ public static partial class Win32Helper
         };
 
         DwmExtendFrameIntoClientArea(hWnd, ref margins);
+    }
+
+    /// <summary>
+    /// Sets the DWM system border color for a window.
+    /// Pass 0xFFFFFFFE for no border, 0xFFFFFFFF for automatic.
+    /// </summary>
+    public static void SetWindowBorderColor(IntPtr hWnd, int colorRef)
+    {
+        DwmSetWindowAttribute(hWnd, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int));
     }
 
     public static void ApplyAccentBlur(IntPtr hWnd, Windows.UI.Color tintColor, double opacity, bool enabled)

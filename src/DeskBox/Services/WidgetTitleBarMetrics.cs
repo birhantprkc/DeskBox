@@ -29,7 +29,7 @@ public static class WidgetTitleBarMetricsCalculator
             : Math.Clamp(Math.Round(titleIconSize), 11, 18);
         titleTextSize = compact
             ? Math.Clamp(Math.Round(titleTextSize), SettingsService.MinTextSize, SettingsService.MaxTextSize)
-            : Math.Clamp(Math.Round(titleTextSize), 12, 18);
+            : Math.Clamp(Math.Round(titleTextSize) - 1, 12, 18);
 
         double buttonSize = compact
             ? Math.Clamp(titleIconSize + 10, 22, 28)
@@ -39,7 +39,7 @@ public static class WidgetTitleBarMetricsCalculator
             : Math.Clamp(titleIconSize - 3, 10, 15);
         var rowHeight = compact
             ? new GridLength(Math.Clamp(titleIconSize + 22, 30, 36))
-            : new GridLength(Math.Clamp(titleIconSize + 32, 40, 54));
+            : new GridLength(Math.Clamp(titleIconSize + 28, 36, 50));
         var innerPadding = includeInnerPadding
             ? CreateInnerPadding(titleIconSize, compact)
             : new Thickness(0);
@@ -64,9 +64,9 @@ public static class WidgetTitleBarMetricsCalculator
     public static void ApplyActionIcon(FrameworkElement icon, WidgetTitleBarMetrics metrics)
     {
         bool compact = metrics.RowHeight.Value <= 36;
-        double visualScale = compact
+                double visualScale = compact
             ? FluentActionIconVisualScale * CompactActionIconVisualScale
-            : FluentActionIconVisualScale;
+            : FluentActionIconVisualScale * 0.9;
         double targetSize = Math.Clamp(
             Math.Round(Math.Min(FluentActionIconNativeSize, metrics.ActionButtonSize - 4) * visualScale),
             compact ? 10 : 12,

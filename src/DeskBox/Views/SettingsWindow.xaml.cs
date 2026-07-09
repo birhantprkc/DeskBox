@@ -359,6 +359,12 @@ public sealed partial class SettingsWindow : Window
             case "WidgetCorner":
                 ViewModel.SelectedWidgetCornerPreference = ViewModel.AvailableWidgetCornerPreferences[combo.SelectedIndex];
                 break;
+            case "WidgetMaterial":
+                ViewModel.SelectedWidgetMaterialType = ViewModel.AvailableWidgetMaterialTypes[combo.SelectedIndex];
+                break;
+            case "WidgetBorder":
+                ViewModel.SelectedWidgetBorderStyle = ViewModel.AvailableWidgetBorderStyles[combo.SelectedIndex];
+                break;
             case "WidgetAnimationEffect":
                 ViewModel.SelectedWidgetAnimationEffect = ViewModel.AvailableWidgetAnimationEffects[combo.SelectedIndex];
                 break;

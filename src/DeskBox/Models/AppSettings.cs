@@ -130,6 +130,18 @@ public class AppSettings
     public double WidgetOpacity { get; set; } = 0.80;
 
     /// <summary>
+    /// Material type for widget window backdrops.
+    /// Valid values: <c>"Mica"</c>, <c>"Acrylic"</c>, <c>"Solid"</c>, <c>"Transparent"</c>.
+    /// </summary>
+    public string WidgetMaterialType { get; set; } = "Acrylic";
+
+    /// <summary>
+    /// Border style for widget windows.
+    /// Valid values: <c>"None"</c>, <c>"Thin"</c>, <c>"Medium"</c>, <c>"Thick"</c>.
+    /// </summary>
+    public string WidgetBorderStyle { get; set; } = "Thin";
+
+    /// <summary>
     /// Native DWM corner style for widget windows.
     /// Valid values: <c>"Default"</c>, <c>"Square"</c>, <c>"Small"</c>, <c>"Round"</c>.
     /// </summary>

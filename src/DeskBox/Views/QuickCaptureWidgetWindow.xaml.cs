@@ -89,6 +89,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private readonly WidgetWindowDiagnostics _diagnostics;
     private readonly WidgetTrayAnimationController _trayAnimation;
     private DesktopAcrylicController? _acrylicController;
+    private MicaController? _micaController;
     private SystemBackdropConfiguration? _backdropConfiguration;
     private ICompositionSupportsSystemBackdrop? _backdropTarget;
     private bool _isDragging;
@@ -504,8 +505,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             bounds.Height,
             persist: false);
 
-        int borderNone = unchecked((int)0xFFFFFFFE);
-        Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_BORDER_COLOR, ref borderNone, sizeof(int));
+        ApplyDwmBorderStyle(RootGrid.ActualTheme == ElementTheme.Dark);
         ApplyWindowCornerPreference();
         Win32Helper.EnsureSystemDispatcherQueue();
         Win32Helper.ApplyFullWindowFrame(_hWnd);
@@ -584,6 +584,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             _trayAnimation.RestoreVisualState();
             _trayAnimation.RestoreWindowPosition();
             DisposeAcrylicController();
+            DisposeMicaController();
 
             foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
             {
@@ -3764,15 +3765,40 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         double surfaceOpacity = Math.Clamp(ViewModel.WidgetOpacity, 0.0, 1.0);
         var tintColor = BuildNativeBackdropTintColor(isDark);
+        string materialType = _settingsService.Settings.WidgetMaterialType;
 
         try
         {
             Win32Helper.ApplyFullWindowFrame(_hWnd);
             RootGrid.Background = new SolidColorBrush(Colors.Transparent);
 
+            // Apply DWM border color based on border style setting
+            ApplyDwmBorderStyle(isDark);
+
             int backdropType;
-            if (ApplyAcrylicController(isDark, tintColor, surfaceOpacity))
+            bool controllerApplied = false;
+
+            if (materialType is SettingsService.WidgetMaterialTypeMica)
             {
+                controllerApplied = ApplyMicaController(isDark, tintColor, surfaceOpacity);
+            }
+
+            if (!controllerApplied && materialType is SettingsService.WidgetMaterialTypeAcrylic)
+            {
+                controllerApplied = ApplyAcrylicController(isDark, tintColor, surfaceOpacity);
+            }
+
+            if (controllerApplied)
+            {
+                backdropType = Win32Helper.DWMSBT_NONE;
+                Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                Win32Helper.DisableAccentPolicy(_hWnd);
+            }
+            else if (materialType is SettingsService.WidgetMaterialTypeSolid)
+            {
+                // Solid: no system backdrop, no accent blur
+                DisposeAcrylicController();
+                DisposeMicaController();
                 backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
                 Win32Helper.DisableAccentPolicy(_hWnd);
@@ -3782,6 +3808,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
                 backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
                 Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
                 DisposeAcrylicController();
+                DisposeMicaController();
                 Win32Helper.ApplyAccentBlur(_hWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
             }
         }
@@ -3789,10 +3816,92 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         {
             App.Log($"QuickCapture ApplyBackdropPreference fallback: {ex}");
             DisposeAcrylicController();
+            DisposeMicaController();
             Win32Helper.ApplyAccentBlur(_hWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
         }
 
         ApplySurfaceStyle();
+    }
+
+    private double GetCornerRadiusFromPreference()
+    {
+        return _settingsService.Settings.WidgetCornerPreference switch
+        {
+            SettingsService.WidgetCornerPreferenceSquare => 0,
+            SettingsService.WidgetCornerPreferenceSmall => 4,
+            SettingsService.WidgetCornerPreferenceRound => 8,
+            _ => 8
+        };
+    }
+
+    private void ApplyDwmBorderStyle(bool isDark)
+    {
+        // Always set DWM border to transparent — the visual border is drawn by XAML
+        int borderNone = unchecked((int)0xFFFFFFFE);
+        Win32Helper.SetWindowBorderColor(_hWnd, borderNone);
+    }
+
+    private bool ApplyMicaController(
+        bool isDark,
+        Windows.UI.Color tintColor,
+        double surfaceOpacity)
+    {
+        if (!MicaController.IsSupported())
+        {
+            DisposeMicaController();
+            return false;
+        }
+
+        _backdropTarget ??= this.As<ICompositionSupportsSystemBackdrop>();
+        _backdropConfiguration ??= new SystemBackdropConfiguration();
+        _backdropConfiguration.IsInputActive = true;
+        _backdropConfiguration.Theme = isDark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
+
+        if (_micaController is null)
+        {
+            DisposeAcrylicController();
+            _micaController = new MicaController { Kind = MicaKind.Base };
+
+            if (!_micaController.AddSystemBackdropTarget(_backdropTarget))
+            {
+                DisposeMicaController();
+                return false;
+            }
+        }
+        else
+        {
+            DisposeAcrylicController();
+        }
+
+        _micaController.SetSystemBackdropConfiguration(_backdropConfiguration);
+        _micaController.Kind = MicaKind.Base;
+        _micaController.TintColor = tintColor;
+        _micaController.FallbackColor = isDark
+            ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
+            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        _micaController.TintOpacity = (float)Math.Clamp(surfaceOpacity * 0.5, 0.0, 1.0);
+        return true;
+    }
+
+    private void DisposeMicaController()
+    {
+        if (_micaController is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _micaController.RemoveAllSystemBackdropTargets();
+            _micaController.Dispose();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _micaController = null;
+        }
     }
 
     private bool ApplyAcrylicController(bool isDark, Windows.UI.Color tintColor, double surfaceOpacity)
@@ -3813,6 +3922,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         if (_acrylicController is null || _acrylicController.IsClosed)
         {
+            DisposeMicaController();
             _acrylicController = new DesktopAcrylicController
             {
                 Kind = DesktopAcrylicKind.Thin
@@ -3823,6 +3933,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
                 DisposeAcrylicController();
                 return false;
             }
+        }
+        else
+        {
+            DisposeMicaController();
         }
 
         _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
@@ -3837,6 +3951,48 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             : Math.Clamp(0.22 + surfaceOpacity * 0.58, 0.0, 0.86);
         _acrylicController.TintOpacity = (float)tintOpacity;
         _acrylicController.LuminosityOpacity = (float)luminosityOpacity;
+        return true;
+    }
+
+    private bool ApplyTransparentAcrylicController(bool isDark)
+    {
+        if (!DesktopAcrylicController.IsSupported())
+        {
+            DisposeAcrylicController();
+            return false;
+        }
+
+        _backdropTarget ??= this.As<ICompositionSupportsSystemBackdrop>();
+        _backdropConfiguration ??= new SystemBackdropConfiguration();
+        _backdropConfiguration.IsInputActive = true;
+        _backdropConfiguration.Theme = isDark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
+
+        if (_acrylicController is null || _acrylicController.IsClosed)
+        {
+            _acrylicController = new DesktopAcrylicController
+            {
+                Kind = DesktopAcrylicKind.Thin
+            };
+
+            if (!_acrylicController.AddSystemBackdropTarget(_backdropTarget))
+            {
+                DisposeAcrylicController();
+                return false;
+            }
+        }
+
+        _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
+        _acrylicController.Kind = DesktopAcrylicKind.Thin;
+        _acrylicController.TintColor = isDark
+            ? ColorHelper.FromArgb(0x01, 0x20, 0x22, 0x26)
+            : ColorHelper.FromArgb(0x01, 0xFF, 0xFF, 0xFF);
+        _acrylicController.FallbackColor = isDark
+            ? ColorHelper.FromArgb(0x01, 0x20, 0x22, 0x26)
+            : ColorHelper.FromArgb(0x01, 0xFF, 0xFF, 0xFF);
+        _acrylicController.TintOpacity = 0.0f;
+        _acrylicController.LuminosityOpacity = 0.0f;
+
+        DisposeMicaController();
         return true;
     }
 
@@ -3881,15 +4037,34 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         double surfaceOpacity = Math.Clamp(ViewModel.WidgetOpacity, 0.0, 1.0);
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
+        string materialType = _settingsService.Settings.WidgetMaterialType;
+        string borderStyle = _settingsService.Settings.WidgetBorderStyle;
 
-        var surfaceColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
-        byte chromeAlpha = 0x18;
+        // Simplified layering: only apply surface color overlay for Solid mode.
+        if (materialType is SettingsService.WidgetMaterialTypeSolid)
+        {
+            var surfaceColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
+            BackgroundPlate.Background = new SolidColorBrush(surfaceColor);
+        }
+        else
+        {
+            BackgroundPlate.Background = new SolidColorBrush(Colors.Transparent);
+        }
+
+        var (borderThickness, borderAlpha) = borderStyle switch
+        {
+            SettingsService.WidgetBorderStyleNone => (0d, (byte)0),
+            SettingsService.WidgetBorderStyleMedium => (1.2d, (byte)0x30),
+            SettingsService.WidgetBorderStyleThick => (1.6d, (byte)0x48),
+            _ => (0.8d, (byte)0x18),
+        };
+
         var borderColor = isDark
-            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.75), 0, 255), 0xFF, 0xFF, 0xFF)
-            : WithAlpha(BlendColors(ColorHelper.FromArgb(0xFF, 0x00, 0x00, 0x00), accentColor, 0.22), chromeAlpha);
+            ? ColorHelper.FromArgb(borderAlpha, 0xFF, 0xFF, 0xFF)
+            : WithAlpha(BlendColors(ColorHelper.FromArgb(0xFF, 0x00, 0x00, 0x00), accentColor, 0.22), borderAlpha);
         var dividerColor = isDark
-            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.66), 0, 255), 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.42), 0, 255), 0x00, 0x00, 0x00);
+            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(borderAlpha * 0.66), 0, 255), 0xFF, 0xFF, 0xFF)
+            : ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(borderAlpha * 0.42), 0, 255), 0x00, 0x00, 0x00);
         var iconForeground = ColorHelper.FromArgb(
             isDark ? (byte)0xE2 : (byte)0xCC,
             accentColor.R,
@@ -3899,9 +4074,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             ? ColorHelper.FromArgb(0xD8, 0xC0, 0xC3, 0xC8)
             : ColorHelper.FromArgb(0xD0, 0x62, 0x65, 0x6A);
 
-        BackgroundPlate.Background = new SolidColorBrush(surfaceColor);
-        HeaderDivider.Background = new SolidColorBrush(dividerColor);
+        BackgroundPlate.BorderThickness = new Thickness(borderThickness);
         BackgroundPlate.BorderBrush = new SolidColorBrush(borderColor);
+        BackgroundPlate.CornerRadius = new CornerRadius(GetCornerRadiusFromPreference());
+        HeaderDivider.Background = new SolidColorBrush(dividerColor);
         QuickCaptureShell.TitleIconAccentColor = iconForeground;
         QuickCaptureShell.TitleIconKind = WidgetTitleIconKindNames.QuickCapture;
         QuickCaptureShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;

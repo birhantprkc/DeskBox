@@ -6,6 +6,7 @@ using DeskBox.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.UI;
 
@@ -16,7 +17,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private const int ProgressRefreshMs = 1000;
     private const int VisualizerRefreshMs = 140;
     private const int VisualizerTransitionRefreshMs = 33;
-    private const double VisualizerTransitionDurationMs = 420;
+    private const double VisualizerTransitionDurationMs = 900;
     private const int MinVisualizerBarCount = 28;
     private const int MaxVisualizerBarCount = 128;
     private static readonly double[] s_visualizerSeeds =
@@ -69,6 +70,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private double? _pendingSessionVolume;
     private bool _isDisposed;
     private DateTimeOffset _visualizerTransitionStartedAt;
+    private DateTimeOffset _lastPositionSyncAt;
+    private TimeSpan _lastSyncedPosition;
     private double _lastVisualizerAvailableWidth;
     private double[] _visualizerTransitionStartHeights = [];
     private double[] _visualizerTransitionStartDotSizes = [];
@@ -570,6 +573,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     public string SystemVolumeText => FormatPercent(SystemVolume);
 
+    public double VolumeTextSize => CaptionTextSize + 2;
+
     public string SessionVolumeText => HasSessionVolume
         ? FormatPercent(SessionVolume)
         : _localizationService.T("Music.Volume.Unavailable");
@@ -907,6 +912,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
 
         Position = targetPosition;
+        _lastSyncedPosition = targetPosition;
+        _lastPositionSyncAt = DateTimeOffset.UtcNow;
         await Task.Delay(260);
         await RefreshAsync();
     }
@@ -951,9 +958,10 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     public void OnDeactivated()
     {
-        _progressTimer?.Stop();
-        _visualizerTimer?.Stop();
-        _visualizerTransitionTimer?.Stop();
+        // Keep all timers running so the rhythm bars continue animating
+        // even when the widget is not activated (e.g., user clicked elsewhere).
+        // The visualizer timer is controlled by UpdateVisualizerTimer based on
+        // playback state, so it only runs when music is actually playing.
     }
 
     public void Dispose()
@@ -1002,6 +1010,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             SourceDisplayName = string.Empty;
             PlaybackState = MusicPlaybackState.Unknown;
             Position = TimeSpan.Zero;
+        _lastSyncedPosition = TimeSpan.Zero;
+        _lastPositionSyncAt = DateTimeOffset.UtcNow;
             Duration = TimeSpan.Zero;
             ThumbnailImage = null;
             SetArtworkColor(AccentColorHelper.DefaultAccentColor, hasArtworkColor: false);
@@ -1026,6 +1036,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         PlaybackState = info.PlaybackState;
         Position = info.Position;
         Duration = info.Duration;
+        _lastSyncedPosition = info.Position;
+        _lastPositionSyncAt = DateTimeOffset.UtcNow;
         CanPlay = info.CanPlay;
         CanPause = info.CanPause;
         CanGoPrevious = info.CanGoPrevious;
@@ -1251,7 +1263,10 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
         if (IsPlaying && Duration > TimeSpan.Zero && !_isSeeking)
         {
-            Position = TimeSpan.FromSeconds(Math.Min(Duration.TotalSeconds, Position.TotalSeconds + ProgressRefreshMs / 1000.0));
+            // Extrapolate from the last SMTC-synced position to avoid fighting with SMTC updates
+            double elapsedSinceSync = (DateTimeOffset.UtcNow - _lastPositionSyncAt).TotalSeconds;
+            double newPosition = Math.Min(Duration.TotalSeconds, _lastSyncedPosition.TotalSeconds + elapsedSinceSync);
+            Position = TimeSpan.FromSeconds(newPosition);
         }
     }
 
@@ -1275,6 +1290,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             bar.Opacity = 0.68 + _random.NextDouble() * 0.32;
             bar.ApplyEqualizerFrame(value, i, barCount, accentColor, isPlaying: true);
         }
+
+        UpdateCurveAndRipple(barCount, isPlaying: true);
     }
 
     private void UpdateVisualizerTimer()
@@ -1357,6 +1374,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             bar.Opacity = Lerp(startOpacity, targetOpacity, progress);
             bar.ApplyEqualizerFrame(Lerp(startValue, targetValue, progress), i, barCount, accentColor, isPlaying: false);
         }
+
+        UpdateCurveAndRipple(barCount, isPlaying: false);
     }
 
     private void OnLanguageChanged()
@@ -1366,6 +1385,13 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // These properties have localized fallbacks in their getters, so they must
+        // be raised explicitly when the language changes (the backing fields haven't
+        // changed, but the displayed string may differ).
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(Artist));
+        OnPropertyChanged(nameof(SourceDisplayName));
         RaiseDisplayPropertiesChanged();
         RefreshSessionList();
     }
@@ -1408,10 +1434,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private void RaiseDisplayPropertiesChanged()
     {
-        OnPropertyChanged(nameof(DisplayName));
-        OnPropertyChanged(nameof(Title));
-        OnPropertyChanged(nameof(Artist));
-        OnPropertyChanged(nameof(SourceDisplayName));
+        // Title, Artist, SourceDisplayName, and DisplayName are backed by fields
+        // whose setters already raise PropertyChanged when the value changes.
+        // We must NOT raise them here unconditionally — doing so during playback
+        // (when RefreshAsync fires from SMTC events) causes the marquee to restart
+        // on every refresh, preventing it from ever scrolling.
+        // Localized fallback notifications are handled explicitly in OnLanguageChanged.
         OnPropertyChanged(nameof(HasSession));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(PlayIconVisibility));
@@ -1465,6 +1493,11 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             SettingsService.MusicRhythmStyleStackedEqualizer => (5.0, 2.0),
             _ => (4.0, 2.0)
         };
+    }
+
+    private void UpdateCurveAndRipple(int barCount, bool isPlaying)
+    {
+        // No-op: new visualizer styles were removed.
     }
 
     private static double ScaleBar(double value)

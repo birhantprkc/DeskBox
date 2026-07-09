@@ -40,6 +40,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
     private readonly AppWindow _appWindow;
 
     private DesktopAcrylicController? _acrylicController;
+    private MicaController? _micaController;
     private SystemBackdropConfiguration? _backdropConfiguration;
     private ICompositionSupportsSystemBackdrop? _backdropTarget;
     private bool _isDragging;
@@ -82,7 +83,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
             LogTrayWindow);
         _contentHost = new WidgetShellContentHost(ContentWidgetShell);
 
-        _titleViewModel = new ContentWidgetTitleViewModel(_config);
+        _titleViewModel = new ContentWidgetTitleViewModel(_config, _settingsService);
         ContentWidgetShell.DataContext = _titleViewModel;
         ContentWidgetShell.TitleGlyph = descriptor.DefaultGlyph;
         ContentWidgetShell.TitleIconKind = WidgetTitleIconKindNames.FromWidgetKind(_config.WidgetKind);
@@ -362,8 +363,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
             WidgetPositioningService.GetAvailableWorkAreas());
         ApplyWindowBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, persist: false);
 
-        int borderNone = unchecked((int)0xFFFFFFFE);
-        Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_BORDER_COLOR, ref borderNone, sizeof(int));
+        ApplyDwmBorderStyle(RootGrid.ActualTheme == ElementTheme.Dark);
         ApplyWindowCornerPreference();
         Win32Helper.EnsureSystemDispatcherQueue();
         Win32Helper.ApplyFullWindowFrame(_hWnd);
@@ -412,6 +412,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
             ContentWidgetShell.RightTapped -= ContentWidgetShell_RightTapped;
             ContentWidgetShell.TitleDoubleTapped -= ContentWidgetShell_TitleDoubleTapped;
             DisposeAcrylicController();
+            DisposeMicaController();
             _contentHost.DisposeContent();
 
             foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
@@ -525,17 +526,18 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         }
     }
 
-    private void OnSettingsChanged()
-    {
-        if (!DispatcherQueue.HasThreadAccess)
-        {
-            DispatcherQueue.TryEnqueue(OnSettingsChanged);
-            return;
-        }
+private void OnSettingsChanged()
+{
+if (!DispatcherQueue.HasThreadAccess)
+{
+DispatcherQueue.TryEnqueue(OnSettingsChanged);
+return;
+}
 
-        ContentWidgetShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
-        ApplyAppearancePreview();
-    }
+ContentWidgetShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
+_titleViewModel.RefreshMetrics();
+ApplyAppearancePreview();
+}
 
     private void ApplyTitleBarLayout()
     {
@@ -895,15 +897,40 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         double surfaceOpacity = Math.Clamp(_settingsService.Settings.WidgetOpacity, 0.0, 1.0);
         var tintColor = BuildNativeBackdropTintColor(isDark);
+        string materialType = _settingsService.Settings.WidgetMaterialType;
 
         try
         {
             Win32Helper.SetWindowTheme(_hWnd, isDark);
             Win32Helper.ApplyFullWindowFrame(_hWnd);
 
+            // Apply DWM border color based on border style setting
+            ApplyDwmBorderStyle(isDark);
+
             int backdropType;
-            if (ApplyAcrylicController(isDark, tintColor, surfaceOpacity))
+            bool controllerApplied = false;
+
+            if (materialType is SettingsService.WidgetMaterialTypeMica)
             {
+                controllerApplied = ApplyMicaController(isDark, tintColor, surfaceOpacity);
+            }
+
+            if (!controllerApplied && materialType is SettingsService.WidgetMaterialTypeAcrylic)
+            {
+                controllerApplied = ApplyAcrylicController(isDark, tintColor, surfaceOpacity);
+            }
+
+            if (controllerApplied)
+            {
+                backdropType = Win32Helper.DWMSBT_NONE;
+                Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                Win32Helper.DisableAccentPolicy(_hWnd);
+            }
+            else if (materialType is SettingsService.WidgetMaterialTypeSolid)
+            {
+                // Solid: no system backdrop, no accent blur
+                DisposeAcrylicController();
+                DisposeMicaController();
                 backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
                 Win32Helper.DisableAccentPolicy(_hWnd);
@@ -913,6 +940,7 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
                 backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
                 Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
                 DisposeAcrylicController();
+                DisposeMicaController();
                 Win32Helper.ApplyAccentBlur(_hWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
             }
         }
@@ -920,10 +948,92 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         {
             App.Log($"ContentWidget ApplyBackdropPreference fallback: {ex}");
             DisposeAcrylicController();
+            DisposeMicaController();
             Win32Helper.ApplyAccentBlur(_hWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
         }
 
         ApplySurfaceStyle();
+    }
+
+    private double GetCornerRadiusFromPreference()
+    {
+        return _settingsService.Settings.WidgetCornerPreference switch
+        {
+            SettingsService.WidgetCornerPreferenceSquare => 0,
+            SettingsService.WidgetCornerPreferenceSmall => 4,
+            SettingsService.WidgetCornerPreferenceRound => 8,
+            _ => 8
+        };
+    }
+
+    private void ApplyDwmBorderStyle(bool isDark)
+    {
+        // Always set DWM border to transparent — the visual border is drawn by XAML
+        int borderNone = unchecked((int)0xFFFFFFFE);
+        Win32Helper.SetWindowBorderColor(_hWnd, borderNone);
+    }
+
+    private bool ApplyMicaController(
+        bool isDark,
+        Windows.UI.Color tintColor,
+        double surfaceOpacity)
+    {
+        if (!MicaController.IsSupported())
+        {
+            DisposeMicaController();
+            return false;
+        }
+
+        _backdropTarget ??= this.As<ICompositionSupportsSystemBackdrop>();
+        _backdropConfiguration ??= new SystemBackdropConfiguration();
+        _backdropConfiguration.IsInputActive = true;
+        _backdropConfiguration.Theme = isDark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
+
+        if (_micaController is null)
+        {
+            DisposeAcrylicController();
+            _micaController = new MicaController { Kind = MicaKind.Base };
+
+            if (!_micaController.AddSystemBackdropTarget(_backdropTarget))
+            {
+                DisposeMicaController();
+                return false;
+            }
+        }
+        else
+        {
+            DisposeAcrylicController();
+        }
+
+        _micaController.SetSystemBackdropConfiguration(_backdropConfiguration);
+        _micaController.Kind = MicaKind.Base;
+        _micaController.TintColor = tintColor;
+        _micaController.FallbackColor = isDark
+            ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
+            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        _micaController.TintOpacity = (float)Math.Clamp(surfaceOpacity * 0.5, 0.0, 1.0);
+        return true;
+    }
+
+    private void DisposeMicaController()
+    {
+        if (_micaController is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _micaController.RemoveAllSystemBackdropTargets();
+            _micaController.Dispose();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _micaController = null;
+        }
     }
 
     private bool ApplyAcrylicController(bool isDark, Windows.UI.Color tintColor, double surfaceOpacity)
@@ -944,6 +1054,51 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
 
         if (_acrylicController is null || _acrylicController.IsClosed)
         {
+            DisposeMicaController();
+            _acrylicController = new DesktopAcrylicController
+            {
+                Kind = DesktopAcrylicKind.Thin
+            };
+
+            if (!_acrylicController.AddSystemBackdropTarget(_backdropTarget))
+            {
+                DisposeAcrylicController();
+                return false;
+            }
+        }
+        else
+        {
+            DisposeMicaController();
+        }
+
+        _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
+        _acrylicController.Kind = DesktopAcrylicKind.Thin;
+        _acrylicController.TintColor = tintColor;
+        _acrylicController.FallbackColor = tintColor;
+        _acrylicController.TintOpacity = (float)(isDark
+            ? Math.Clamp(0.12 + surfaceOpacity * 0.34, 0.0, 0.52)
+            : Math.Clamp(0.00 + surfaceOpacity * 0.40, 0.0, 0.44));
+        _acrylicController.LuminosityOpacity = (float)(isDark
+            ? Math.Clamp(0.34 + surfaceOpacity * 0.36, 0.0, 0.82)
+            : Math.Clamp(0.22 + surfaceOpacity * 0.58, 0.0, 0.86));
+        return true;
+    }
+
+    private bool ApplyTransparentAcrylicController(bool isDark)
+    {
+        if (!DesktopAcrylicController.IsSupported())
+        {
+            DisposeAcrylicController();
+            return false;
+        }
+
+        _backdropTarget ??= this.As<ICompositionSupportsSystemBackdrop>();
+        _backdropConfiguration ??= new SystemBackdropConfiguration();
+        _backdropConfiguration.IsInputActive = true;
+        _backdropConfiguration.Theme = isDark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
+
+        if (_acrylicController is null || _acrylicController.IsClosed)
+        {
             _acrylicController = new DesktopAcrylicController
             {
                 Kind = DesktopAcrylicKind.Thin
@@ -958,14 +1113,16 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
 
         _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
         _acrylicController.Kind = DesktopAcrylicKind.Thin;
-        _acrylicController.TintColor = tintColor;
-        _acrylicController.FallbackColor = tintColor;
-        _acrylicController.TintOpacity = (float)(isDark
-            ? Math.Clamp(0.12 + surfaceOpacity * 0.34, 0.0, 0.52)
-            : Math.Clamp(0.00 + surfaceOpacity * 0.40, 0.0, 0.44));
-        _acrylicController.LuminosityOpacity = (float)(isDark
-            ? Math.Clamp(0.34 + surfaceOpacity * 0.36, 0.0, 0.82)
-            : Math.Clamp(0.22 + surfaceOpacity * 0.58, 0.0, 0.86));
+        _acrylicController.TintColor = isDark
+            ? ColorHelper.FromArgb(0x01, 0x20, 0x22, 0x26)
+            : ColorHelper.FromArgb(0x01, 0xFF, 0xFF, 0xFF);
+        _acrylicController.FallbackColor = isDark
+            ? ColorHelper.FromArgb(0x01, 0x20, 0x22, 0x26)
+            : ColorHelper.FromArgb(0x01, 0xFF, 0xFF, 0xFF);
+        _acrylicController.TintOpacity = 0.0f;
+        _acrylicController.LuminosityOpacity = 0.0f;
+
+        DisposeMicaController();
         return true;
     }
 
@@ -1010,22 +1167,43 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         double surfaceOpacity = Math.Clamp(_settingsService.Settings.WidgetOpacity, 0.0, 1.0);
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
-        var surfaceColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
-        byte chromeAlpha = 0x18;
+        string materialType = _settingsService.Settings.WidgetMaterialType;
+        string borderStyle = _settingsService.Settings.WidgetBorderStyle;
+
+        // Simplified layering: only apply surface color overlay for Solid mode.
+        if (materialType is SettingsService.WidgetMaterialTypeSolid)
+        {
+            var surfaceColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
+            ContentWidgetShell.BackgroundSurface.Background = new SolidColorBrush(surfaceColor);
+        }
+        else
+        {
+            ContentWidgetShell.BackgroundSurface.Background = new SolidColorBrush(Colors.Transparent);
+        }
+
+        var (borderThickness, borderAlpha) = borderStyle switch
+        {
+            SettingsService.WidgetBorderStyleNone => (0d, (byte)0),
+            SettingsService.WidgetBorderStyleMedium => (1.2d, (byte)0x30),
+            SettingsService.WidgetBorderStyleThick => (1.6d, (byte)0x48),
+            _ => (0.8d, (byte)0x18),
+        };
+
         var borderColor = isDark
-            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.75), 0, 255), 0xFF, 0xFF, 0xFF)
-            : WithAlpha(BlendColors(ColorHelper.FromArgb(0xFF, 0x00, 0x00, 0x00), accentColor, 0.22), chromeAlpha);
+            ? ColorHelper.FromArgb(borderAlpha, 0xFF, 0xFF, 0xFF)
+            : WithAlpha(BlendColors(ColorHelper.FromArgb(0xFF, 0x00, 0x00, 0x00), accentColor, 0.22), borderAlpha);
         var dividerColor = isDark
-            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.66), 0, 255), 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(chromeAlpha * 0.42), 0, 255), 0x00, 0x00, 0x00);
+            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(borderAlpha * 0.66), 0, 255), 0xFF, 0xFF, 0xFF)
+            : ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(borderAlpha * 0.42), 0, 255), 0x00, 0x00, 0x00);
         var iconForeground = ColorHelper.FromArgb(
             isDark ? (byte)0xE2 : (byte)0xCC,
             accentColor.R,
             accentColor.G,
             accentColor.B);
 
-        ContentWidgetShell.BackgroundSurface.Background = new SolidColorBrush(surfaceColor);
+        ContentWidgetShell.BackgroundSurface.BorderThickness = new Thickness(borderThickness);
         ContentWidgetShell.BackgroundSurface.BorderBrush = new SolidColorBrush(borderColor);
+        ContentWidgetShell.BackgroundSurface.CornerRadius = new CornerRadius(GetCornerRadiusFromPreference());
         ContentWidgetShell.Divider.Background = new SolidColorBrush(dividerColor);
         ContentWidgetShell.TitleIconAccentColor = iconForeground;
         ContentWidgetShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;
@@ -1652,16 +1830,19 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
         }
     }
 
-    private sealed class ContentWidgetTitleViewModel : System.ComponentModel.INotifyPropertyChanged
-    {
-        public ContentWidgetTitleViewModel(WidgetConfig config)
-        {
-            Config = config;
-        }
+private sealed class ContentWidgetTitleViewModel : System.ComponentModel.INotifyPropertyChanged
+{
+private readonly SettingsService _settingsService;
 
-        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+public ContentWidgetTitleViewModel(WidgetConfig config, SettingsService settingsService)
+{
+Config = config;
+_settingsService = settingsService;
+}
 
-        public WidgetConfig Config { get; }
+public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+public WidgetConfig Config { get; }
 
         public string DisplayName
         {
@@ -1693,13 +1874,33 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
             }
         }
 
-        public double TitleIconSize => Math.Clamp(Math.Round(SettingsService.DefaultIconSize * 0.72 * 0.56 * 0.54), 11, 18);
+        public double TitleIconSize
+        {
+            get
+            {
+                double iconSize = SettingsService.NormalizeIconSize(_settingsService.Settings.IconSize);
+                return Math.Clamp(Math.Round(iconSize * 0.72 * 0.56 * 0.54), 11, 18);
+            }
+        }
 
-        public double TitleTextSize => 14;
+        public double TitleTextSize
+        {
+            get
+            {
+                double textSize = SettingsService.NormalizeTextSize(_settingsService.Settings.TextSize);
+                return Math.Min(SettingsService.MaxTextSize + 2, textSize + 3);
+            }
+        }
 
         public void RefreshDisplayName()
         {
             PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(DisplayName)));
+        }
+
+        public void RefreshMetrics()
+        {
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(TitleIconSize)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(TitleTextSize)));
         }
     }
 }
