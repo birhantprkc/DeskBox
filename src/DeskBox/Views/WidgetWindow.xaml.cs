@@ -117,6 +117,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private bool _areItemTransitionsSuppressed;
     private DispatcherQueueTimer? _autoRestoreTimer;
     private DispatcherQueueTimer? _topMostSafetyTimer;
+    private DispatcherQueueTimer? _backdropRefreshTimer;
+    private int _backdropRefreshStage;
+    private static readonly int[] _backdropRefreshDelays = [80, 240, 580];
     private WidgetDisplayChangeWatcher? _displayChangeWatcher;
     private bool _isFileDropSubclassInstalled;
     private TransitionCollection? _savedGridItemTransitions;
@@ -324,6 +327,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             _displayChangeWatcher = null;
             _autoRestoreTimer?.Stop();
             _autoRestoreTimer = null;
+            _backdropRefreshTimer?.Stop();
+            _backdropRefreshTimer = null;
             RemoveFileDropSubclass();
             _trayAnimation.Stop();
             _trayAnimation.RestoreVisualState();
@@ -1271,27 +1276,43 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         }
 
         long generation = ++_backdropRefreshGeneration;
-        _ = RefreshBackdropAfterDelayAsync(generation, 80);
-        _ = RefreshBackdropAfterDelayAsync(generation, 320);
-        _ = RefreshBackdropAfterDelayAsync(generation, 900);
-    }
+        _backdropRefreshStage = 0;
 
-    private async Task RefreshBackdropAfterDelayAsync(long generation, int delayMs)
-    {
-        await Task.Delay(delayMs);
-
-        if (generation != _backdropRefreshGeneration)
+        if (_backdropRefreshTimer is null)
         {
-            return;
+            _backdropRefreshTimer = DispatcherQueue.CreateTimer();
+            _backdropRefreshTimer.Tick += (_, _) => OnBackdropRefreshTick(generation);
+        }
+        else
+        {
+            _backdropRefreshTimer.Stop();
         }
 
-        if (!DispatcherQueue.HasThreadAccess)
+        _backdropRefreshTimer.Interval = TimeSpan.FromMilliseconds(_backdropRefreshDelays[0]);
+        _backdropRefreshTimer.Start();
+    }
+
+    private void OnBackdropRefreshTick(long generation)
+    {
+        if (generation != _backdropRefreshGeneration)
         {
-            DispatcherQueue.TryEnqueue(() => RefreshBackdropIfCurrent(generation));
+            _backdropRefreshTimer?.Stop();
             return;
         }
 
         RefreshBackdropIfCurrent(generation);
+
+        int nextStage = _backdropRefreshStage + 1;
+        _backdropRefreshStage = nextStage;
+
+        if (nextStage < _backdropRefreshDelays.Length)
+        {
+            _backdropRefreshTimer!.Interval = TimeSpan.FromMilliseconds(_backdropRefreshDelays[nextStage]);
+        }
+        else
+        {
+            _backdropRefreshTimer!.Stop();
+        }
     }
 
     private void RefreshBackdropIfCurrent(long generation)
@@ -3715,7 +3736,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void WidgetItemSurface_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        if (_isMigrationBusy)
+        if (_isMigrationBusy || _isClosing || _isHideAnimationRunning || !_isVisibleOnDesktop)
         {
             return;
         }
@@ -3728,6 +3749,11 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private void WidgetItemSurface_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        if (_isClosing || _isHideAnimationRunning || !_isVisibleOnDesktop)
+        {
+            return;
+        }
+
         if (sender is Border border)
         {
             ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Normal);
@@ -3777,10 +3803,6 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         RootGrid.Focus(FocusState.Programmatic);
         _surfaceDragCompletionHandled = false;
         ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Pressed);
-    }
-
-    private void WidgetItemSurface_PointerMoved(object sender, PointerRoutedEventArgs e)
-    {
     }
 
     private void WidgetItemSurface_PointerReleased(object sender, PointerRoutedEventArgs e)

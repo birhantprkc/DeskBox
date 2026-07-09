@@ -951,6 +951,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     public void OnDeactivated()
     {
+        _progressTimer?.Stop();
+        _visualizerTimer?.Stop();
+        _visualizerTransitionTimer?.Stop();
     }
 
     public void Dispose()

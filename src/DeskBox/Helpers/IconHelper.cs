@@ -11,7 +11,7 @@ namespace DeskBox.Helpers;
 /// </summary>
 public static class IconHelper
 {
-    private const int MaxCacheEntries = 500;
+    private const int MaxCacheEntries = 200;
     private static readonly ConcurrentDictionary<string, byte[]?> s_iconBytesCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, Task<BitmapImage?>> s_bitmapImageCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly SemaphoreSlim s_iconLoadSemaphore = new(4, 4);
@@ -122,15 +122,15 @@ public static class IconHelper
                 return null;
             }
 
-            var image = await CreateBitmapImageAsync(dispatcher, bytes);
-            if (image is not null)
-            {
-                image.DecodePixelWidth = 80;
-            }
+            var image = await CreateBitmapImageAsync(dispatcher, bytes, decodePixelWidth: 80);
 
             if (image is null)
             {
                 s_bitmapImageCache.TryRemove(cacheKey, out _);
+            }
+            else
+            {
+                EvictCachesIfNeeded();
             }
 
             return image;
@@ -200,7 +200,7 @@ public static class IconHelper
             }
         }
 
-        var image = await CreateBitmapImageAsync(dispatcher, bytes);
+        var image = await CreateBitmapImageAsync(dispatcher, bytes, decodePixelWidth: 48);
         if (image is null)
         {
             s_bitmapImageCache.TryRemove(iconBytesCacheKey, out _);
@@ -301,7 +301,8 @@ public static class IconHelper
 
     private static Task<BitmapImage?> CreateBitmapImageAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
-        byte[]? bytes)
+        byte[]? bytes,
+        int decodePixelWidth = 0)
     {
         if (bytes is null || bytes.Length == 0)
         {
@@ -310,7 +311,7 @@ public static class IconHelper
 
         if (dispatcher.HasThreadAccess)
         {
-            return CreateBitmapImageOnUiThreadAsync(bytes);
+            return CreateBitmapImageOnUiThreadAsync(bytes, decodePixelWidth);
         }
 
         var tcs = new TaskCompletionSource<BitmapImage?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -318,7 +319,7 @@ public static class IconHelper
         {
             try
             {
-                tcs.SetResult(await CreateBitmapImageOnUiThreadAsync(bytes));
+                tcs.SetResult(await CreateBitmapImageOnUiThreadAsync(bytes, decodePixelWidth));
             }
             catch (Exception ex)
             {
@@ -333,9 +334,14 @@ public static class IconHelper
         return tcs.Task;
     }
 
-    private static async Task<BitmapImage?> CreateBitmapImageOnUiThreadAsync(byte[] bytes)
+    private static async Task<BitmapImage?> CreateBitmapImageOnUiThreadAsync(byte[] bytes, int decodePixelWidth = 0)
     {
         var bmp = new BitmapImage();
+        if (decodePixelWidth > 0)
+        {
+            bmp.DecodePixelWidth = decodePixelWidth;
+        }
+
         using var winrtStream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
         using var writer = new Windows.Storage.Streams.DataWriter(winrtStream);
         writer.WriteBytes(bytes);

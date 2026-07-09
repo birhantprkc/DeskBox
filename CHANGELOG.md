@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.7 - 2026-07-09
+
+### English
+
+- Replaced the fixed 16ms `DispatcherQueueTimer` in widget tray animation with `CompositionTarget.Rendering`, which is driven by the system VSync. Animations now run at the native display refresh rate — 60fps on 60Hz screens, 144fps on 144Hz screens — eliminating visible stutter on high-refresh-rate displays.
+- Replaced the triple `Task.Delay` backdrop refresh pattern with a single staged `DispatcherQueueTimer` (80ms → 240ms → 580ms), reducing thread-pool scheduling overhead and keeping all refresh work on the UI thread.
+- Removed an empty `PointerMoved` handler from widget item surfaces and added state guards to `PointerEntered`/`PointerExited` so hover surface updates are skipped while the window is closing, animating, or hidden.
+- Stopped the music widget's progress, visualizer, and transition timers when the widget is deactivated, and restarted them on activation, eliminating unnecessary CPU usage when the widget is not visible.
+- Added a 200ms debounce to `UISettings.ColorValuesChanged` in `ThemeService` so system accent color and theme changes no longer trigger redundant `RefreshAppearance` calls.
+- Reduced the icon cache limit from 500 to 200 entries and set `DecodePixelWidth` before `SetSourceAsync` for both icons (48px) and image thumbnails (80px), lowering memory usage from decoded bitmaps.
+
+### 中文
+
+- 将格子托盘动画的固定 16ms `DispatcherQueueTimer` 替换为系统 VSync 驱动的 `CompositionTarget.Rendering`，动画帧率自动跟随显示器刷新率——60Hz 屏 60fps、144Hz 屏 144fps，消除高刷屏上的可见卡顿。
+- 将毛玻璃背景的三次 `Task.Delay` 刷新替换为单个分阶段 `DispatcherQueueTimer`（80ms → 240ms → 580ms），减少线程池调度开销，所有刷新工作在 UI 线程定时器内完成。
+- 移除格子项目表面的空 `PointerMoved` 事件处理器，并为 `PointerEntered`/`PointerExited` 增加状态守卫，窗口关闭、动画运行或隐藏时跳过无意义的悬停状态计算。
+- 音乐格子失焦时停止进度、频谱和过渡定时器，激活时重新启动，消除不可见时的无效 CPU 占用。
+- 为 `ThemeService` 的 `UISettings.ColorValuesChanged` 增加 200ms 防抖，系统强调色和主题变化不再触发多次冗余的 `RefreshAppearance` 调用。
+- 图标缓存上限从 500 降至 200，并在 `SetSourceAsync` 之前设置 `DecodePixelWidth`（图标 48px、缩略图 80px），降低解码位图的内存占用。
+
 ## 1.2.6 - 2026-07-08
 
 ### English

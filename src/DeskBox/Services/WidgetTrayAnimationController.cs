@@ -5,6 +5,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 using WinRT.Interop;
 
@@ -39,11 +40,26 @@ public sealed class WidgetTrayAnimationController
     private readonly Func<Windows.Foundation.Rect> _getAnimationBounds;
     private readonly Action<string> _log;
 
-    private DispatcherQueueTimer? _timer;
     private PointInt32? _targetPosition;
     private double? _offsetOverrideX;
     private double? _offsetOverrideY;
     private Microsoft.UI.Composition.Visual? _cachedRootVisual;
+
+    private bool _isRendering;
+    private Stopwatch? _renderStopwatch;
+    private double _renderDurationMs;
+    private double _renderFromOffsetX;
+    private double _renderFromOffsetY;
+    private double _renderToOffsetX;
+    private double _renderToOffsetY;
+    private float _renderFromOpacity;
+    private float _renderToOpacity;
+    private float _renderFromScale;
+    private float _renderToScale;
+    private bool _renderIsShowing;
+    private long _renderGeneration;
+    private string _renderEasingIntensity = string.Empty;
+    private Action? _renderCompleted;
 
     public WidgetTrayAnimationController(
         AppWindow appWindow,
@@ -220,54 +236,84 @@ public sealed class WidgetTrayAnimationController
             return;
         }
 
-        var stopwatch = Stopwatch.StartNew();
-        var timer = _dispatcherQueue.CreateTimer();
-        timer.Interval = TimeSpan.FromMilliseconds(16);
-        _timer = timer;
+        _renderFromOffsetX = fromOffsetX;
+        _renderFromOffsetY = fromOffsetY;
+        _renderToOffsetX = toOffsetX;
+        _renderToOffsetY = toOffsetY;
+        _renderFromOpacity = fromOpacity;
+        _renderToOpacity = toOpacity;
+        _renderFromScale = fromScale;
+        _renderToScale = toScale;
+        _renderDurationMs = durationMs;
+        _renderIsShowing = isShowing;
+        _renderGeneration = generation;
+        _renderEasingIntensity = easingIntensity;
+        _renderCompleted = completed;
+        _renderStopwatch = Stopwatch.StartNew();
+        _isRendering = true;
 
-        timer.Tick += (_, _) =>
+        CompositionTarget.Rendering -= OnRenderingFrame;
+        CompositionTarget.Rendering += OnRenderingFrame;
+    }
+
+    private void OnRenderingFrame(object sender, object e)
+    {
+        if (!_isRendering || _renderGeneration != Generation)
         {
-            if (!ReferenceEquals(_timer, timer) || generation != Generation)
-            {
-                timer.Stop();
-                return;
-            }
+            StopRendering();
+            return;
+        }
 
-            double rawProgress = Math.Clamp(stopwatch.Elapsed.TotalMilliseconds / durationMs, 0.0, 1.0);
-            double easedProgress = WidgetAnimationSettings.Ease(rawProgress, easingIntensity, isShowing);
-            double currentOffsetX = Lerp(fromOffsetX, toOffsetX, easedProgress);
-            double currentOffsetY = Lerp(fromOffsetY, toOffsetY, easedProgress);
-            float currentOpacity = (float)Lerp(fromOpacity, toOpacity, easedProgress);
-            float currentScale = (float)Lerp(fromScale, toScale, easedProgress);
+        var stopwatch = _renderStopwatch;
+        if (stopwatch is null)
+        {
+            StopRendering();
+            return;
+        }
 
-            ApplyWindowOffset(currentOffsetX, currentOffsetY);
-            ApplyOpacity(currentOpacity);
-            ApplyScale(currentScale);
+        double rawProgress = Math.Clamp(stopwatch.Elapsed.TotalMilliseconds / _renderDurationMs, 0.0, 1.0);
+        double easedProgress = WidgetAnimationSettings.Ease(rawProgress, _renderEasingIntensity, _renderIsShowing);
+        double currentOffsetX = Lerp(_renderFromOffsetX, _renderToOffsetX, easedProgress);
+        double currentOffsetY = Lerp(_renderFromOffsetY, _renderToOffsetY, easedProgress);
+        float currentOpacity = (float)Lerp(_renderFromOpacity, _renderToOpacity, easedProgress);
+        float currentScale = (float)Lerp(_renderFromScale, _renderToScale, easedProgress);
 
-            if (rawProgress < 1.0)
-            {
-                return;
-            }
+        ApplyWindowOffset(currentOffsetX, currentOffsetY);
+        ApplyOpacity(currentOpacity);
+        ApplyScale(currentScale);
 
-            timer.Stop();
-            if (ReferenceEquals(_timer, timer))
-            {
-                _timer = null;
-            }
+        if (rawProgress < 1.0)
+        {
+            return;
+        }
 
-            CompleteAnimation(toOffsetX, toOffsetY, toOpacity, toScale, isShowing, generation, completed);
-        };
+        StopRendering();
 
-        timer.Start();
+        CompleteAnimation(
+            _renderToOffsetX,
+            _renderToOffsetY,
+            _renderToOpacity,
+            _renderToScale,
+            _renderIsShowing,
+            _renderGeneration,
+            _renderCompleted);
+    }
+
+    private void StopRendering()
+    {
+        if (!_isRendering)
+        {
+            return;
+        }
+
+        _isRendering = false;
+        _renderStopwatch = null;
+        CompositionTarget.Rendering -= OnRenderingFrame;
     }
 
     public void Stop()
     {
-        if (_timer is { } timer)
-        {
-            timer.Stop();
-            _timer = null;
-        }
+        StopRendering();
 
         if (_cachedRootVisual is { } visual)
         {

@@ -16,18 +16,31 @@ public sealed class ThemeService
     private readonly SettingsService _settingsService;
     private readonly List<Window> _trackedWindows = new();
     private readonly Windows.UI.ViewManagement.UISettings _uiSettings = new();
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _appearanceDebounceTimer;
 
     public event Action? AppearanceChanged;
 
     public ThemeService(SettingsService settingsService)
     {
         _settingsService = settingsService;
-        _uiSettings.ColorValuesChanged += (_, _) =>
+        _uiSettings.ColorValuesChanged += OnColorValuesChanged;
+    }
+
+    private void OnColorValuesChanged(Windows.UI.ViewManagement.UISettings sender, object args)
+    {
+        App.UiDispatcherQueue?.TryEnqueue(() =>
         {
-            App.UiDispatcherQueue?.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
-                RefreshAppearance);
-        };
+            if (_appearanceDebounceTimer is null)
+            {
+                _appearanceDebounceTimer = App.UiDispatcherQueue.CreateTimer();
+                _appearanceDebounceTimer.Interval = TimeSpan.FromMilliseconds(200);
+                _appearanceDebounceTimer.IsRepeating = false;
+                _appearanceDebounceTimer.Tick += (_, _) => RefreshAppearance();
+            }
+
+            _appearanceDebounceTimer.Stop();
+            _appearanceDebounceTimer.Start();
+        });
     }
 
     /// <summary>

@@ -15,18 +15,20 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.2.6
+Current release: 1.2.7
 
-- [DeskBox_Setup_1.2.6_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.6/DeskBox_Setup_1.2.6_x64.exe)
+- [DeskBox_Setup_1.2.7_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.7/DeskBox_Setup_1.2.7_x64.exe)
 
 The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.2.6
+## What's New In 1.2.7
 
-- Todo reminders are more complete, with per-task reminder offsets, snooze options, restart recovery, and native notification actions for completing or delaying a task.
-- Recurring Todo tasks now keep the active task clean while folding completed recurrence history under the same task.
-- Quick Capture tab switching is smoother and lighter, with delayed list refresh, stable empty-state layout, softer content transitions, and safer clipboard defaults.
-- Todo and Quick Capture multi-select workflows were refined for rectangle selection, copy, drag-out text, and Escape-to-clear behavior.
+- Widget tray animations now use VSync-synced `CompositionTarget.Rendering` instead of a fixed 16ms timer, delivering native-refresh-rate animation on 60Hz, 120Hz, and 144Hz displays.
+- Backdrop refresh replaced three `Task.Delay` calls with a single staged `DispatcherQueueTimer`, reducing thread-pool overhead.
+- Removed an empty hover handler and added state guards so surface updates are skipped during window close, hide animation, or invisible states.
+- Music widget timers are stopped when deactivated and restarted on activation, eliminating idle CPU usage.
+- System theme and accent color changes are now debounced by 200ms, preventing redundant appearance refresh cascades.
+- Icon cache reduced from 500 to 200 entries with `DecodePixelWidth` set before source loading, lowering memory usage.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -131,7 +133,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.2.6_x64.exe
+Output\DeskBox_Setup_1.2.7_x64.exe
 ```
 
 ## Project Structure

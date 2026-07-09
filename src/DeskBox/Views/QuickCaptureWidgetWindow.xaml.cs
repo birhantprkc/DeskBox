@@ -116,6 +116,9 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
     private long _statusToastGeneration;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _topMostSafetyTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _backdropRefreshTimer;
+    private int _backdropRefreshStage;
+    private static readonly int[] _backdropRefreshDelays = [80, 240, 580];
     private WidgetDisplayChangeWatcher? _displayChangeWatcher;
     private DateTime _lastElevateForInteractionUtc = DateTime.MinValue;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;
@@ -413,6 +416,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _autoRestoreTimer = null;
         _topMostSafetyTimer?.Stop();
         _topMostSafetyTimer = null;
+        _backdropRefreshTimer?.Stop();
+        _backdropRefreshTimer = null;
         _trayAnimation.Stop();
         WidgetLayerService.ReleaseWindow(_hWnd);
         Close();
@@ -572,6 +577,8 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             _autoRestoreTimer = null;
             _topMostSafetyTimer?.Stop();
             _topMostSafetyTimer = null;
+            _backdropRefreshTimer?.Stop();
+            _backdropRefreshTimer = null;
 
             _trayAnimation.Stop();
             _trayAnimation.RestoreVisualState();
@@ -4261,26 +4268,43 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         }
 
         long generation = ++_backdropRefreshGeneration;
-        _ = RefreshBackdropAfterDelayAsync(generation, 80);
-        _ = RefreshBackdropAfterDelayAsync(generation, 320);
-        _ = RefreshBackdropAfterDelayAsync(generation, 900);
-    }
+        _backdropRefreshStage = 0;
 
-    private async Task RefreshBackdropAfterDelayAsync(long generation, int delayMs)
-    {
-        await Task.Delay(delayMs);
-        if (generation != _backdropRefreshGeneration)
+        if (_backdropRefreshTimer is null)
         {
-            return;
+            _backdropRefreshTimer = DispatcherQueue.CreateTimer();
+            _backdropRefreshTimer.Tick += (_, _) => OnBackdropRefreshTick(generation);
+        }
+        else
+        {
+            _backdropRefreshTimer.Stop();
         }
 
-        if (!DispatcherQueue.HasThreadAccess)
+        _backdropRefreshTimer.Interval = TimeSpan.FromMilliseconds(_backdropRefreshDelays[0]);
+        _backdropRefreshTimer.Start();
+    }
+
+    private void OnBackdropRefreshTick(long generation)
+    {
+        if (generation != _backdropRefreshGeneration)
         {
-            DispatcherQueue.TryEnqueue(() => RefreshBackdropIfCurrent(generation));
+            _backdropRefreshTimer?.Stop();
             return;
         }
 
         RefreshBackdropIfCurrent(generation);
+
+        int nextStage = _backdropRefreshStage + 1;
+        _backdropRefreshStage = nextStage;
+
+        if (nextStage < _backdropRefreshDelays.Length)
+        {
+            _backdropRefreshTimer!.Interval = TimeSpan.FromMilliseconds(_backdropRefreshDelays[nextStage]);
+        }
+        else
+        {
+            _backdropRefreshTimer!.Stop();
+        }
     }
 
     private void RefreshBackdropIfCurrent(long generation)
