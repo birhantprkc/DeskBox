@@ -1570,28 +1570,26 @@ ApplyAppearancePreview();
             clearAllItem.Click += (_, _) => ShowTodoClearAllConfirmation();
             flyout.Items.Add(clearAllItem);
         }
-        else if (!isFeatureWidget)
-        {
-            flyout.Items.Add(new MenuFlyoutSeparator());
 
-            var deleteWidget = new MenuFlyoutItem
+        // Add delete widget option for all widget types
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        var deleteWidget = new MenuFlyoutItem
+        {
+            Text = App.Current.LocalizationService.T("Widget.Tooltip.DeleteWidget"),
+            Icon = new FontIcon
             {
-                Text = App.Current.LocalizationService.T("Widget.Tooltip.DeleteWidget"),
-                Icon = new FontIcon
-                {
-                    Glyph = "\uE74D",
-                    Foreground = new SolidColorBrush(Colors.Red)
-                }
-            };
-            deleteWidget.Click += async (_, _) =>
+                Glyph = "\uE74D",
+                Foreground = new SolidColorBrush(Colors.Red)
+            }
+        };
+        deleteWidget.Click += async (_, _) =>
+        {
+            if (App.Current.WidgetManager is { } widgetManager)
             {
-                if (App.Current.WidgetManager is { } widgetManager)
-                {
-                    await widgetManager.RemoveWidgetAsync(_config.Id);
-                }
-            };
-            flyout.Items.Add(deleteWidget);
-        }
+                await widgetManager.RemoveWidgetAsync(_config.Id);
+            }
+        };
+        flyout.Items.Add(deleteWidget);
 
         return flyout;
     }

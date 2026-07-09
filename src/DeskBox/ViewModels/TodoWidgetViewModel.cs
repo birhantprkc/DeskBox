@@ -38,7 +38,7 @@ internal sealed record TodoUndoSnapshot(
     IReadOnlyList<TodoItem> Items,
     string Message);
 
-public sealed partial class TodoWidgetViewModel : ObservableObject
+public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 {
     private readonly TodoWidgetStore _store;
     private readonly LocalizationService _localizationService;
@@ -56,6 +56,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
     private bool _confirmBeforeDelete;
     private TodoUndoSnapshot? _undoSnapshot;
     private bool _isInitialized;
+    private bool _isDisposed;
     private readonly HashSet<string> _expandedRecurringHistoryGroupKeys = new(StringComparer.Ordinal);
 
     public TodoWidgetViewModel(
@@ -1435,6 +1436,17 @@ public sealed partial class TodoWidgetViewModel : ObservableObject
     private static string NormalizeText(string? text)
     {
         return text?.Trim() ?? string.Empty;
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        _localizationService.LanguageChanged -= OnLanguageChanged;
     }
 
 }
