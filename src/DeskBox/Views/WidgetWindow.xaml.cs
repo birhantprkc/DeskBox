@@ -5586,6 +5586,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _initialWindowPos = _appWindow.Position;
         _initialWindowSize = _appWindow.Size;
         element.CapturePointer(e.Pointer);
+        App.Current.ResizeGuideOverlay.BeginResize(_hWnd, RootGrid);
         e.Handled = true;
     }
 
@@ -5632,7 +5633,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             newY = bottomEdge - newHeight;
         }
 
-        ApplyWindowBounds(newX, newY, newWidth, newHeight, persist: false);
+        var proposed = new Windows.Graphics.RectInt32(newX, newY, newWidth, newHeight);
+        var snapped = App.Current.ResizeGuideOverlay.UpdateGuidesAndSnap(proposed, _resizeDirection);
+        ApplyWindowBounds(snapped.X, snapped.Y, snapped.Width, snapped.Height, persist: false);
         e.Handled = true;
     }
 
@@ -5646,6 +5649,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _isResizing = false;
         _resizeDirection = string.Empty;
         element.ReleasePointerCapture(e.Pointer);
+        App.Current.ResizeGuideOverlay.EndResize();
         var finalPosition = _appWindow.Position;
         var finalSize = _appWindow.Size;
         CapturePositionAnchor(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height);

@@ -3442,6 +3442,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _initialWindowPos = _appWindow.Position;
         _initialWindowSize = _appWindow.Size;
         element.CapturePointer(e.Pointer);
+        App.Current.ResizeGuideOverlay.BeginResize(_hWnd, RootGrid);
         e.Handled = true;
     }
 
@@ -3488,7 +3489,9 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             newY = bottomEdge - newHeight;
         }
 
-        ApplyWindowBounds(newX, newY, newWidth, newHeight, persist: false);
+        var proposed = new Windows.Graphics.RectInt32(newX, newY, newWidth, newHeight);
+        var snapped = App.Current.ResizeGuideOverlay.UpdateGuidesAndSnap(proposed, _resizeDirection);
+        ApplyWindowBounds(snapped.X, snapped.Y, snapped.Width, snapped.Height, persist: false);
         e.Handled = true;
     }
 
@@ -3501,6 +3504,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         _isResizing = false;
         element.ReleasePointerCapture(e.Pointer);
+        App.Current.ResizeGuideOverlay.EndResize();
         var pos = _appWindow.Position;
         var size = _appWindow.Size;
         CapturePositionAnchor(pos.X, pos.Y, size.Width, size.Height);

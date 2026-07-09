@@ -5,6 +5,7 @@ using DeskBox.ViewModels;
 using DeskBox.Views;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
 
 namespace DeskBox.Services;
 
@@ -126,6 +127,48 @@ public sealed class WidgetManager
     public bool IsWidgetWindow(IntPtr hwnd)
     {
         return _widgetWindowHandles.Contains(hwnd);
+    }
+
+    /// <summary>
+    /// Returns the HWND of every currently-loaded widget window.
+    /// Used by the resize guide service to detect alignment targets.
+    /// </summary>
+    public IReadOnlyList<IntPtr> GetAllWidgetWindowHandles()
+    {
+        return _widgetWindowHandles.ToList();
+    }
+
+    /// <summary>
+    /// Finds the root FrameworkElement of a widget window by its HWND.
+    /// Used by the resize guide service to show edge highlights on target widgets.
+    /// </summary>
+    public FrameworkElement? GetWidgetRootElementByHandle(IntPtr hwnd)
+    {
+        foreach (var entry in _widgets.Values)
+        {
+            if (entry.Window.WindowHandle == hwnd)
+            {
+                return entry.Window.Content as FrameworkElement;
+            }
+        }
+
+        foreach (var entry in _quickCaptureWidgets.Values)
+        {
+            if (entry.Window.WindowHandle == hwnd)
+            {
+                return entry.Window.Content as FrameworkElement;
+            }
+        }
+
+        foreach (var window in _contentWidgets.Values)
+        {
+            if (window.WindowHandle == hwnd)
+            {
+                return window.Content as FrameworkElement;
+            }
+        }
+
+        return null;
     }
 
     private IReadOnlyList<IDesktopWidgetWindow> GetLoadedDesktopWindows()

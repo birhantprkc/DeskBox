@@ -98,6 +98,7 @@ public partial class App : Application
     public ThemeService ThemeService { get; private set; } = null!;
     public GlobalHotkeyService? GlobalHotkeyService { get; private set; }
     public WidgetManager? WidgetManager { get; private set; }
+    public ResizeGuideOverlayService ResizeGuideOverlay { get; } = new();
     public NativeAppNotificationService? NativeNotificationService => _nativeNotificationService;
     public TodoReminderService? TodoReminderService => _todoReminderService;
     public SettingsWindow? SettingsWindowInstance => _settingsWindow;

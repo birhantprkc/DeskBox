@@ -1375,6 +1375,7 @@ ApplyAppearancePreview();
         _initialWindowPos = _appWindow.Position;
         _initialWindowSize = _appWindow.Size;
         element.CapturePointer(e.Pointer);
+        App.Current.ResizeGuideOverlay.BeginResize(_hWnd, RootGrid);
         e.Handled = true;
     }
 
@@ -1420,7 +1421,9 @@ ApplyAppearancePreview();
             newY = bottomEdge - newHeight;
         }
 
-        ApplyWindowBounds(newX, newY, newWidth, newHeight, persist: false);
+        var proposed = new RectInt32(newX, newY, newWidth, newHeight);
+        var snapped = App.Current.ResizeGuideOverlay.UpdateGuidesAndSnap(proposed, _resizeDirection);
+        ApplyWindowBounds(snapped.X, snapped.Y, snapped.Width, snapped.Height, persist: false);
         e.Handled = true;
     }
 
@@ -1434,6 +1437,7 @@ ApplyAppearancePreview();
         _isResizing = false;
         _resizeDirection = string.Empty;
         element.ReleasePointerCapture(e.Pointer);
+        App.Current.ResizeGuideOverlay.EndResize();
         var finalPosition = _appWindow.Position;
         var finalSize = _appWindow.Size;
         UpdateConfigBounds(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
