@@ -215,7 +215,7 @@ public class AppSettings
     /// Comma-separated widget title hover actions. Valid values: <c>"LockPosition"</c>,
     /// <c>"LockSize"</c>, <c>"Add"</c>, <c>"More"</c>, <c>"Delete"</c>.
     /// </summary>
-    public string WidgetHoverButtonActions { get; set; } = "More,Delete";
+    public string WidgetHoverButtonActions { get; set; } = "More";
 
     /// <summary>
     /// Whether resize snap-to-edge alignment guides are enabled during

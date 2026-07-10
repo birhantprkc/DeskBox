@@ -8,7 +8,7 @@ public sealed class WidgetContentFactoryTests
     [Theory]
     [InlineData(WidgetKind.File, "DeskBox", WidgetContentStage.Implemented, true, WidgetContentAvailability.Available)]
     [InlineData(WidgetKind.QuickCapture, "Quick Capture", WidgetContentStage.Implemented, false, WidgetContentAvailability.Available)]
-    [InlineData(WidgetKind.Weather, "Weather", WidgetContentStage.Placeholder, false, WidgetContentAvailability.Planned)]
+    [InlineData(WidgetKind.Weather, "Weather", WidgetContentStage.Implemented, false, WidgetContentAvailability.Available)]
     [InlineData(WidgetKind.Todo, "Todo", WidgetContentStage.Implemented, false, WidgetContentAvailability.Available)]
     [InlineData(WidgetKind.Tags, "Tags", WidgetContentStage.Placeholder, false, WidgetContentAvailability.Planned)]
     [InlineData(WidgetKind.Music, "Music", WidgetContentStage.Implemented, false, WidgetContentAvailability.Available)]
@@ -108,13 +108,13 @@ public sealed class WidgetContentFactoryTests
         Assert.DoesNotContain(descriptors, descriptor => descriptor.WidgetKind == WidgetKind.File);
         Assert.Contains(descriptors, descriptor => descriptor.WidgetKind == WidgetKind.Todo && descriptor.HasImplementedContent);
         Assert.Contains(descriptors, descriptor => descriptor.WidgetKind == WidgetKind.Music && descriptor.HasImplementedContent);
-        Assert.Contains(descriptors, descriptor => descriptor.WidgetKind == WidgetKind.Weather && descriptor.IsPlanned);
+        Assert.Contains(descriptors, descriptor => descriptor.WidgetKind == WidgetKind.Weather && descriptor.HasImplementedContent);
     }
 
     [Theory]
     [InlineData(WidgetKind.File, true, false, true, true, false)]
     [InlineData(WidgetKind.QuickCapture, true, false, false, true, false)]
-    [InlineData(WidgetKind.Weather, false, true, false, false, true)]
+    [InlineData(WidgetKind.Weather, true, false, false, true, false)]
     [InlineData(WidgetKind.Todo, true, false, false, true, false)]
     [InlineData(WidgetKind.Tags, false, true, false, false, true)]
     [InlineData(WidgetKind.Music, true, false, false, true, false)]
@@ -160,7 +160,6 @@ public sealed class WidgetContentFactoryTests
     }
 
     [Theory]
-    [InlineData(WidgetKind.Weather)]
     [InlineData(WidgetKind.Tags)]
     [InlineData(WidgetKind.SystemMonitor)]
     public void CanCreatePlaceholderContent_ForFutureWidgetKinds(WidgetKind widgetKind)
@@ -177,17 +176,17 @@ public sealed class WidgetContentFactoryTests
         var factory = TestServices.CreateWidgetContentFactory();
         var config = new WidgetConfig
         {
-            Id = "weather-test",
-            Name = "Weather",
-            WidgetKind = WidgetKind.Weather
+            Id = "tags-test",
+            Name = "Tags",
+            WidgetKind = WidgetKind.Tags
         };
 
         var content = factory.CreatePlaceholderContent(config);
 
         Assert.IsType<PlaceholderWidgetContent>(content);
-        Assert.Equal("weather-test", content.WidgetId);
-        Assert.Equal(WidgetKind.Weather, content.WidgetKind);
-        Assert.False(WidgetRegistry.Default.CanCreateWindow(WidgetKind.Weather));
+        Assert.Equal("tags-test", content.WidgetId);
+        Assert.Equal(WidgetKind.Tags, content.WidgetKind);
+        Assert.False(WidgetRegistry.Default.CanCreateWindow(WidgetKind.Tags));
     }
 
     [Fact]
@@ -327,7 +326,6 @@ public sealed class WidgetContentFactoryTests
     }
 
     [Theory]
-    [InlineData(WidgetKind.Weather)]
     [InlineData(WidgetKind.Tags)]
     [InlineData(WidgetKind.SystemMonitor)]
     public void CreateDetachedContent_ReturnsPlaceholderForFutureKinds(WidgetKind widgetKind)

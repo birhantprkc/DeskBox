@@ -11,7 +11,7 @@ public sealed class WidgetRegistryTests
         var registry = WidgetRegistry.Default;
 
         Assert.True(registry.IsKnown(WidgetKind.Weather));
-        Assert.False(registry.CanCreateWindow(WidgetKind.Weather));
+        Assert.True(registry.CanCreateWindow(WidgetKind.Weather));
         Assert.True(registry.CanCreateWindow(WidgetKind.File));
         Assert.True(registry.CanCreateWindow(WidgetKind.QuickCapture));
         Assert.True(registry.CanCreateWindow(WidgetKind.Todo));
@@ -53,12 +53,12 @@ public sealed class WidgetRegistryTests
     public void IsAvailableForSession_RejectsFutureKindsUntilImplemented()
     {
         var registry = WidgetRegistry.Default;
-        var weatherWidget = new WidgetConfig
+        var tagsWidget = new WidgetConfig
         {
-            WidgetKind = WidgetKind.Weather
+            WidgetKind = WidgetKind.Tags
         };
 
-        Assert.False(registry.IsAvailableForSession(weatherWidget, new AppSettings()));
+        Assert.False(registry.IsAvailableForSession(tagsWidget, new AppSettings()));
     }
 
     [Fact]

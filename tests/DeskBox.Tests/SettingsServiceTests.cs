@@ -396,9 +396,9 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData(null, "More,Delete")]
-    [InlineData("", "More,Delete")]
-    [InlineData("Unknown", "More,Delete")]
+        [InlineData(null, "More")]
+    [InlineData("", "More")]
+    [InlineData("Unknown", "More")]
     [InlineData("add,More,delete,LockSize", "Add,More,Delete")]
     [InlineData("Add,Add,LockSize", "Add,LockSize")]
     public void NormalizeWidgetHoverButtonActions_ConstrainsSelection(string? value, string expected)

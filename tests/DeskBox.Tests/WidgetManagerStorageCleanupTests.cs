@@ -125,16 +125,16 @@ public sealed class WidgetManagerStorageCleanupTests : IDisposable
     {
         _settingsService.Settings.Widgets.Add(new WidgetConfig
         {
-            Id = "weather-hidden",
-            Name = "Weather",
-            WidgetKind = WidgetKind.Weather,
+            Id = "tags-hidden",
+            Name = "Tags",
+            WidgetKind = WidgetKind.Tags,
             IsVisible = true
         });
 
         await _widgetManager.RestoreWidgetsAsync();
 
         Assert.Empty(_widgetManager.ContentWidgets);
-        Assert.False(WidgetRegistry.Default.CanCreateWindow(WidgetKind.Weather));
+        Assert.False(WidgetRegistry.Default.CanCreateWindow(WidgetKind.Tags));
     }
 
     [Fact]

@@ -46,7 +46,6 @@ public sealed class ContentWidgetWindowFactoryTests : IDisposable
     }
 
     [Theory]
-    [InlineData(WidgetKind.Weather)]
     [InlineData(WidgetKind.Tags)]
     [InlineData(WidgetKind.SystemMonitor)]
     public void CreateContentWindowPlan_ReturnsPlaceholderForFutureKinds(WidgetKind widgetKind)

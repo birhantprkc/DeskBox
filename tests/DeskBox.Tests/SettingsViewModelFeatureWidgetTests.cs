@@ -26,13 +26,13 @@ public sealed class FeatureWidgetEntryFactoryTests
             WidgetKind.Tags,
             WidgetKind.SystemMonitor
         ], entries.Select(entry => entry.Kind));
-        Assert.All(entries.Where(entry => entry.Kind is WidgetKind.QuickCapture or WidgetKind.Todo or WidgetKind.Music), entry =>
+        Assert.All(entries.Where(entry => entry.Kind is WidgetKind.QuickCapture or WidgetKind.Todo or WidgetKind.Music or WidgetKind.Weather), entry =>
         {
             Assert.True(entry.ShowToggle);
             Assert.True(entry.CanToggle);
             Assert.True(entry.IsAvailable);
         });
-        Assert.All(entries.Where(entry => entry.Kind is not (WidgetKind.QuickCapture or WidgetKind.Todo or WidgetKind.Music)), entry =>
+        Assert.All(entries.Where(entry => entry.Kind is not (WidgetKind.QuickCapture or WidgetKind.Todo or WidgetKind.Music or WidgetKind.Weather)), entry =>
         {
             Assert.False(entry.ShowToggle);
             Assert.False(entry.CanToggle);
