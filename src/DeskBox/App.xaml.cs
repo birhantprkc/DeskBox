@@ -693,6 +693,9 @@ public partial class App : Application
             // Phase 1: Load settings (must complete first)
             await SettingsService.LoadAsync();
 
+            // Sync resize snap setting
+            ResizeGuideOverlay.IsSnapEnabled = SettingsService.Settings.ResizeSnapEnabled;
+
             // Phase 2: Initialize services that depend on settings (parallel)
             ThemeService = new ThemeService(SettingsService);
             LocalizationService = new LocalizationService(SettingsService);

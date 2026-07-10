@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Reflection;
+using System.Collections.ObjectModel;
+using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DeskBox.Helpers;
@@ -53,9 +55,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedTheme = ThemeSystem;
     private string _selectedTrayIconStyle = TrayIconStyleSystem;
     private string _selectedLanguage = SettingsService.LanguageSystem;
-    private string _selectedWidgetCornerPreference = CornerSmall;
-    private string _selectedWidgetMaterialType = MaterialAcrylic;
-    private string _selectedWidgetBorderStyle = BorderThin;
+    private string _selectedWidgetCornerPreference = CornerRound;
+    private string _selectedWidgetMaterialType = MaterialMica;
+    private string _selectedWidgetBorderStyle = BorderMedium;
     private string _selectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade;
     private string _selectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
     private string _selectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
@@ -71,6 +73,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedTodoTabStyle = SettingsService.WidgetTabStylePivot;
     private int _selectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
     private string _selectedMusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
+private string _selectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
+private string _selectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
+private string _selectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
+private string _selectedWeatherSkin = SettingsService.WeatherSkinStandard;
+private int _selectedWeatherRefreshInterval = 60;
     private bool _useSystemAccentColor;
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
     private string _managedStorageRootPath = SettingsService.GetDefaultManagedStorageRootPath();
@@ -111,6 +118,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string[]? _cachedTodoTabStyleDisplayNames;
     private string[]? _cachedTodoReminderOffsetDisplayNames;
     private string[]? _cachedMusicRhythmStyleDisplayNames;
+private string[]? _cachedWeatherTempUnitDisplayNames;
+private string[]? _cachedWeatherWindUnitDisplayNames;
+private string[]? _cachedWeatherDefaultViewDisplayNames;
+private string[]? _cachedWeatherSkinDisplayNames;
+private string[]? _cachedWeatherRefreshIntervalDisplayNames;
 
     [ObservableProperty] private bool _autoStart;
     [ObservableProperty] private bool _autoCheckForUpdates = true;
@@ -120,6 +132,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _hideShortcutArrowOverlay;
     [ObservableProperty] private bool _showImageFilesAsIcons;
     [ObservableProperty] private bool _showHoverButtons = true;
+    [ObservableProperty] private bool _resizeSnapEnabled = true;
     [ObservableProperty] private bool _showHoverActionLockPosition;
     [ObservableProperty] private bool _showHoverActionLockSize;
     [ObservableProperty] private bool _showHoverActionAdd;
@@ -146,6 +159,19 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _musicUseArtworkBackdrop = true;
     [ObservableProperty] private bool _musicShowRhythmBars = true;
     [ObservableProperty] private bool _musicEnableCoverHoverMotion = true;
+
+[ObservableProperty] private bool _weatherAutoLocation = true;
+[ObservableProperty] private string _weatherCityName = string.Empty;
+[ObservableProperty] private bool _weatherShowForecast = true;
+[ObservableProperty] private bool _weatherShowSunrise = true;
+[ObservableProperty] private bool _weatherShowUvIndex = true;
+[ObservableProperty] private bool _weatherShowPrecipitation = true;
+[ObservableProperty] private bool _weatherShowHumidity = true;
+[ObservableProperty] private bool _weatherShowWind = true;
+[ObservableProperty] private bool _weatherShowPressure;
+[ObservableProperty] private bool _weatherShowHourlyTrend = true;
+
+
     [ObservableProperty] private bool _quickCaptureClipboardEnabled;
     [ObservableProperty] private bool _quickCaptureImageClipboardEnabled;
     [ObservableProperty] private int _quickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
@@ -311,6 +337,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             _settingsService.Settings.WidgetMaterialType = value is MaterialMica or MaterialAcrylic or MaterialSolid
                 ? value
                 : SettingsService.WidgetMaterialTypeAcrylic;
+
+            // Force opacity to 100% when Solid is selected
+            if (value is MaterialSolid)
+            {
+                WidgetOpacity = 1.0;
+            }
+
             _settingsService.SaveDebounced();
             OnPropertyChanged(nameof(SelectedWidgetMaterialTypeText));
             OnPropertyChanged(nameof(IsOpacitySliderEnabled));
@@ -321,10 +354,11 @@ public string SelectedWidgetMaterialTypeText => GetMaterialTypeDisplayName(Selec
 public int SelectedWidgetMaterialTypeIndex => Array.IndexOf(AvailableWidgetMaterialTypes, _selectedWidgetMaterialType);
 
 /// <summary>
-/// Whether the opacity slider is enabled. Disabled for Mica (too subtle to control).
+/// Whether the opacity slider is enabled. Disabled for Mica (too subtle to control)
+/// and Solid (always 100% opacity).
 /// </summary>
 public bool IsOpacitySliderEnabled =>
-    _selectedWidgetMaterialType is not MaterialMica;
+    _selectedWidgetMaterialType is not MaterialMica and not MaterialSolid;
 
     public string SelectedWidgetBorderStyle
     {
@@ -1213,10 +1247,40 @@ public bool IsOpacitySliderEnabled =>
                     MusicShowRhythmBars = true;
                     SelectedMusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
                     MusicEnableCoverHoverMotion = true;
+WeatherAutoLocation = true;
+WeatherCityName = string.Empty;
+SelectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
+SelectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
+SelectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
+SelectedWeatherSkin = SettingsService.WeatherSkinStandard;
+WeatherShowForecast = true;
+WeatherShowSunrise = true;
+WeatherShowUvIndex = true;
+WeatherShowPrecipitation = true;
+WeatherShowHumidity = true;
+WeatherShowWind = true;
+WeatherShowPressure = false;
+WeatherShowHourlyTrend = true;
+SelectedWeatherRefreshInterval = 60;
                     _settingsService.Settings.MusicUseArtworkBackdrop = true;
                     _settingsService.Settings.MusicShowRhythmBars = true;
                     _settingsService.Settings.MusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
                     _settingsService.Settings.MusicEnableCoverHoverMotion = true;
+WeatherAutoLocation = true;
+WeatherCityName = string.Empty;
+SelectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
+SelectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
+SelectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
+SelectedWeatherSkin = SettingsService.WeatherSkinStandard;
+WeatherShowForecast = true;
+WeatherShowSunrise = true;
+WeatherShowUvIndex = true;
+WeatherShowPrecipitation = true;
+WeatherShowHumidity = true;
+WeatherShowWind = true;
+WeatherShowPressure = false;
+WeatherShowHourlyTrend = true;
+SelectedWeatherRefreshInterval = 60;
                     break;
             }
         }
@@ -1255,6 +1319,13 @@ public bool IsOpacitySliderEnabled =>
             case WidgetKind.Music:
                 OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
                 OnPropertyChanged(nameof(SelectedMusicRhythmStyleIndex));
+                break;
+            case WidgetKind.Weather:
+                OnPropertyChanged(nameof(SelectedWeatherDefaultViewIndex));
+                OnPropertyChanged(nameof(SelectedWeatherSkinIndex));
+                OnPropertyChanged(nameof(SelectedWeatherTemperatureUnitIndex));
+                OnPropertyChanged(nameof(SelectedWeatherWindSpeedUnitIndex));
+                OnPropertyChanged(nameof(SelectedWeatherRefreshIntervalIndex));
                 break;
         }
     }
@@ -1427,6 +1498,458 @@ public bool IsOpacitySliderEnabled =>
     ];
 
     public string[] AvailableMusicRhythmStyleDisplayNames => _cachedMusicRhythmStyleDisplayNames ??= AvailableMusicRhythmStyles.Select(GetMusicRhythmStyleDisplayName).ToArray();
+
+// ─── Weather Settings Properties ──────────────────────────────
+
+public string[] AvailableWeatherTemperatureUnits { get; } =
+[
+    SettingsService.WeatherTemperatureUnitCelsius,
+    SettingsService.WeatherTemperatureUnitFahrenheit
+];
+
+public string[] AvailableWeatherTemperatureUnitDisplayNames =>
+    _cachedWeatherTempUnitDisplayNames ??= AvailableWeatherTemperatureUnits.Select(GetWeatherTempUnitDisplayName).ToArray();
+
+public string SelectedWeatherTemperatureUnit
+{
+    get => _selectedWeatherTemperatureUnit;
+    set
+    {
+        string normalized = value == SettingsService.WeatherTemperatureUnitFahrenheit
+            ? SettingsService.WeatherTemperatureUnitFahrenheit
+            : SettingsService.WeatherTemperatureUnitCelsius;
+        if (!SetProperty(ref _selectedWeatherTemperatureUnit, normalized))
+        {
+            return;
+        }
+
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.WeatherTemperatureUnit = _selectedWeatherTemperatureUnit;
+        _settingsService.SaveDebounced();
+    }
+}
+
+public int SelectedWeatherTemperatureUnitIndex => Array.IndexOf(AvailableWeatherTemperatureUnits, _selectedWeatherTemperatureUnit);
+
+public string[] AvailableWeatherWindSpeedUnits { get; } =
+[
+    SettingsService.WeatherWindSpeedUnitKmh,
+    SettingsService.WeatherWindSpeedUnitMs,
+    SettingsService.WeatherWindSpeedUnitMph
+];
+
+public string[] AvailableWeatherWindSpeedUnitDisplayNames =>
+    _cachedWeatherWindUnitDisplayNames ??= AvailableWeatherWindSpeedUnits.Select(GetWeatherWindUnitDisplayName).ToArray();
+
+public string SelectedWeatherWindSpeedUnit
+{
+    get => _selectedWeatherWindSpeedUnit;
+    set
+    {
+        string normalized = value is SettingsService.WeatherWindSpeedUnitMs or SettingsService.WeatherWindSpeedUnitMph
+            ? value
+            : SettingsService.WeatherWindSpeedUnitKmh;
+        if (!SetProperty(ref _selectedWeatherWindSpeedUnit, normalized))
+        {
+            return;
+        }
+
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.WeatherWindSpeedUnit = _selectedWeatherWindSpeedUnit;
+        _settingsService.SaveDebounced();
+    }
+}
+
+public int SelectedWeatherWindSpeedUnitIndex => Array.IndexOf(AvailableWeatherWindSpeedUnits, _selectedWeatherWindSpeedUnit);
+
+public string[] AvailableWeatherDefaultViews { get; } =
+[
+    SettingsService.WeatherDefaultViewToday,
+    SettingsService.WeatherDefaultViewWeek
+];
+
+public string[] AvailableWeatherDefaultViewDisplayNames =>
+    _cachedWeatherDefaultViewDisplayNames ??= AvailableWeatherDefaultViews.Select(GetWeatherDefaultViewDisplayName).ToArray();
+
+public string SelectedWeatherDefaultView
+{
+    get => _selectedWeatherDefaultView;
+    set
+    {
+        string normalized = value == SettingsService.WeatherDefaultViewWeek
+            ? SettingsService.WeatherDefaultViewWeek
+            : SettingsService.WeatherDefaultViewToday;
+        if (!SetProperty(ref _selectedWeatherDefaultView, normalized))
+        {
+            return;
+        }
+
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.WeatherDefaultView = _selectedWeatherDefaultView;
+        _settingsService.SaveDebounced();
+    }
+}
+
+public int SelectedWeatherDefaultViewIndex => Array.IndexOf(AvailableWeatherDefaultViews, _selectedWeatherDefaultView);
+
+public string[] AvailableWeatherSkins { get; } =
+[
+    SettingsService.WeatherSkinStandard,
+    SettingsService.WeatherSkinRich
+];
+
+public string[] AvailableWeatherSkinDisplayNames =>
+    _cachedWeatherSkinDisplayNames ??= AvailableWeatherSkins.Select(GetWeatherSkinDisplayName).ToArray();
+
+public string SelectedWeatherSkin
+{
+    get => _selectedWeatherSkin;
+    set
+    {
+        string normalized = value == SettingsService.WeatherSkinRich
+            ? SettingsService.WeatherSkinRich
+            : SettingsService.WeatherSkinStandard;
+        if (!SetProperty(ref _selectedWeatherSkin, normalized))
+        {
+            return;
+        }
+
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.WeatherSkin = _selectedWeatherSkin;
+        _settingsService.SaveDebounced();
+    }
+}
+
+public int SelectedWeatherSkinIndex => Array.IndexOf(AvailableWeatherSkins, _selectedWeatherSkin);
+
+public int[] AvailableWeatherRefreshIntervals { get; } = [15, 30, 60, 180];
+
+public string[] AvailableWeatherRefreshIntervalDisplayNames =>
+    _cachedWeatherRefreshIntervalDisplayNames ??= AvailableWeatherRefreshIntervals.Select(GetWeatherRefreshIntervalDisplayName).ToArray();
+
+public int SelectedWeatherRefreshInterval
+{
+    get => _selectedWeatherRefreshInterval;
+    set
+    {
+        int clamped = Math.Clamp(value, SettingsService.WeatherRefreshMinMinutes, SettingsService.WeatherRefreshMaxMinutes);
+        if (!SetProperty(ref _selectedWeatherRefreshInterval, clamped))
+        {
+            return;
+        }
+
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.WeatherRefreshIntervalMinutes = _selectedWeatherRefreshInterval;
+        _settingsService.SaveDebounced();
+    }
+}
+
+public int SelectedWeatherRefreshIntervalIndex => Array.IndexOf(AvailableWeatherRefreshIntervals, _selectedWeatherRefreshInterval);
+
+private string GetWeatherTempUnitDisplayName(string unit) => unit switch
+{
+    SettingsService.WeatherTemperatureUnitFahrenheit => _localizationService.T("Weather.Unit.Fahrenheit"),
+    _ => _localizationService.T("Weather.Unit.Celsius")
+};
+
+private string GetWeatherWindUnitDisplayName(string unit) => unit switch
+{
+    SettingsService.WeatherWindSpeedUnitMs => "m/s",
+    SettingsService.WeatherWindSpeedUnitMph => "mph",
+    _ => "km/h"
+};
+
+private string GetWeatherDefaultViewDisplayName(string view) => view switch
+{
+    SettingsService.WeatherDefaultViewWeek => _localizationService.T("Weather.View.Week"),
+    _ => _localizationService.T("Weather.View.Today")
+};
+
+private string GetWeatherSkinDisplayName(string skin) => skin switch
+{
+    SettingsService.WeatherSkinRich => _localizationService.T("Weather.Skin.Rich"),
+    _ => _localizationService.T("Weather.Skin.Standard")
+};
+
+private string GetWeatherRefreshIntervalDisplayName(int minutes) => minutes switch
+{
+    15 => _localizationService.Format("Weather.Refresh.Minute", minutes),
+    30 => _localizationService.Format("Weather.Refresh.Minute", minutes),
+    60 => _localizationService.T("Weather.Refresh.Hour"),
+    180 => _localizationService.Format("Weather.Refresh.Hours", 3),
+    _ => $"{minutes} min"
+};
+
+partial void OnWeatherAutoLocationChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherAutoLocation = value;
+    _settingsService.SaveDebounced();
+    OnPropertyChanged(nameof(WeatherCityNameVisibility));
+}
+
+public Visibility WeatherCityNameVisibility => WeatherAutoLocation ? Visibility.Collapsed : Visibility.Visible;
+
+partial void OnWeatherCityNameChanged(string value)
+{
+    // Don't save on text change — only save when a city is selected from search results.
+    // See WeatherCitySearchResults / SelectWeatherCityCommand.
+}
+
+// ─── Weather city search ───
+
+private string _weatherCitySearchText = string.Empty;
+private bool _isWeatherCitySearchUpdating;
+
+public string WeatherCitySearchText
+{
+    get => _weatherCitySearchText;
+    set
+    {
+        if (SetProperty(ref _weatherCitySearchText, value))
+        {
+            _ = SearchWeatherCitiesAsync(value);
+        }
+    }
+}
+
+public ObservableCollection<WeatherCitySearchResult> WeatherCitySearchResults { get; } = [];
+
+private bool _isWeatherCitySearching;
+public bool IsWeatherCitySearching
+{
+    get => _isWeatherCitySearching;
+    private set => SetProperty(ref _isWeatherCitySearching, value);
+}
+
+public bool HasWeatherCitySearchResults => WeatherCitySearchResults.Count > 0;
+
+private CancellationTokenSource? _citySearchCts;
+
+private async Task SearchWeatherCitiesAsync(string query)
+{
+    if (_isWeatherCitySearchUpdating || string.IsNullOrWhiteSpace(query) || query.Length < 2)
+    {
+        WeatherCitySearchResults.Clear();
+        OnPropertyChanged(nameof(HasWeatherCitySearchResults));
+        return;
+    }
+
+    _citySearchCts?.Cancel();
+    _citySearchCts = new CancellationTokenSource();
+
+    IsWeatherCitySearching = true;
+    try
+    {
+        await Task.Delay(300, _citySearchCts.Token);
+
+        var weatherService = new WeatherService();
+        var language = _localizationService.IsEnglish ? "en" : "zh";
+        var results = await weatherService.SearchCityAsync(query, language);
+        weatherService.Dispose();
+
+        if (_citySearchCts.Token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        WeatherCitySearchResults.Clear();
+        foreach (var item in results.Take(8))
+        {
+            WeatherCitySearchResults.Add(new WeatherCitySearchResult
+            {
+                Name = item.Name ?? string.Empty,
+                DisplayName = BuildCityDisplayName(item),
+                Latitude = item.Latitude,
+                Longitude = item.Longitude,
+                Country = item.Country ?? string.Empty,
+                Admin1 = item.Admin1 ?? string.Empty
+            });
+        }
+        OnPropertyChanged(nameof(HasWeatherCitySearchResults));
+    }
+    catch (OperationCanceledException)
+    {
+        // Expected when a newer search supersedes this one.
+    }
+    catch (Exception ex)
+    {
+        App.Log($"[SettingsViewModel] Weather city search failed: {ex.Message}");
+    }
+    finally
+    {
+        IsWeatherCitySearching = false;
+    }
+}
+
+private static string BuildCityDisplayName(WeatherGeocodingItem item)
+{
+    var parts = new List<string>();
+    if (!string.IsNullOrEmpty(item.Name)) parts.Add(item.Name);
+    if (!string.IsNullOrEmpty(item.Admin1) && item.Admin1 != item.Name) parts.Add(item.Admin1);
+    if (!string.IsNullOrEmpty(item.Country)) parts.Add(item.Country);
+    return string.Join(", ", parts);
+}
+
+public void SelectWeatherCity(WeatherCitySearchResult result)
+{
+    if (result is null)
+    {
+        return;
+    }
+
+    _isWeatherCitySearchUpdating = true;
+    try
+    {
+        _settingsService.Settings.WeatherCityName = result.DisplayName;
+        _settingsService.Settings.WeatherLatitude = result.Latitude;
+        _settingsService.Settings.WeatherLongitude = result.Longitude;
+        _settingsService.SaveDebounced();
+
+        WeatherCityName = result.DisplayName;
+        _weatherCitySearchText = result.DisplayName;
+        OnPropertyChanged(nameof(WeatherCitySearchText));
+
+        WeatherCitySearchResults.Clear();
+        OnPropertyChanged(nameof(HasWeatherCitySearchResults));
+    }
+    finally
+    {
+        _isWeatherCitySearchUpdating = false;
+    }
+}
+
+public void ClearWeatherCitySearchResults()
+{
+    WeatherCitySearchResults.Clear();
+    OnPropertyChanged(nameof(HasWeatherCitySearchResults));
+}
+
+public void RestoreWeatherCitySearchText()
+{
+    _isWeatherCitySearchUpdating = true;
+    try
+    {
+        _weatherCitySearchText = _settingsService.Settings.WeatherCityName;
+        OnPropertyChanged(nameof(WeatherCitySearchText));
+    }
+    finally
+    {
+        _isWeatherCitySearchUpdating = false;
+    }
+}
+
+partial void OnWeatherShowForecastChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherShowForecast = value;
+    _settingsService.SaveDebounced();
+}
+
+partial void OnWeatherShowSunriseChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherShowSunrise = value;
+    _settingsService.SaveDebounced();
+}
+
+partial void OnWeatherShowUvIndexChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherShowUvIndex = value;
+    _settingsService.SaveDebounced();
+}
+
+partial void OnWeatherShowPrecipitationChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherShowPrecipitation = value;
+    _settingsService.SaveDebounced();
+}
+
+partial void OnWeatherShowHumidityChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherShowHumidity = value;
+    _settingsService.SaveDebounced();
+}
+
+partial void OnWeatherShowWindChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherShowWind = value;
+    _settingsService.SaveDebounced();
+}
+
+partial void OnWeatherShowPressureChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherShowPressure = value;
+    _settingsService.SaveDebounced();
+}
+
+partial void OnWeatherShowHourlyTrendChanged(bool value)
+{
+    if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+    {
+        return;
+    }
+
+    _settingsService.Settings.WeatherShowHourlyTrend = value;
+    _settingsService.SaveDebounced();
+}
 
     public string AppVersion =>
         Assembly.GetExecutingAssembly()
@@ -2024,6 +2547,7 @@ public bool IsOpacitySliderEnabled =>
         _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
         _showImageFilesAsIcons = settings.ShowImageFilesAsIcons;
         _showHoverButtons = settings.ShowHoverButtons;
+        _resizeSnapEnabled = settings.ResizeSnapEnabled;
         ApplyHoverButtonActionSelection(settings.WidgetHoverButtonActions);
         _showListItemDetails = settings.ShowListItemDetails;
         _showFileItemPathTooltips = settings.ShowFileItemPathTooltips;
@@ -2068,6 +2592,33 @@ public bool IsOpacitySliderEnabled =>
         _musicShowRhythmBars = settings.MusicShowRhythmBars;
         _selectedMusicRhythmStyle = SettingsService.NormalizeMusicRhythmStyle(settings.MusicRhythmStyle);
         _musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
+_weatherAutoLocation = settings.WeatherAutoLocation;
+_weatherCityName = settings.WeatherCityName;
+_weatherCitySearchText = settings.WeatherCityName;
+_selectedWeatherTemperatureUnit = settings.WeatherTemperatureUnit == SettingsService.WeatherTemperatureUnitFahrenheit
+    ? SettingsService.WeatherTemperatureUnitFahrenheit
+    : SettingsService.WeatherTemperatureUnitCelsius;
+_selectedWeatherWindSpeedUnit = settings.WeatherWindSpeedUnit is SettingsService.WeatherWindSpeedUnitMs or SettingsService.WeatherWindSpeedUnitMph
+    ? settings.WeatherWindSpeedUnit
+    : SettingsService.WeatherWindSpeedUnitKmh;
+_selectedWeatherDefaultView = settings.WeatherDefaultView == SettingsService.WeatherDefaultViewWeek
+    ? SettingsService.WeatherDefaultViewWeek
+    : SettingsService.WeatherDefaultViewToday;
+_selectedWeatherSkin = settings.WeatherSkin == SettingsService.WeatherSkinRich
+    ? SettingsService.WeatherSkinRich
+    : SettingsService.WeatherSkinStandard;
+_weatherShowForecast = settings.WeatherShowForecast;
+_weatherShowSunrise = settings.WeatherShowSunrise;
+_weatherShowUvIndex = settings.WeatherShowUvIndex;
+_weatherShowPrecipitation = settings.WeatherShowPrecipitation;
+_weatherShowHumidity = settings.WeatherShowHumidity;
+_weatherShowWind = settings.WeatherShowWind;
+_weatherShowPressure = settings.WeatherShowPressure;
+_weatherShowHourlyTrend = settings.WeatherShowHourlyTrend;
+_selectedWeatherRefreshInterval = Math.Clamp(
+    settings.WeatherRefreshIntervalMinutes,
+    SettingsService.WeatherRefreshMinMinutes,
+    SettingsService.WeatherRefreshMaxMinutes);
         _selectedTodoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
         _selectedTodoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);
         _selectedTodoReminderOffsetMinutes = SettingsService.NormalizeTodoReminderOffsetMinutes(settings.TodoDefaultReminderOffsetMinutes);
@@ -2137,9 +2688,9 @@ public bool IsOpacitySliderEnabled =>
             UseSystemAccentColor = true;
             DefaultWidth = SettingsService.DefaultWidgetWidth;
             DefaultHeight = SettingsService.DefaultWidgetHeight;
-            SelectedWidgetCornerPreference = CornerSmall;
-            SelectedWidgetMaterialType = MaterialAcrylic;
-            SelectedWidgetBorderStyle = BorderThin;
+            SelectedWidgetCornerPreference = CornerRound;
+            SelectedWidgetMaterialType = MaterialMica;
+            SelectedWidgetBorderStyle = BorderMedium;
             SelectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectSlideFade;
             SelectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
             SelectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
@@ -2176,10 +2727,26 @@ public bool IsOpacitySliderEnabled =>
             MusicShowRhythmBars = true;
             SelectedMusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
             MusicEnableCoverHoverMotion = true;
+WeatherAutoLocation = true;
+WeatherCityName = string.Empty;
+SelectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
+SelectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
+SelectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
+SelectedWeatherSkin = SettingsService.WeatherSkinStandard;
+WeatherShowForecast = true;
+WeatherShowSunrise = true;
+WeatherShowUvIndex = true;
+WeatherShowPrecipitation = true;
+WeatherShowHumidity = true;
+WeatherShowWind = true;
+WeatherShowPressure = false;
+WeatherShowHourlyTrend = true;
+SelectedWeatherRefreshInterval = 60;
             SelectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
             SelectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
             SelectedTodoTabStyle = SettingsService.WidgetTabStylePivot;
             DoubleClickToOpen = true;
+            ResizeSnapEnabled = true;
             GlobalHotkeyEnabled = SettingsService.DefaultGlobalHotkeyEnabled;
             HideShortcutArrowOverlay = true;
             ShowListItemDetails = false;
@@ -3184,6 +3751,23 @@ public bool IsOpacitySliderEnabled =>
         _settingsService.SaveDebounced();
     }
 
+    partial void OnResizeSnapEnabledChanged(bool value)
+    {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
+        _settingsService.Settings.ResizeSnapEnabled = value;
+        _settingsService.SaveDebounced();
+
+        // Sync to the live overlay service
+        if (App.Current is { } app)
+        {
+            app.ResizeGuideOverlay.IsSnapEnabled = value;
+        }
+    }
+
     partial void OnDefaultWidthChanged(double value)
     {
         if (_isRestoringDefaults)
@@ -3403,6 +3987,7 @@ public bool IsOpacitySliderEnabled =>
         FeatureWidgetSettings.SetEnabled(_settingsService.Settings, WidgetKind.Todo, value);
         _ = SyncTodoEnabledAsync(value);
         OnPropertyChanged(nameof(FeatureWidgetEntries));
+        App.Current?.TodoReminderService?.Refresh();
     }
 
     partial void OnTodoShowCompletedTasksChanged(bool value)
@@ -3458,6 +4043,7 @@ public bool IsOpacitySliderEnabled =>
 
         _settingsService.Settings.TodoReminderEnabled = value;
         _settingsService.SaveDebounced();
+        App.Current?.TodoReminderService?.Refresh();
         if (value && App.Current?.TodoReminderService is { } reminderService)
         {
             _ = reminderService.CheckNowAsync(DateTimeOffset.Now);

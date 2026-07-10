@@ -73,12 +73,53 @@ public sealed class TodoReminderService : IDisposable
             return;
         }
 
+        if (!ShouldBeRunning())
+        {
+            return;
+        }
+
         _timer = _dispatcherQueue.CreateTimer();
         _timer.Interval = ScanInterval;
         _timer.Tick += Timer_Tick;
         _timer.Start();
 
         _ = RunDelayedInitialCheckAsync();
+    }
+
+    /// <summary>
+    /// Called when settings change. Starts or stops the timer based on whether
+    /// the Todo widget and reminder feature are enabled.
+    /// </summary>
+    public void Refresh()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (ShouldBeRunning())
+        {
+            if (_timer is null && _dispatcherQueue is not null)
+            {
+                _timer = _dispatcherQueue.CreateTimer();
+                _timer.Interval = ScanInterval;
+                _timer.Tick += Timer_Tick;
+                _timer.Start();
+            }
+        }
+        else if (_timer is not null)
+        {
+            _timer.Tick -= Timer_Tick;
+            _timer.Stop();
+            _timer = null;
+        }
+    }
+
+    private bool ShouldBeRunning()
+    {
+        var settings = _settingsService.Settings;
+        return settings.TodoReminderEnabled &&
+               FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo);
     }
 
     public async Task<int> CheckNowAsync(DateTimeOffset now)

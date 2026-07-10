@@ -68,7 +68,8 @@ public sealed partial class SettingsWindow : Window
             ["ManagedStorage"] = new("ManagedStorage", "Settings.ManagedStorage.PageTitle", "AppearanceDetail", "AppearanceDetail"),
             ["QuickCaptureSettings"] = new("QuickCaptureSettings", "Settings.QuickCapture.Title", "FeatureWidgets", "FeatureWidgets"),
             ["TodoSettings"] = new("TodoSettings", "Settings.Todo.Title", "FeatureWidgets", "FeatureWidgets"),
-            ["MusicSettings"] = new("MusicSettings", "Settings.Music.Title", "FeatureWidgets", "FeatureWidgets")
+            ["MusicSettings"] = new("MusicSettings", "Settings.Music.Title", "FeatureWidgets", "FeatureWidgets"),
+            ["WeatherSettings"] = new("WeatherSettings", "Settings.Weather.Title", "FeatureWidgets", "FeatureWidgets")
         };
 
     public SettingsViewModel ViewModel { get; }
@@ -267,6 +268,7 @@ public sealed partial class SettingsWindow : Window
         }
         TodoSettingsSection.Visibility = sectionTag == "TodoSettings" ? Visibility.Visible : Visibility.Collapsed;
         MusicSettingsSection.Visibility = sectionTag == "MusicSettings" ? Visibility.Visible : Visibility.Collapsed;
+WeatherSettingsSection.Visibility = sectionTag == "WeatherSettings" ? Visibility.Visible : Visibility.Collapsed;
         InteractionSection.Visibility = sectionTag is "Interaction" or "Advanced" ? Visibility.Visible : Visibility.Collapsed;
         ManagedStorageSection.Visibility = sectionTag == "ManagedStorage" ? Visibility.Visible : Visibility.Collapsed;
         if (sectionTag == "ManagedStorage")
@@ -412,9 +414,24 @@ public sealed partial class SettingsWindow : Window
             case "TodoReminderOffset":
                 ViewModel.SelectedTodoReminderOffsetMinutes = ViewModel.AvailableTodoReminderOffsetMinutes[combo.SelectedIndex];
                 break;
-            case "MusicRhythmStyle":
-                ViewModel.SelectedMusicRhythmStyle = ViewModel.AvailableMusicRhythmStyles[combo.SelectedIndex];
-                break;
+case "MusicRhythmStyle":
+ViewModel.SelectedMusicRhythmStyle = ViewModel.AvailableMusicRhythmStyles[combo.SelectedIndex];
+break;
+case "WeatherTemperatureUnit":
+ViewModel.SelectedWeatherTemperatureUnit = ViewModel.AvailableWeatherTemperatureUnits[combo.SelectedIndex];
+break;
+case "WeatherWindSpeedUnit":
+ViewModel.SelectedWeatherWindSpeedUnit = ViewModel.AvailableWeatherWindSpeedUnits[combo.SelectedIndex];
+break;
+case "WeatherDefaultView":
+ViewModel.SelectedWeatherDefaultView = ViewModel.AvailableWeatherDefaultViews[combo.SelectedIndex];
+break;
+case "WeatherSkin":
+ViewModel.SelectedWeatherSkin = ViewModel.AvailableWeatherSkins[combo.SelectedIndex];
+break;
+case "WeatherRefreshInterval":
+ViewModel.SelectedWeatherRefreshInterval = ViewModel.AvailableWeatherRefreshIntervals[combo.SelectedIndex];
+break;
             case "TrayIconStyle":
                 ViewModel.SelectedTrayIconStyle = ViewModel.AvailableTrayIconStyles[combo.SelectedIndex];
                 break;
@@ -886,6 +903,25 @@ public sealed partial class SettingsWindow : Window
 
         SettingsRoot.Focus(FocusState.Programmatic);
         e.Handled = true;
+    }
+
+    private void WeatherCityResult_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is WeatherCitySearchResult result)
+        {
+            ViewModel.SelectWeatherCity(result);
+        }
+    }
+
+    private void WeatherCitySearchBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        // Clear search results and restore the saved city name if the user didn't select anything.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ViewModel.ClearWeatherCitySearchResults();
+            // Restore the search text to the saved city name
+            ViewModel.RestoreWeatherCitySearchText();
+        });
     }
 
     private void ChangeGlobalHotkeyButton_Click(object sender, RoutedEventArgs e)

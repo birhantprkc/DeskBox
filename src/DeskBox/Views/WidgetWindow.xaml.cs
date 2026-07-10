@@ -100,6 +100,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     private FrameworkElement? _lastMoreFlyoutTarget;
     private Windows.Foundation.Point? _lastMoreFlyoutPosition;
     private bool _isDeleteWidgetFlyoutOpen;
+    private Windows.Foundation.Point _lastRightTapPoint;
+    private TextBlock? _itemRenameNameText;
     private bool _isInlineFlyoutOpen;
     private bool _isCommittingTitleRename;
     private bool _isCommittingItemRename;
@@ -391,8 +393,20 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private bool RestoreBoundsAfterDisplayChange()
     {
+        // For hidden windows: update config coordinates to the correct screen
+        // without actually moving the window. This ensures the widget appears
+        // in the right place when it is next shown.
+        if (!Visible)
+        {
+            var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(ViewModel.Config);
+            var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+            WidgetPositioningService.CaptureAnchor(ViewModel.Config, bounds, workArea);
+            WidgetPositioningService.UpdateConfigFromPhysicalBounds(ViewModel.Config, bounds, workArea);
+            return true;
+        }
+
         bool restored = TryRestoreBoundsForCurrentTopology(allowHidden: false);
-        if (restored && Visible)
+        if (restored)
         {
             RestoreDesktopLayer(force: true);
         }
@@ -1040,6 +1054,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _restoreDesktopLayerWhenIdle = false;
         PlayTrayRaiseAnimation();
         App.Current.WidgetManager?.BringAllVisibleWidgetsToFront(_hWnd);
+        StartTopMostSafetyTimer();
     }
 
     private void QueueRestoreDesktopLayerIfForegroundLeavesDeskBox()
@@ -2628,6 +2643,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             return;
         }
 
+        _lastRightTapPoint = e.GetPosition(element);
+
         var listView = GetActiveItemsView();
         if (listView is not null)
         {
@@ -2642,15 +2659,22 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         var selectedItems = GetSelectedItems();
         bool isMultiSelection = selectedItems.Count > 1;
-        var flyout = new MenuFlyout();
 
         if (isMultiSelection)
         {
-            AddMultiSelectionItems(flyout, selectedItems.Count);
-            ShowFlyoutWithElevation(flyout, element, e.GetPosition(element));
+            var multiFlyout = new MenuFlyout();
+            AddMultiSelectionItems(multiFlyout, selectedItems.Count);
+            ShowFlyoutWithElevation(multiFlyout, element, e.GetPosition(element));
             e.Handled = true;
             return;
         }
+
+        // ─── Win11-style MenuFlyout (custom) with "Show more options" ───
+        // We always show our WinUI 3 MenuFlyout first (which IS Win11-styled:
+        // rounded corners, acrylic background). At the bottom, we add a
+        // "Show more options" item that invokes the full classic native shell
+        // context menu — mirroring exactly what Windows 11 File Explorer does.
+        var flyout = new MenuFlyout();
 
         var openItem = new MenuFlyoutItem
         {
@@ -2755,8 +2779,80 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             flyout.Items.Add(moveBackToDesktopItem);
         }
 
+        // ─── "Show more options" — launches the full classic native shell menu ───
+        bool pathExists = !string.IsNullOrEmpty(item.Path) && (System.IO.File.Exists(item.Path) || System.IO.Directory.Exists(item.Path));
+        if (pathExists)
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            var showMoreItem = new MenuFlyoutItem
+            {
+                Text = _localizationService.T("Widget.ShowMoreOptions"),
+                Icon = new FontIcon { Glyph = "\uE712" }
+            };
+            showMoreItem.Click += (_, _) =>
+            {
+                _ = DispatcherQueue.TryEnqueue(() =>
+                {
+                    TryShowNativeContextMenu(item, element, _lastRightTapPoint);
+                });
+            };
+            flyout.Items.Add(showMoreItem);
+        }
+
         ShowFlyoutWithElevation(flyout, element, e.GetPosition(element));
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Shows the native Windows Explorer context menu for a single file item.
+    /// Handles Z-order elevation, coordinate conversion, and foreground window management.
+    /// </summary>
+    /// <returns>True if the native menu was shown (regardless of whether a command was invoked); false if it failed and the caller should fall back.</returns>
+    private bool TryShowNativeContextMenu(WidgetItem item, FrameworkElement element, Windows.Foundation.Point relativePoint)
+    {
+        try
+        {
+            // Convert the relative point to screen coordinates (physical pixels)
+            // TransformToVisual(null) gives coordinates relative to the window origin
+            var windowPoint = element.TransformToVisual(null).TransformPoint(relativePoint);
+            double scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
+            int screenX = (int)(_appWindow.Position.X + windowPoint.X * scale);
+            int screenY = (int)(_appWindow.Position.Y + windowPoint.Y * scale);
+
+            // Elevate the window to topmost so the context menu appears above other windows
+            BeginInteractionLayer("native-context-menu-opened");
+
+            // Set foreground window — required for TrackPopupMenuEx to dismiss properly
+            // when the user clicks outside the menu
+            Win32Helper.SetForegroundWindow(_hWnd);
+
+            var result = ShellContextMenuHelper.ShowContextMenu(_hWnd, item.Path, screenX, screenY);
+
+            // Release the interaction layer (restore desktop Z-order)
+            ReleaseInteractionLayer("native-context-menu-closed");
+
+            // Refresh the item list after the native menu closes, as the user may have
+            // performed file operations (rename, delete, etc.) through the native menu
+            if (result == ShellContextMenuHelper.NativeMenuResult.Invoked)
+            {
+                _ = DispatcherQueue.TryEnqueue(async () =>
+                {
+                    await Task.Delay(100);
+                    await ViewModel.RefreshFromConfigAsync();
+                    ClearRemovedCutPaths();
+                    UpdateEmptyState();
+                });
+            }
+
+            return result != ShellContextMenuHelper.NativeMenuResult.Failed;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[NativeContextMenu] Failed: {ex.Message}");
+            ReleaseInteractionLayer("native-context-menu-error");
+            return false;
+        }
     }
 
     private void AddMultiSelectionItems(MenuFlyout flyout, int selectedCount)
@@ -4493,6 +4589,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     {
         _isDragging = true;
         _hasMovedTitleBarDrag = false;
+        _displayChangeWatcher?.SuppressRestore();
         ElevateForInteraction();
         _initialCursorPt = cursorPt;
         _initialWindowPos = _appWindow.Position;
@@ -4500,6 +4597,9 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _dragCaptureElement = captureElement;
         captureElement.CapturePointer(e.Pointer);
         e.Handled = true;
+
+        // Begin drag-move snap session
+        App.Current?.ResizeGuideOverlay.BeginDrag(_hWnd, RootGrid);
     }
 
     private void TitleBarGrid_PointerMoved(object sender, PointerRoutedEventArgs e)
@@ -4542,7 +4642,14 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         int newX = _initialWindowPos.X + deltaX;
         int newY = _initialWindowPos.Y + deltaY;
-        ApplyWindowBounds(newX, newY, _initialWindowSize.Width, _initialWindowSize.Height, persist: false);
+
+        // Apply drag-move snap
+        var proposedBounds = new Windows.Graphics.RectInt32(
+            newX, newY, _initialWindowSize.Width, _initialWindowSize.Height);
+        var snappedBounds = App.Current?.ResizeGuideOverlay.UpdateGuidesAndSnapForDrag(proposedBounds)
+            ?? proposedBounds;
+
+        ApplyWindowBounds(snappedBounds.X, snappedBounds.Y, snappedBounds.Width, snappedBounds.Height, persist: false);
         e.Handled = true;
     }
 
@@ -4566,6 +4673,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _isDragging = false;
         _dragCaptureElement?.ReleasePointerCapture(e.Pointer);
         _dragCaptureElement = null;
+
+        // End drag-move snap session
+        App.Current?.ResizeGuideOverlay.EndDrag();
+
         if (_hasMovedTitleBarDrag)
         {
             var finalPosition = _appWindow.Position;
@@ -4575,6 +4686,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             ReleaseInteractionLayer("file-drag-ended");
         }
 
+        _displayChangeWatcher?.ResumeRestore();
         _hasMovedTitleBarDrag = false;
         e.Handled = true;
     }
@@ -5176,7 +5288,8 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private async Task StartItemRenameAsync(WidgetItem item)
     {
-        var target = FindItemNameElement(item) ?? FindItemSurface(item);
+        var nameElement = FindItemNameElement(item);
+        var target = nameElement ?? FindItemSurface(item);
         var contentHost = SelectionOverlay.Parent as UIElement;
         if (target is null || contentHost is null)
         {
@@ -5188,15 +5301,64 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         _itemRenameTarget = item;
         _isCancellingItemRename = false;
         ItemRenameTextBox.Text = item.Name;
-        ItemRenameTextBox.FontSize = ViewModel.IsListMode
-            ? ViewModel.ListLabelFontSize
-            : ViewModel.IconLabelFontSize;
+
+        // Match the TextBox style to the TextBlock it replaces for seamless inline look
+        if (nameElement is TextBlock tb)
+        {
+            _itemRenameNameText = tb;
+            tb.Visibility = Visibility.Collapsed;
+            // TextBlock.FontSize == 0 means "use default" — don't pass 0 to TextBox
+            ItemRenameTextBox.FontSize = tb.FontSize > 0 ? tb.FontSize : 14;
+            ItemRenameTextBox.TextAlignment = tb.TextAlignment;
+            ItemRenameTextBox.HorizontalContentAlignment = tb.HorizontalAlignment switch
+            {
+                HorizontalAlignment.Center => HorizontalAlignment.Center,
+                HorizontalAlignment.Right => HorizontalAlignment.Right,
+                _ => HorizontalAlignment.Left
+            };
+            ItemRenameTextBox.TextWrapping = tb.TextWrapping;
+        }
+        else
+        {
+            ItemRenameTextBox.FontSize = ViewModel.IsListMode
+                ? ViewModel.ListLabelFontSize
+                : ViewModel.IconLabelFontSize;
+            ItemRenameTextBox.TextAlignment = TextAlignment.Center;
+            ItemRenameTextBox.TextWrapping = TextWrapping.NoWrap;
+        }
+
         PositionItemRenameTextBox(target, contentHost);
         ItemRenameTextBox.Visibility = Visibility.Visible;
         ItemRenameTextBox.IsHitTestVisible = true;
         BeginInteractionLayer("file-item-rename-opened");
-        FocusTextInputEditor(ItemRenameTextBox, selectAll: true);
+        // Ensure window is foreground then select filename without extension
+        HoldTemporaryTopMost();
+        _appWindow.Show();
+        base.Activate();
+        Win32Helper.SetForegroundWindow(_hWnd);
+        SelectFilenameWithoutExtension(ItemRenameTextBox);
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Selects the filename portion without the extension, matching Windows Explorer behavior.
+    /// For folders or files without extension, selects all.
+    /// </summary>
+    private static void SelectFilenameWithoutExtension(TextBox textBox)
+    {
+        textBox.Focus(FocusState.Programmatic);
+        string text = textBox.Text;
+        int dotIndex = text.LastIndexOf('.');
+        // Only treat as extension if dot is not at position 0 (hidden files like .gitignore)
+        // and the extension is reasonably short (≤ 8 chars) to avoid selecting ".tar.gz" style names entirely
+        if (dotIndex > 0 && text.Length - dotIndex - 1 <= 8)
+        {
+            textBox.Select(0, dotIndex);
+        }
+        else
+        {
+            textBox.SelectAll();
+        }
     }
 
     private void FocusTextInputEditor(TextBox textBox, bool selectAll)
@@ -5294,6 +5456,14 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         ItemRenameTextBox.Visibility = Visibility.Collapsed;
         ItemRenameTextBox.IsHitTestVisible = false;
         ItemRenameTextBox.Text = string.Empty;
+
+        // Restore the hidden TextBlock
+        if (_itemRenameNameText is not null)
+        {
+            _itemRenameNameText.Visibility = Visibility.Visible;
+            _itemRenameNameText = null;
+        }
+
         _itemRenameTarget = null;
         ReleaseInteractionLayer("file-item-rename-closed");
     }
@@ -5302,18 +5472,61 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
     {
         var topLeft = target.TransformToVisual(contentHost)
             .TransformPoint(new Windows.Foundation.Point(0, 0));
-        double width = Math.Clamp(target.ActualWidth > 0 ? target.ActualWidth + 12 : 220, 120, 280);
-        double height = Math.Max(30, target.ActualHeight > 0 ? target.ActualHeight + 6 : 30);
 
+        // TextBox has 1px border + 2px horizontal padding. We need to offset
+        // so the *text inside* the TextBox aligns exactly with the TextBlock text.
+        const double border = 1.0;
+        const double padX = 2.0;
+        double offsetX = topLeft.X - border - padX;
+        double offsetY = topLeft.Y - border;
+
+        // The TextBox is a child of the contentHost Grid, which has Padding.
+        // TransformToVisual gives coordinates relative to the Grid's visual bounds,
+        // but the child is laid out starting from the content area (after padding).
+        // We must subtract the host's padding to get the correct Margin.
+        double hostPaddingH = 0;
+        double hostPaddingV = 0;
+        if (contentHost is Grid grid)
+        {
+            hostPaddingH = grid.Padding.Left + grid.Padding.Right;
+            hostPaddingV = grid.Padding.Top + grid.Padding.Bottom;
+            offsetX -= grid.Padding.Left;
+            offsetY -= grid.Padding.Top;
+        }
+
+        double height = Math.Max(target.ActualHeight + 2 * border, 20);
+
+        // Width: adapt to the host's content area. The usable width is
+        // host.ActualWidth - hostPadding - |offsetX| - rightMargin.
+        // offsetX is relative to content area, so right edge = host.ActualWidth - hostPaddingH + offsetX.
+        const double rightMargin = 8;
+        double width;
         if (contentHost is FrameworkElement host)
         {
-            width = Math.Min(width, Math.Max(120, host.ActualWidth - topLeft.X - 8));
-            height = Math.Min(height, Math.Max(30, host.ActualHeight - topLeft.Y - 8));
+            double contentWidth = host.ActualWidth - hostPaddingH;
+            // offsetX is the TextBox's left position relative to the content area.
+            // Available width = content area width - TextBox left position - right margin.
+            double availableWidth = contentWidth - offsetX - rightMargin;
+            if (ViewModel.IsListMode)
+            {
+                width = Math.Clamp(availableWidth, 80, contentWidth);
+            }
+            else
+            {
+                width = Math.Clamp(target.ActualWidth + 2 * (border + padX), 60, availableWidth);
+            }
+
+            double contentHeight = host.ActualHeight - hostPaddingV;
+            height = Math.Min(height, Math.Max(20, contentHeight - offsetY - 4));
+        }
+        else
+        {
+            width = Math.Max(target.ActualWidth + 2 * (border + padX), 60);
         }
 
         ItemRenameTextBox.Width = width;
         ItemRenameTextBox.Height = height;
-        ItemRenameTextBox.Margin = new Thickness(topLeft.X - 6, topLeft.Y - 3, 0, 0);
+        ItemRenameTextBox.Margin = new Thickness(offsetX, offsetY, 0, 0);
     }
 
     private FrameworkElement? FindItemNameElement(WidgetItem item)
@@ -5581,6 +5794,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
         _isResizing = true;
         _resizeDirection = element.Tag as string ?? string.Empty;
+        _displayChangeWatcher?.SuppressRestore();
         BeginInteractionLayer("file-resize-started");
         Win32Helper.GetCursorPos(out _initialCursorPt);
         _initialWindowPos = _appWindow.Position;
@@ -5655,6 +5869,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
         CapturePositionAnchor(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height);
         UpdateConfigBoundsFromPhysical(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
         ReleaseInteractionLayer("file-resize-ended");
+        _displayChangeWatcher?.ResumeRestore();
         e.Handled = true;
     }
 

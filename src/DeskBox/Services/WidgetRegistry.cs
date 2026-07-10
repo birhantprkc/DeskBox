@@ -60,7 +60,7 @@ public sealed class WidgetRegistry
         [
             new(WidgetKind.File, CanCreateWindow: true, IsImplemented: true),
             new(WidgetKind.QuickCapture, CanCreateWindow: true, IsImplemented: true),
-            new(WidgetKind.Weather, CanCreateWindow: false, IsImplemented: false),
+            new(WidgetKind.Weather, CanCreateWindow: true, IsImplemented: true),
             new(WidgetKind.Todo, CanCreateWindow: true, IsImplemented: true),
             new(WidgetKind.Tags, CanCreateWindow: false, IsImplemented: false),
             new(WidgetKind.Music, CanCreateWindow: true, IsImplemented: true),

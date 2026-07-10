@@ -72,11 +72,13 @@ public sealed class WidgetContentFactory
             WidgetKind.Weather,
             "Weather",
             "\uE706",
-            WidgetContentStage.Placeholder,
+            WidgetContentStage.Implemented,
             CanShowInCreateEntry: false,
-            WidgetContentAvailability.Planned,
+            WidgetContentAvailability.Available,
             "WidgetContent.Weather.StatusLabel",
             "WidgetContent.Weather.StatusDescription",
+            HasSettingsPage: true,
+            SettingsSectionTag: "WeatherSettings",
             ChromeCategory: WidgetChromeCategory.Display,
             DefaultChromeMode: WidgetChromeMode.Overlay),
         new(
@@ -235,7 +237,7 @@ public sealed class WidgetContentFactory
         [
             new TodoWidgetContentProvider(),
             new MusicWidgetContentProvider(),
-            new PlaceholderWidgetContentProvider(WidgetKind.Weather),
+            new WeatherWidgetContentProvider(),
             new PlaceholderWidgetContentProvider(WidgetKind.Tags),
             new PlaceholderWidgetContentProvider(WidgetKind.SystemMonitor)
         ];

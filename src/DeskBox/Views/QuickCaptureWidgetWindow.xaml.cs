@@ -641,8 +641,20 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private bool RestoreBoundsAfterDisplayChange()
     {
+        // For hidden windows: update config coordinates to the correct screen
+        // without actually moving the window. This ensures the widget appears
+        // in the right place when it is next shown.
+        if (!Visible)
+        {
+            var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(ViewModel.Config);
+            var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+            WidgetPositioningService.CaptureAnchor(ViewModel.Config, bounds, workArea);
+            WidgetPositioningService.UpdateConfigFromPhysicalBounds(ViewModel.Config, bounds, workArea);
+            return true;
+        }
+
         bool restored = TryRestoreBoundsForCurrentTopology(allowHidden: false);
-        if (restored && Visible)
+        if (restored)
         {
             RestoreDesktopLayer(force: true);
         }
@@ -3363,6 +3375,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _isDragging = true;
         _hasMovedTitleBarDrag = false;
         _focusRootAfterDragClick = focusWhenClicked;
+        _displayChangeWatcher?.SuppressRestore();
         ElevateForInteraction();
         Win32Helper.GetCursorPos(out _initialCursorPt);
         _initialWindowPos = _appWindow.Position;
@@ -3370,6 +3383,9 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _dragCaptureElement = captureElement;
         captureElement.CapturePointer(e.Pointer);
         e.Handled = true;
+
+        // Begin drag-move snap session
+        App.Current?.ResizeGuideOverlay.BeginDrag(_hWnd, RootGrid);
     }
 
     private void ContinueWindowDrag(PointerRoutedEventArgs e)
@@ -3388,11 +3404,18 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
             _hasMovedTitleBarDrag = true;
         }
 
-        ApplyWindowBounds(
+        // Apply drag-move snap
+        var proposedBounds = new Windows.Graphics.RectInt32(
             _initialWindowPos.X + deltaX,
             _initialWindowPos.Y + deltaY,
             _initialWindowSize.Width,
-            _initialWindowSize.Height,
+            _initialWindowSize.Height);
+        var snappedBounds = App.Current?.ResizeGuideOverlay.UpdateGuidesAndSnapForDrag(proposedBounds)
+            ?? proposedBounds;
+
+        ApplyWindowBounds(
+            snappedBounds.X, snappedBounds.Y,
+            snappedBounds.Width, snappedBounds.Height,
             persist: false);
         e.Handled = true;
     }
@@ -3408,6 +3431,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         bool hasMoved = _hasMovedTitleBarDrag;
         _dragCaptureElement?.ReleasePointerCapture(e.Pointer);
         _dragCaptureElement = null;
+
+        // End drag-move snap session
+        App.Current?.ResizeGuideOverlay.EndDrag();
+
         var pos = _appWindow.Position;
         var size = _appWindow.Size;
         CapturePositionAnchor(pos.X, pos.Y, size.Width, size.Height);
@@ -3419,6 +3446,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         _hasMovedTitleBarDrag = false;
         _focusRootAfterDragClick = false;
+        _displayChangeWatcher?.ResumeRestore();
         e.Handled = true;
     }
 
@@ -3437,6 +3465,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
         _isResizing = true;
         _resizeDirection = element.Tag as string ?? string.Empty;
+        _displayChangeWatcher?.SuppressRestore();
         ElevateForInteraction();
         Win32Helper.GetCursorPos(out _initialCursorPt);
         _initialWindowPos = _appWindow.Position;
@@ -3509,6 +3538,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         var size = _appWindow.Size;
         CapturePositionAnchor(pos.X, pos.Y, size.Width, size.Height);
         UpdateConfigBoundsFromPhysical(pos.X, pos.Y, size.Width, size.Height, persist: true);
+        _displayChangeWatcher?.ResumeRestore();
         e.Handled = true;
     }
 
@@ -3568,6 +3598,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         _keepRaisedUntilDeactivate = true;
         _restoreDesktopLayerWhenIdle = false;
         PlayTrayRaiseAnimation();
+        StartTopMostSafetyTimer();
     }
 
     private void QueueRestoreDesktopLayerIfForegroundLeavesDeskBox()

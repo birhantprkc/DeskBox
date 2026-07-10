@@ -2,6 +2,7 @@ using DeskBox.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Graphics;
 
 namespace DeskBox.Services;
@@ -16,9 +17,14 @@ public sealed class ResizeGuideOverlayService
 {
     // ── Snap threshold & visual constants ───────────────────────────────
 
-    private const double SnapThreshold = 8.0;       // Physical pixels
-    private const int HighlightThickness = 3;        // DIPs
+    private const double SnapThreshold = 4.0;       // Physical pixels (halved)
+    private const int HighlightThickness = 12;       // DIPs – gradient fade width
     private const int HighlightZIndex = 100;
+    private const double BreathingMinOpacity = 0.45;
+    private const double BreathingMaxOpacity = 1.0;
+    private static readonly TimeSpan BreathingDuration = TimeSpan.FromMilliseconds(1200);
+
+    private static readonly Windows.UI.Color _transparent = Windows.UI.Color.FromArgb(0, 0, 0, 0);
 
     // ── Active highlight elements (keyed by widget HWND) ────────────────
 
@@ -36,6 +42,13 @@ public sealed class ResizeGuideOverlayService
     /// Whether a resize session is currently active.
     /// </summary>
     public bool IsActive { get; private set; }
+
+    /// <summary>
+    /// Whether snap-to-edge behaviour is enabled.  When false,
+    /// <see cref="UpdateGuidesAndSnap"/> returns the proposed bounds
+    /// unchanged and no highlights are shown.
+    /// </summary>
+    public bool IsSnapEnabled { get; set; } = true;
 
     // ─────────────────────────────────────────────────────────────────────
     //  Public API
@@ -65,7 +78,7 @@ public sealed class ResizeGuideOverlayService
     /// </summary>
     public RectInt32 UpdateGuidesAndSnap(RectInt32 proposedBounds, string resizeDirection)
     {
-        if (!IsActive)
+        if (!IsActive || !IsSnapEnabled)
         {
             return proposedBounds;
         }
@@ -337,13 +350,74 @@ public sealed class ResizeGuideOverlayService
         // Remove existing highlight for this widget if any
         if (_activeHighlights.TryGetValue(hwnd, out var existing))
         {
+            StopHighlightAnimation(existing);
             grid.Children.Remove(existing);
             _activeHighlights.Remove(hwnd);
         }
 
+        var c = _highlightColor;
+
+        // Edge glow: brightest at the very edge, fading softly inward.
+        // The gradient runs from the edge (opaque) toward the interior (transparent).
+        LinearGradientBrush glowBrush;
+        double thickness = HighlightThickness;
+
+        // Edge highlight color: bright at edge, slightly translucent
+        var edgeColor = Windows.UI.Color.FromArgb(255, c.R, c.G, c.B);
+        var midColor = Windows.UI.Color.FromArgb(100, c.R, c.G, c.B);
+
+        if (edge is SnapEdge.Left)
+        {
+            // Aligned left, gradient: left=bright → right=transparent
+            glowBrush = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0.5),
+                EndPoint = new Windows.Foundation.Point(1, 0.5),
+            };
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 0.0, Color = edgeColor });
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 0.3, Color = midColor });
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 1.0, Color = _transparent });
+        }
+        else if (edge is SnapEdge.Right)
+        {
+            // Aligned right, gradient: right=bright → left=transparent
+            glowBrush = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(1, 0.5),
+                EndPoint = new Windows.Foundation.Point(0, 0.5),
+            };
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 0.0, Color = edgeColor });
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 0.3, Color = midColor });
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 1.0, Color = _transparent });
+        }
+        else if (edge is SnapEdge.Top)
+        {
+            // Aligned top, gradient: top=bright → bottom=transparent
+            glowBrush = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0.5, 0),
+                EndPoint = new Windows.Foundation.Point(0.5, 1),
+            };
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 0.0, Color = edgeColor });
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 0.3, Color = midColor });
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 1.0, Color = _transparent });
+        }
+        else // Bottom
+        {
+            // Aligned bottom, gradient: bottom=bright → top=transparent
+            glowBrush = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0.5, 1),
+                EndPoint = new Windows.Foundation.Point(0.5, 0),
+            };
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 0.0, Color = edgeColor });
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 0.3, Color = midColor });
+            glowBrush.GradientStops.Add(new GradientStop { Offset = 1.0, Color = _transparent });
+        }
+
         var border = new Border
         {
-            Background = new SolidColorBrush(_highlightColor),
+            Background = glowBrush,
             IsHitTestVisible = false,
             HorizontalAlignment = edge switch
             {
@@ -357,9 +431,8 @@ public sealed class ResizeGuideOverlayService
                 SnapEdge.Bottom => VerticalAlignment.Bottom,
                 _ => VerticalAlignment.Stretch
             },
-            Width = edge is SnapEdge.Left or SnapEdge.Right ? HighlightThickness : double.NaN,
-            Height = edge is SnapEdge.Top or SnapEdge.Bottom ? HighlightThickness : double.NaN,
-            CornerRadius = new CornerRadius(1.5),
+            Width = edge is SnapEdge.Left or SnapEdge.Right ? thickness : double.NaN,
+            Height = edge is SnapEdge.Top or SnapEdge.Bottom ? thickness : double.NaN,
         };
 
         Grid.SetRowSpan(border, 20);
@@ -368,8 +441,27 @@ public sealed class ResizeGuideOverlayService
         Grid.SetColumn(border, 0);
         border.SetValue(Canvas.ZIndexProperty, HighlightZIndex);
 
+        // Breathing animation: pulse opacity gently
+        var breathing = new DoubleAnimation
+        {
+            From = BreathingMaxOpacity,
+            To = BreathingMinOpacity,
+            Duration = new Duration(BreathingDuration),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        };
+        Storyboard.SetTarget(breathing, border);
+        Storyboard.SetTargetProperty(breathing, "Opacity");
+
+        var sb = new Storyboard();
+        sb.Children.Add(breathing);
+        border.Resources["BreathingStoryboard"] = sb;
+
         grid.Children.Add(border);
         _activeHighlights[hwnd] = border;
+
+        sb.Begin();
     }
 
     private void RemoveHighlight(IntPtr hwnd)
@@ -378,6 +470,8 @@ public sealed class ResizeGuideOverlayService
         {
             return;
         }
+
+        StopHighlightAnimation(border);
 
         if (border.Parent is Grid grid)
         {
@@ -391,6 +485,7 @@ public sealed class ResizeGuideOverlayService
     {
         foreach (var kvp in _activeHighlights)
         {
+            StopHighlightAnimation(kvp.Value);
             if (kvp.Value.Parent is Grid grid)
             {
                 grid.Children.Remove(kvp.Value);
@@ -399,6 +494,15 @@ public sealed class ResizeGuideOverlayService
         _activeHighlights.Clear();
         _currentTargetHwnd = IntPtr.Zero;
         _currentTargetRoot = null;
+    }
+
+    private static void StopHighlightAnimation(Border border)
+    {
+        if (border.Resources.TryGetValue("BreathingStoryboard", out var value) &&
+            value is Storyboard sb)
+        {
+            sb.Stop();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -445,6 +549,170 @@ public sealed class ResizeGuideOverlayService
     {
         return App.Current?.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
+    }
+
+    // ── Drag session state ──────────────────────────────────────────────
+
+    private IntPtr _draggingWidgetHwnd;
+    private FrameworkElement? _draggingWidgetRoot;
+
+    /// <summary>
+    /// Whether a drag-move session is currently active.
+    /// </summary>
+    public bool IsDragActive { get; private set; }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  Drag-Move snap API
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Called when a widget drag-move operation begins.
+    /// </summary>
+    public void BeginDrag(IntPtr draggingWidgetHwnd, FrameworkElement draggingWidgetRoot)
+    {
+        _draggingWidgetHwnd = draggingWidgetHwnd;
+        _draggingWidgetRoot = draggingWidgetRoot;
+        _highlightColor = GetHighlightColor();
+        _currentTargetHwnd = IntPtr.Zero;
+        _currentTargetRoot = null;
+        IsDragActive = true;
+
+        App.LogVerbose($"[ResizeGuide] BeginDrag hwnd=0x{draggingWidgetHwnd.ToInt64():X}");
+    }
+
+    /// <summary>
+    /// Called on every PointerMoved during drag-move.  Checks the proposed
+    /// bounds against all other widget edges and work-area edges, snaps if
+    /// within threshold, and shows edge highlights.
+    /// Returns the (possibly snapped) bounds to apply.
+    /// </summary>
+    public RectInt32 UpdateGuidesAndSnapForDrag(RectInt32 proposedBounds)
+    {
+        if (!IsDragActive || !IsSnapEnabled)
+        {
+            return proposedBounds;
+        }
+
+        // Reuse the resize session state for highlight management
+        _resizingWidgetHwnd = _draggingWidgetHwnd;
+        _resizingWidgetRoot = _draggingWidgetRoot;
+        IsActive = true;
+
+        var otherBounds = GetOtherWidgetBounds();
+        var snapped = proposedBounds;
+        var snapInfos = new List<(SnapEdge Edge, int Coordinate, IntPtr? TargetHwnd)>();
+
+        // ── Top edge snapping (vertical alignment of top edge) ──────
+
+        int topEdgeY = proposedBounds.Y;
+        var (snapTopY, targetTop) = FindSnapEdgeY(topEdgeY, otherBounds);
+        if (snapTopY.HasValue)
+        {
+            snapped = new RectInt32(
+                snapped.X, snapTopY.Value,
+                snapped.Width, snapped.Height);
+            snapInfos.Add((SnapEdge.Top, snapTopY.Value, targetTop));
+        }
+
+        // ── Left edge snapping (horizontal alignment of left edge) ──
+
+        int leftEdgeX = proposedBounds.X;
+        var (snapLeftX, targetLeft) = FindSnapEdgeX(leftEdgeX, otherBounds);
+        if (snapLeftX.HasValue)
+        {
+            snapped = new RectInt32(
+                snapLeftX.Value, snapped.Y,
+                snapped.Width, snapped.Height);
+            snapInfos.Add((SnapEdge.Left, snapLeftX.Value, targetLeft));
+        }
+
+        // ── Right edge snapping (horizontal alignment of right edge) ─
+
+        int rightEdgeX = proposedBounds.X + proposedBounds.Width;
+        var (snapRightX, targetRight) = FindSnapEdgeX(rightEdgeX, otherBounds);
+        if (snapRightX.HasValue)
+        {
+            // Adjust X so right edge snaps; width stays the same
+            int newX = snapRightX.Value - proposedBounds.Width;
+            snapped = new RectInt32(
+                newX, snapped.Y,
+                snapped.Width, snapped.Height);
+            snapInfos.Add((SnapEdge.Right, snapRightX.Value, targetRight));
+        }
+
+        // ── Update highlights for the best snap ───────────────────────
+
+        if (snapInfos.Count > 0)
+        {
+            // Show highlights for all snapped edges (up to 2: one horizontal, one vertical)
+            var horizontalSnap = snapInfos.FirstOrDefault(s => s.Edge is SnapEdge.Left or SnapEdge.Right);
+            var verticalSnap = snapInfos.FirstOrDefault(s => s.Edge is SnapEdge.Top or SnapEdge.Bottom);
+
+            ClearAllHighlights();
+
+            if (verticalSnap != default)
+            {
+                ShowHighlight(_draggingWidgetHwnd, _draggingWidgetRoot, verticalSnap.Edge);
+                if (verticalSnap.TargetHwnd.HasValue && verticalSnap.TargetHwnd.Value != IntPtr.Zero)
+                {
+                    var targetRoot = App.Current?.WidgetManager
+                        ?.GetWidgetRootElementByHandle(verticalSnap.TargetHwnd.Value);
+                    if (targetRoot is not null)
+                    {
+                        var targetEdge = ResolveTargetEdge(
+                            verticalSnap.TargetHwnd.Value, verticalSnap.Coordinate, verticalSnap.Edge);
+                        ShowHighlight(verticalSnap.TargetHwnd.Value, targetRoot, targetEdge);
+                        _currentTargetHwnd = verticalSnap.TargetHwnd.Value;
+                        _currentTargetRoot = targetRoot;
+                    }
+                }
+            }
+
+            if (horizontalSnap != default)
+            {
+                ShowHighlight(_draggingWidgetHwnd, _draggingWidgetRoot, horizontalSnap.Edge);
+                if (horizontalSnap.TargetHwnd.HasValue && horizontalSnap.TargetHwnd.Value != IntPtr.Zero)
+                {
+                    var targetRoot = App.Current?.WidgetManager
+                        ?.GetWidgetRootElementByHandle(horizontalSnap.TargetHwnd.Value);
+                    if (targetRoot is not null)
+                    {
+                        var targetEdge = ResolveTargetEdge(
+                            horizontalSnap.TargetHwnd.Value, horizontalSnap.Coordinate, horizontalSnap.Edge);
+                        ShowHighlight(horizontalSnap.TargetHwnd.Value, targetRoot, targetEdge);
+                        _currentTargetHwnd = horizontalSnap.TargetHwnd.Value;
+                        _currentTargetRoot = targetRoot;
+                    }
+                }
+            }
+        }
+        else
+        {
+            ClearAllHighlights();
+        }
+
+        return snapped;
+    }
+
+    /// <summary>
+    /// Called when the drag-move operation ends.  Clears all highlights.
+    /// </summary>
+    public void EndDrag()
+    {
+        if (!IsDragActive)
+        {
+            return;
+        }
+
+        ClearAllHighlights();
+        IsDragActive = false;
+        IsActive = false;
+        _draggingWidgetHwnd = IntPtr.Zero;
+        _draggingWidgetRoot = null;
+        _currentTargetHwnd = IntPtr.Zero;
+        _currentTargetRoot = null;
+
+        App.LogVerbose("[ResizeGuide] EndDrag");
     }
 
     private enum SnapEdge

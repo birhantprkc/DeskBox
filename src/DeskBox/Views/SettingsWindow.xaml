@@ -1534,6 +1534,244 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                 </StackPanel>
 
                 <StackPanel
+                    x:Name="WeatherSettingsSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Weather.PageDescription" />
+                    </StackPanel>
+                    <StackPanel Margin="0,8,0,0" Spacing="4">
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Weather.AutoLocation.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.AutoLocation.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE81D;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
+                                MinWidth="0"
+                                IsOn="{Binding WeatherAutoLocation, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Weather.CityName.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.CityName.Title"
+                            Visibility="{Binding WeatherCityNameVisibility}">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE71D;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <Grid MinWidth="240">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBox
+                                    x:Name="WeatherCitySearchBox"
+                                    Grid.Row="0"
+                                    PlaceholderText="Beijing / 北京"
+                                    Text="{Binding WeatherCitySearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    LostFocus="WeatherCitySearchBox_LostFocus" />
+                                <ListView
+                                    Grid.Row="1"
+                                    MaxHeight="200"
+                                    Margin="0,2,0,0"
+                                    ItemsSource="{Binding WeatherCitySearchResults}"
+                                    Visibility="{Binding HasWeatherCitySearchResults}"
+                                    SelectionMode="Single"
+                                    IsItemClickEnabled="True"
+                                    ItemClick="WeatherCityResult_ItemClick">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock
+                                                FontSize="13"
+                                                Text="{Binding DisplayName}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Weather.TemperatureUnit.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.TemperatureUnit.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7E3;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="150"
+                                ItemsSource="{Binding AvailableWeatherTemperatureUnitDisplayNames}"
+                                SelectedIndex="{Binding SelectedWeatherTemperatureUnitIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="WeatherTemperatureUnit" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Weather.WindSpeedUnit.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.WindSpeedUnit.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE9E9;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="150"
+                                ItemsSource="{Binding AvailableWeatherWindSpeedUnitDisplayNames}"
+                                SelectedIndex="{Binding SelectedWeatherWindSpeedUnitIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="WeatherWindSpeedUnit" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Weather.DefaultView.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.DefaultView.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8B7;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="150"
+                                ItemsSource="{Binding AvailableWeatherDefaultViewDisplayNames}"
+                                SelectedIndex="{Binding SelectedWeatherDefaultViewIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="WeatherDefaultView" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Weather.Skin.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.Skin.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE790;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="150"
+                                ItemsSource="{Binding AvailableWeatherSkinDisplayNames}"
+                                SelectedIndex="{Binding SelectedWeatherSkinIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="WeatherSkin" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Weather.RefreshInterval.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.RefreshInterval.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE72C;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="150"
+                                ItemsSource="{Binding AvailableWeatherRefreshIntervalDisplayNames}"
+                                SelectedIndex="{Binding SelectedWeatherRefreshIntervalIndex, Mode=OneWay}"
+                                SelectionChanged="SettingsComboBox_SelectionChanged"
+                                Tag="WeatherRefreshInterval" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsExpander
+                            IsExpanded="False"
+                            svc:Localized.DescriptionKey="Settings.Weather.Group.Display.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.Group.Display.Title">
+                            <toolkit:SettingsExpander.HeaderIcon>
+                                <FontIcon Glyph="&#xE7F8;" />
+                            </toolkit:SettingsExpander.HeaderIcon>
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Weather.ShowForecast.Description"
+                                    svc:Localized.HeaderKey="Settings.Weather.ShowForecast.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding WeatherShowForecast, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Weather.ShowHourlyTrend.Description"
+                                    svc:Localized.HeaderKey="Settings.Weather.ShowHourlyTrend.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding WeatherShowHourlyTrend, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Weather.ShowSunrise.Description"
+                                    svc:Localized.HeaderKey="Settings.Weather.ShowSunrise.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding WeatherShowSunrise, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Weather.ShowUvIndex.Description"
+                                    svc:Localized.HeaderKey="Settings.Weather.ShowUvIndex.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding WeatherShowUvIndex, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Weather.ShowPrecipitation.Description"
+                                    svc:Localized.HeaderKey="Settings.Weather.ShowPrecipitation.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding WeatherShowPrecipitation, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Weather.ShowHumidity.Description"
+                                    svc:Localized.HeaderKey="Settings.Weather.ShowHumidity.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding WeatherShowHumidity, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Weather.ShowWind.Description"
+                                    svc:Localized.HeaderKey="Settings.Weather.ShowWind.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding WeatherShowWind, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.Weather.ShowPressure.Description"
+                                    svc:Localized.HeaderKey="Settings.Weather.ShowPressure.Title">
+                                    <ToggleSwitch
+                                        OnContent=""
+                                        OffContent=""
+                                        MinWidth="0"
+                                        IsOn="{Binding WeatherShowPressure, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel
                     x:Name="GeneralSection"
                     Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.General" />
@@ -1579,6 +1817,20 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding DoubleClickToOpen, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.ResizeSnap.Description"
+                            svc:Localized.HeaderKey="Settings.ResizeSnap.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE742;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch
+                                OnContent=""
+                                OffContent=""
+                                MinWidth="0"
+                                IsOn="{Binding ResizeSnapEnabled, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard

@@ -72,7 +72,7 @@ public sealed class SettingsService
     public const string WidgetHoverActionMore = "More";
     public const string WidgetHoverActionDelete = "Delete";
     public const string DefaultWidgetHoverButtonActions =
-        WidgetHoverActionMore + "," + WidgetHoverActionDelete;
+        WidgetHoverActionMore;
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
     public const string LanguageSystem = "System";
@@ -120,6 +120,18 @@ public sealed class SettingsService
     public const string MusicRhythmStyleLineSpectrum = "LineSpectrum";
     public const string MusicRhythmStyleStackedEqualizer = "StackedEqualizer";
 
+public const string WeatherTemperatureUnitCelsius = "Celsius";
+public const string WeatherTemperatureUnitFahrenheit = "Fahrenheit";
+public const string WeatherWindSpeedUnitKmh = "kmh";
+public const string WeatherWindSpeedUnitMs = "ms";
+public const string WeatherWindSpeedUnitMph = "mph";
+public const string WeatherDefaultViewToday = "Today";
+public const string WeatherDefaultViewWeek = "Week";
+public const string WeatherSkinStandard = "Standard";
+public const string WeatherSkinRich = "Rich";
+public const int WeatherRefreshMinMinutes = 15;
+public const int WeatherRefreshMaxMinutes = 180;
+
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
         WriteIndented = true,
@@ -151,9 +163,9 @@ public sealed class SettingsService
         settings.AccentColorMode = "System";
         settings.DefaultWidgetWidth = DefaultWidgetWidth;
         settings.DefaultWidgetHeight = DefaultWidgetHeight;
-        settings.WidgetCornerPreference = WidgetCornerPreferenceSmall;
-        settings.WidgetMaterialType = WidgetMaterialTypeAcrylic;
-        settings.WidgetBorderStyle = WidgetBorderStyleThin;
+        settings.WidgetCornerPreference = WidgetCornerPreferenceRound;
+        settings.WidgetMaterialType = WidgetMaterialTypeMica;
+        settings.WidgetBorderStyle = WidgetBorderStyleMedium;
         settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
         settings.WidgetAnimationSpeed = WidgetAnimationSpeedStandard;
         settings.WidgetAnimationSlideDirection = WidgetAnimationSlideDirectionRight;
@@ -191,6 +203,23 @@ public sealed class SettingsService
         settings.MusicShowRhythmBars = true;
         settings.MusicRhythmStyle = MusicRhythmStyleSoftWave;
         settings.MusicEnableCoverHoverMotion = true;
+settings.WeatherAutoLocation = true;
+settings.WeatherCityName = string.Empty;
+settings.WeatherLatitude = 0;
+settings.WeatherLongitude = 0;
+settings.WeatherTemperatureUnit = WeatherTemperatureUnitCelsius;
+settings.WeatherWindSpeedUnit = WeatherWindSpeedUnitKmh;
+settings.WeatherDefaultView = WeatherDefaultViewToday;
+settings.WeatherSkin = WeatherSkinStandard;
+settings.WeatherShowForecast = true;
+settings.WeatherShowSunrise = true;
+settings.WeatherShowUvIndex = true;
+settings.WeatherShowPrecipitation = true;
+settings.WeatherShowHumidity = true;
+settings.WeatherShowWind = true;
+settings.WeatherShowPressure = false;
+settings.WeatherShowHourlyTrend = true;
+settings.WeatherRefreshIntervalMinutes = 60;
         settings.TodoNewTaskPosition = TodoNewTaskPositionTop;
         settings.TodoDefaultFilter = TodoDefaultFilterAll;
         settings.TodoTabStyle = WidgetTabStylePivot;
@@ -254,8 +283,9 @@ public sealed class SettingsService
                 changed |= NormalizeHotkeySettings(_settings);
                 changed |= NormalizeQuickCaptureSettings(_settings);
                 changed |= NormalizeTodoSettings(_settings);
-                changed |= NormalizeMusicSettings(_settings);
-                changed |= NormalizeDeletionSettings(_settings);
+changed |= NormalizeMusicSettings(_settings);
+changed |= NormalizeWeatherSettings(_settings);
+changed |= NormalizeDeletionSettings(_settings);
             }
 
             if (changed)
@@ -318,8 +348,9 @@ public sealed class SettingsService
                 NormalizeHotkeySettings(_settings);
                 NormalizeQuickCaptureSettings(_settings);
                 NormalizeTodoSettings(_settings);
-                NormalizeMusicSettings(_settings);
-                json = JsonSerializer.Serialize(_settings, s_jsonOptions);
+NormalizeMusicSettings(_settings);
+NormalizeWeatherSettings(_settings);
+json = JsonSerializer.Serialize(_settings, s_jsonOptions);
             }
             await File.WriteAllTextAsync(_settingsPath, json);
         }
@@ -454,7 +485,7 @@ public sealed class SettingsService
             WidgetCornerPreferenceSmall or
             WidgetCornerPreferenceRound))
         {
-            settings.WidgetCornerPreference = WidgetCornerPreferenceSmall;
+            settings.WidgetCornerPreference = WidgetCornerPreferenceRound;
             changed = true;
         }
 
@@ -706,7 +737,7 @@ public sealed class SettingsService
 
         if (string.IsNullOrWhiteSpace(value))
         {
-            return [WidgetHoverActionMore, WidgetHoverActionDelete];
+            return [WidgetHoverActionMore];
         }
 
         var selected = new List<string>();
@@ -727,7 +758,7 @@ public sealed class SettingsService
         }
 
         return selected.Count == 0
-            ? [WidgetHoverActionMore, WidgetHoverActionDelete]
+            ? [WidgetHoverActionMore]
             : selected;
     }
 
@@ -1087,6 +1118,59 @@ public sealed class SettingsService
 
         settings.MusicRhythmStyle = normalizedRhythmStyle;
         return true;
+    }
+
+    internal static bool NormalizeWeatherSettings(AppSettings settings)
+    {
+        bool changed = false;
+
+        string normalizedTempUnit = settings.WeatherTemperatureUnit is WeatherTemperatureUnitFahrenheit
+            ? WeatherTemperatureUnitFahrenheit
+            : WeatherTemperatureUnitCelsius;
+        if (!string.Equals(settings.WeatherTemperatureUnit, normalizedTempUnit, StringComparison.Ordinal))
+        {
+            settings.WeatherTemperatureUnit = normalizedTempUnit;
+            changed = true;
+        }
+
+        string normalizedWindUnit = settings.WeatherWindSpeedUnit is WeatherWindSpeedUnitMs or WeatherWindSpeedUnitMph
+            ? settings.WeatherWindSpeedUnit
+            : WeatherWindSpeedUnitKmh;
+        if (!string.Equals(settings.WeatherWindSpeedUnit, normalizedWindUnit, StringComparison.Ordinal))
+        {
+            settings.WeatherWindSpeedUnit = normalizedWindUnit;
+            changed = true;
+        }
+
+        string normalizedView = settings.WeatherDefaultView is WeatherDefaultViewWeek
+            ? WeatherDefaultViewWeek
+            : WeatherDefaultViewToday;
+        if (!string.Equals(settings.WeatherDefaultView, normalizedView, StringComparison.Ordinal))
+        {
+            settings.WeatherDefaultView = normalizedView;
+            changed = true;
+        }
+
+        string normalizedSkin = settings.WeatherSkin is WeatherSkinRich
+            ? WeatherSkinRich
+            : WeatherSkinStandard;
+        if (!string.Equals(settings.WeatherSkin, normalizedSkin, StringComparison.Ordinal))
+        {
+            settings.WeatherSkin = normalizedSkin;
+            changed = true;
+        }
+
+        int clampedRefresh = Math.Clamp(
+            settings.WeatherRefreshIntervalMinutes,
+            WeatherRefreshMinMinutes,
+            WeatherRefreshMaxMinutes);
+        if (settings.WeatherRefreshIntervalMinutes != clampedRefresh)
+        {
+            settings.WeatherRefreshIntervalMinutes = clampedRefresh;
+            changed = true;
+        }
+
+        return changed;
     }
 
     private static bool NormalizeDeletionSettings(AppSettings settings)

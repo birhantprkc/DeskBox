@@ -471,8 +471,20 @@ public sealed partial class ContentWidgetWindow : Window, IDesktopWidgetWindow
 
     private bool RestoreBoundsAfterDisplayChange()
     {
+        // For hidden windows: update config coordinates to the correct screen
+        // without actually moving the window. This ensures the widget appears
+        // in the right place when it is next shown.
+        if (!Visible)
+        {
+            var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(_config);
+            var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+            WidgetPositioningService.CaptureAnchor(_config, bounds, workArea);
+            WidgetPositioningService.UpdateConfigFromPhysicalBounds(_config, bounds, workArea);
+            return true;
+        }
+
         bool restored = TryRestoreBoundsForCurrentTopology(allowHidden: false);
-        if (restored && Visible)
+        if (restored)
         {
             RestoreDesktopLayer(force: true);
         }
@@ -1313,12 +1325,16 @@ ApplyAppearancePreview();
         }
 
         _isDragging = true;
+        _displayChangeWatcher?.SuppressRestore();
         Win32Helper.GetCursorPos(out _initialCursorPt);
         _initialWindowPos = _appWindow.Position;
         _initialWindowSize = _appWindow.Size;
         _dragCaptureElement = captureElement;
         captureElement.CapturePointer(e.Pointer);
         e.Handled = true;
+
+        // Begin drag-move snap session
+        App.Current?.ResizeGuideOverlay.BeginDrag(_hWnd, RootGrid);
     }
 
     private void ContinueWindowDrag(PointerRoutedEventArgs e)
@@ -1331,11 +1347,19 @@ ApplyAppearancePreview();
         Win32Helper.GetCursorPos(out var currentPt);
         int deltaX = currentPt.X - _initialCursorPt.X;
         int deltaY = currentPt.Y - _initialCursorPt.Y;
-        ApplyWindowBounds(
+
+        // Apply drag-move snap
+        var proposedBounds = new Windows.Graphics.RectInt32(
             _initialWindowPos.X + deltaX,
             _initialWindowPos.Y + deltaY,
             _initialWindowSize.Width,
-            _initialWindowSize.Height,
+            _initialWindowSize.Height);
+        var snappedBounds = App.Current?.ResizeGuideOverlay.UpdateGuidesAndSnapForDrag(proposedBounds)
+            ?? proposedBounds;
+
+        ApplyWindowBounds(
+            snappedBounds.X, snappedBounds.Y,
+            snappedBounds.Width, snappedBounds.Height,
             persist: false);
         e.Handled = true;
     }
@@ -1350,9 +1374,14 @@ ApplyAppearancePreview();
         _isDragging = false;
         _dragCaptureElement?.ReleasePointerCapture(e.Pointer);
         _dragCaptureElement = null;
+
+        // End drag-move snap session
+        App.Current?.ResizeGuideOverlay.EndDrag();
+
         var finalPosition = _appWindow.Position;
         var finalSize = _appWindow.Size;
         UpdateConfigBounds(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+        _displayChangeWatcher?.ResumeRestore();
         e.Handled = true;
     }
 
@@ -1371,6 +1400,7 @@ ApplyAppearancePreview();
 
         _isResizing = true;
         _resizeDirection = element.Tag as string ?? string.Empty;
+        _displayChangeWatcher?.SuppressRestore();
         Win32Helper.GetCursorPos(out _initialCursorPt);
         _initialWindowPos = _appWindow.Position;
         _initialWindowSize = _appWindow.Size;
@@ -1441,6 +1471,7 @@ ApplyAppearancePreview();
         var finalPosition = _appWindow.Position;
         var finalSize = _appWindow.Size;
         UpdateConfigBounds(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+        _displayChangeWatcher?.ResumeRestore();
         e.Handled = true;
     }
 

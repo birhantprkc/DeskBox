@@ -356,7 +356,12 @@ public sealed class WidgetManager
                 WidgetKind.Music,
                 async _ => await CreateSingletonContentFeatureWidgetAsync(WidgetKind.Music),
                 SetContentFeatureWidgetEnabledAsync,
-                () => HideAndCloseFeatureWidgetAsync(WidgetKind.Music))
+                () => HideAndCloseFeatureWidgetAsync(WidgetKind.Music)),
+            new(
+                WidgetKind.Weather,
+                async _ => await CreateSingletonContentFeatureWidgetAsync(WidgetKind.Weather),
+                SetWeatherFeatureWidgetEnabledAsync,
+                () => HideAndCloseFeatureWidgetAsync(WidgetKind.Weather))
         ];
 
         return handlers.ToDictionary(handler => handler.WidgetKind);
@@ -389,6 +394,13 @@ public sealed class WidgetManager
                     request.ShowRaisedWhileInitializing)),
             new(
                 WidgetKind.Music,
+                async request => await CreateContentWidgetFromConfigAsync(
+                    request.Config,
+                    request.KeepPreparedForAnimation,
+                    request.RevealAfterCreate,
+                    request.ShowRaisedWhileInitializing)),
+            new(
+                WidgetKind.Weather,
                 async request => await CreateContentWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
@@ -749,12 +761,18 @@ public sealed class WidgetManager
             Name = GetDefaultFeatureWidgetTitle(kind, descriptor),
             WidgetKind = kind,
             BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
-            Width = kind == WidgetKind.Music
-                ? 380
-                : Math.Max(_settingsService.Settings.DefaultWidgetWidth, 320),
-            Height = kind == WidgetKind.Music
-                ? 190
-                : Math.Max(_settingsService.Settings.DefaultWidgetHeight, 360)
+            Width = kind switch
+            {
+                WidgetKind.Music => 380,
+                WidgetKind.Weather => 200,
+                _ => Math.Max(_settingsService.Settings.DefaultWidgetWidth, 320)
+            },
+            Height = kind switch
+            {
+                WidgetKind.Music => 190,
+                WidgetKind.Weather => 200,
+                _ => Math.Max(_settingsService.Settings.DefaultWidgetHeight, 360)
+            }
         };
 
         _settingsService.Settings.Widgets.Add(config);
@@ -3261,6 +3279,14 @@ public sealed class WidgetManager
             await _settingsService.SaveAsync();
             App.Log($"[WidgetManager] ResetFeatureWidget kind={kind} enabled={isEnabled} id={config.Id}");
 
+            // For Weather: turn off the toggle after reset so user can manually re-enable
+            if (kind == WidgetKind.Weather && isEnabled)
+            {
+                SetFeatureWidgetEnabledState(kind, false);
+                await _settingsService.SaveAsync();
+                return;
+            }
+
             if (!isEnabled)
             {
                 return;
@@ -3274,6 +3300,7 @@ public sealed class WidgetManager
                     break;
                 case WidgetKind.Todo:
                 case WidgetKind.Music:
+                case WidgetKind.Weather:
                     await CreateContentWidgetFromConfigAsync(config, revealAfterCreate: true);
                     break;
             }
@@ -3335,6 +3362,7 @@ public sealed class WidgetManager
                 Math.Max(_settingsService.Settings.DefaultWidgetWidth, 320),
                 Math.Max(_settingsService.Settings.DefaultWidgetHeight, 420)),
             WidgetKind.Music => (380, 190),
+            WidgetKind.Weather => (200, 200),
             _ => (
                 _settingsService.Settings.DefaultWidgetWidth,
                 _settingsService.Settings.DefaultWidgetHeight)
@@ -3436,6 +3464,11 @@ public sealed class WidgetManager
     private Task SetContentFeatureWidgetEnabledAsync(bool enabled, bool reveal)
     {
         return SetContentFeatureWidgetEnabledAsync(WidgetKind.Music, enabled, reveal);
+    }
+
+    private Task SetWeatherFeatureWidgetEnabledAsync(bool enabled, bool reveal)
+    {
+        return SetContentFeatureWidgetEnabledAsync(WidgetKind.Weather, enabled, reveal);
     }
 
     private bool GetFeatureWidgetEnabledState(WidgetKind? kind)

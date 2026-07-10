@@ -1,0 +1,200 @@
+namespace DeskBox.Helpers;
+
+/// <summary>
+/// Maps WMO weather interpretation codes to localized descriptions, emoji icons, and
+/// weather condition categories for animation effects.
+/// Reference: https://open-meteo.com/en/docs (WMO Weather interpretation codes)
+/// </summary>
+public static class WeatherCodeMapper
+{
+    /// <summary>
+    /// Weather condition category, used to drive skin animations.
+    /// </summary>
+    public enum WeatherCondition
+    {
+        Clear,
+        Cloudy,
+        Fog,
+        Drizzle,
+        Rain,
+        Snow,
+        Thunderstorm,
+        Unknown
+    }
+
+    /// <summary>
+    /// Returns an emoji for the given WMO weather code.
+    /// </summary>
+    public static string GetEmoji(int code, bool isDay = true)
+    {
+        return code switch
+        {
+            0 => isDay ? "\U0001F31E" : "\U0001F319",       // ☀️ Clear sky day / 🌙 night
+            1 => isDay ? "\U0001F31E" : "\U0001F319",       // Mainly clear
+            2 => isDay ? "\u26C5" : "\U0001F319",           // ⛅ Partly cloudy / 🌙
+            3 => "\U0001F325\uFE0F",                          // 🌥️ Overcast
+            45 => "\U0001F32B\uFE0F",                         // 🌫️ Fog
+            48 => "\U0001F32B\uFE0F",                         // 🌫️ Depositing rime fog
+            51 => "\U0001F326\uFE0F",                         // 🌦️ Light drizzle
+            53 => "\U0001F326\uFE0F",                         // 🌦️ Moderate drizzle
+            55 => "\U0001F326\uFE0F",                         // 🌦️ Dense drizzle
+            56 => "\U0001F326\uFE0F",                         // 🌦️ Light freezing drizzle
+            57 => "\U0001F326\uFE0F",                         // 🌦️ Dense freezing drizzle
+            61 => "\U0001F327\uFE0F",                         // 🌧️ Slight rain
+            63 => "\U0001F327\uFE0F",                         // 🌧️ Moderate rain
+            65 => "\U0001F327\uFE0F",                         // 🌧️ Heavy rain
+            66 => "\U0001F327\uFE0F",                         // 🌧️ Light freezing rain
+            67 => "\U0001F327\uFE0F",                         // 🌧️ Heavy freezing rain
+            71 => "\U0001F328\uFE0F",                         // 🌨️ Slight snow fall
+            73 => "\U0001F328\uFE0F",                         // 🌨️ Moderate snow fall
+            75 => "\U0001F328\uFE0F",                         // 🌨️ Heavy snow fall
+            77 => "\U0001F328\uFE0F",                         // 🌨️ Snow grains
+            80 => "\U0001F326\uFE0F",                         // 🌦️ Slight rain showers
+            81 => "\U0001F327\uFE0F",                         // 🌧️ Moderate rain showers
+            82 => "\U0001F327\uFE0F",                         // 🌧️ Violent rain showers
+            85 => "\U0001F328\uFE0F",                         // 🌨️ Slight snow showers
+            86 => "\U0001F328\uFE0F",                         // 🌨️ Heavy snow showers
+            95 => "\U0001F329\uFE0F",                         // 🌩️ Thunderstorm
+            96 => "\u26C8\uFE0F",                             // ⛈️ Thunderstorm with slight hail
+            99 => "\u26C8\uFE0F",                             // ⛈️ Thunderstorm with heavy hail
+            _ => "\U0001F31E"                                  // ☀️ Unknown → sun
+        };
+    }
+
+    /// <summary>
+    /// Returns the weather condition category for animation purposes.
+    /// </summary>
+    public static WeatherCondition GetCondition(int code)
+    {
+        return code switch
+        {
+            0 or 1 => WeatherCondition.Clear,
+            2 or 3 => WeatherCondition.Cloudy,
+            45 or 48 => WeatherCondition.Fog,
+            >= 51 and <= 57 => WeatherCondition.Drizzle,
+            >= 61 and <= 67 or >= 80 and <= 82 => WeatherCondition.Rain,
+            >= 71 and <= 77 or >= 85 and <= 86 => WeatherCondition.Snow,
+            >= 95 and <= 99 => WeatherCondition.Thunderstorm,
+            _ => WeatherCondition.Unknown
+        };
+    }
+
+    // ── Legacy glyph support (kept for backward compatibility) ──
+
+    /// <summary>
+    /// Returns a Segoe Fluent Icons glyph for the given WMO weather code.
+    /// </summary>
+    public static string GetGlyph(int code, bool isDay = true)
+    {
+        return code switch
+        {
+            0 => isDay ? "\uE706" : "\uE81D",
+            1 => isDay ? "\uE706" : "\uE81D",
+            2 => "\uE9D2",
+            3 => "\uE9D2",
+            45 => "\uE7E4",
+            48 => "\uE7E4",
+            51 => "\uE755",
+            53 => "\uE755",
+            55 => "\uE755",
+            56 => "\uE755",
+            57 => "\uE755",
+            61 => "\uE755",
+            63 => "\uE755",
+            65 => "\uE755",
+            66 => "\uE755",
+            67 => "\uE755",
+            71 => "\uE703",
+            73 => "\uE703",
+            75 => "\uE703",
+            77 => "\uE703",
+            80 => "\uE755",
+            81 => "\uE755",
+            82 => "\uE755",
+            85 => "\uE703",
+            86 => "\uE703",
+            95 => "\uE756",
+            96 => "\uE756",
+            99 => "\uE756",
+            _ => "\uE706"
+        };
+    }
+
+    /// <summary>
+    /// Returns the Chinese description for the given WMO weather code.
+    /// </summary>
+    public static string GetDescriptionZh(int code)
+    {
+        return code switch
+        {
+            0 => "晴",
+            1 => "晴间多云",
+            2 => "多云",
+            3 => "阴",
+            45 => "雾",
+            48 => "冻雾",
+            51 => "小雨",
+            53 => "小雨",
+            55 => "中雨",
+            56 => "冻雨",
+            57 => "冻雨",
+            61 => "小雨",
+            63 => "中雨",
+            65 => "大雨",
+            66 => "冻雨",
+            67 => "冻雨",
+            71 => "小雪",
+            73 => "中雪",
+            75 => "大雪",
+            77 => "米雪",
+            80 => "阵雨",
+            81 => "阵雨",
+            82 => "强阵雨",
+            85 => "阵雪",
+            86 => "强阵雪",
+            95 => "雷阵雨",
+            96 => "雷阵雨伴冰雹",
+            99 => "雷阵雨伴大冰雹",
+            _ => "未知"
+        };
+    }
+
+    /// <summary>
+    /// Returns the English description for the given WMO weather code.
+    /// </summary>
+    public static string GetDescriptionEn(int code)
+    {
+        return code switch
+        {
+            0 => "Clear sky",
+            1 => "Mainly clear",
+            2 => "Partly cloudy",
+            3 => "Overcast",
+            45 => "Fog",
+            48 => "Rime fog",
+            51 => "Light rain",
+            53 => "Light rain",
+            55 => "Moderate rain",
+            56 => "Freezing rain",
+            57 => "Freezing rain",
+            61 => "Light rain",
+            63 => "Moderate rain",
+            65 => "Heavy rain",
+            66 => "Freezing rain",
+            67 => "Freezing rain",
+            71 => "Light snow",
+            73 => "Moderate snow",
+            75 => "Heavy snow",
+            77 => "Snow grains",
+            80 => "Rain showers",
+            81 => "Rain showers",
+            82 => "Heavy rain showers",
+            85 => "Snow showers",
+            86 => "Heavy snow showers",
+            95 => "Thundershowers",
+            96 => "Thundershowers with hail",
+            99 => "Thundershowers with heavy hail",
+            _ => "Unknown"
+        };
+    }
+}

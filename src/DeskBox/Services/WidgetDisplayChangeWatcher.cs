@@ -24,6 +24,8 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
     private bool _isDisposed;
     private bool _isSubclassInstalled;
     private int _restoreRetryCount;
+    private bool _isSuppressed;
+    private bool _hasPendingRestore;
 
     public WidgetDisplayChangeWatcher(IntPtr hWnd, DispatcherQueue dispatcherQueue, Func<bool> restoreAction)
     {
@@ -35,6 +37,33 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
         _timer.IsRepeating = false;
         _timer.Tick += DisplayChangeTimer_Tick;
         _isSubclassInstalled = Win32Helper.SetWindowSubclass(_hWnd, _subclassProc, SubclassId, UIntPtr.Zero);
+    }
+
+    /// <summary>
+    /// Temporarily suppress restore operations during drag/resize.
+    /// Pending restores are deferred until <see cref="ResumeRestore"/> is called.
+    /// </summary>
+    public void SuppressRestore()
+    {
+        _isSuppressed = true;
+    }
+
+    /// <summary>
+    /// Resume restore operations. If a restore was suppressed, it is triggered now.
+    /// </summary>
+    public void ResumeRestore()
+    {
+        if (!_isSuppressed)
+        {
+            return;
+        }
+
+        _isSuppressed = false;
+        if (_hasPendingRestore)
+        {
+            _hasPendingRestore = false;
+            QueueRestore();
+        }
     }
 
     public void Dispose()
@@ -63,7 +92,15 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
             message == WmSettingChange && IsRelevantSettingChange(wParam, lParam))
         {
             WidgetLayerService.InvalidateDesktopIconViewCache();
-            QueueRestore();
+            if (_isSuppressed)
+            {
+                // Defer the restore until ResumeRestore is called
+                _hasPendingRestore = true;
+            }
+            else
+            {
+                QueueRestore();
+            }
         }
         else if (message == WmNcDestroy)
         {

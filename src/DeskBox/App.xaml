@@ -223,11 +223,15 @@
                 <Setter Property="CornerRadius" Value="5" />
             </Style>
 
-            <Style x:Key="WidgetInlineRenameTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource WidgetTextInputStyle}">
-                <Setter Property="MinWidth" Value="120" />
-                <Setter Property="MinHeight" Value="30" />
-                <Setter Property="Padding" Value="8,3" />
+            <Style x:Key="WidgetInlineRenameTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="2,0" />
                 <Setter Property="TextWrapping" Value="NoWrap" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="CornerRadius" Value="2" />
             </Style>
 
             <Style x:Key="WidgetTitleRenameTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource WidgetInlineRenameTextBoxStyle}">
