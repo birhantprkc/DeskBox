@@ -351,7 +351,18 @@ NormalizeMusicSettings(_settings);
 NormalizeWeatherSettings(_settings);
 json = JsonSerializer.Serialize(_settings, s_jsonOptions);
             }
-            await File.WriteAllTextAsync(_settingsPath, json);
+
+            // Atomic write: serialize to a temp file, then rename to the target path.
+            // This prevents corruption if the process crashes or power is lost mid-write.
+            string? directory = Path.GetDirectoryName(_settingsPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            string tempPath = _settingsPath + ".tmp";
+            await File.WriteAllTextAsync(tempPath, json);
+            File.Move(tempPath, _settingsPath, overwrite: true);
         }
         catch (Exception ex)
         {

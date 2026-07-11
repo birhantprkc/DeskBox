@@ -32,6 +32,7 @@ public partial class App : Application
     private const int TrayContextMenuFallbackOffsetPixels = 24;
     private const int TrayContextMenuEstimatedWidth = (int)TrayMenuItemWidth + 16;
     private const int MaxQueuedLogLines = 4096;
+    private const long MaxLogFileSizeBytes = 5 * 1024 * 1024; // 5 MB before rotation
     private const string TodoReminderNotificationSource = "source=todoReminder";
     private const string TodoReminderSourceValue = "todoReminder";
     private const string TodoReminderActionComplete = "complete";
@@ -626,10 +627,41 @@ public partial class App : Application
         try
         {
             EnsureLogDirectory();
+            TryRotateLogFileIfNeeded();
             File.AppendAllText(LogPath, builder.ToString());
         }
         catch
         {
+        }
+    }
+
+    private static void TryRotateLogFileIfNeeded()
+    {
+        try
+        {
+            if (!File.Exists(LogPath))
+            {
+                return;
+            }
+
+            var info = new FileInfo(LogPath);
+            if (info.Length < MaxLogFileSizeBytes)
+            {
+                return;
+            }
+
+            // Rotate: current → .1, old .1 is deleted
+            string rotatedPath = LogPath + ".1";
+            if (File.Exists(rotatedPath))
+            {
+                File.Delete(rotatedPath);
+            }
+
+            File.Move(LogPath, rotatedPath);
+        }
+        catch
+        {
+            // If rotation fails (e.g., file locked), continue appending to the current file.
         }
     }
 
