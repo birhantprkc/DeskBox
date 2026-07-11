@@ -3692,17 +3692,45 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
             if (ItemsListView.Visibility == Visibility.Visible)
             {
-                ItemsListView.Opacity = 0;
                 StartSubtleOffsetAnimation(ItemsListView, 0, 0, ItemsViewTransitionOffsetPx, 0, ItemsViewTransitionMs);
                 StartOpacityAnimation(ItemsListView, 0, 1, ItemsViewTransitionMs);
+                ScheduleTransitionSafetyFallback(ItemsListView);
             }
 
             if (EmptyStateHost.Visibility == Visibility.Visible)
             {
-                EmptyStateHost.Opacity = 0;
                 StartSubtleOffsetAnimation(EmptyStateHost, 0, 0, ItemsViewTransitionOffsetPx, 0, ItemsViewTransitionMs);
                 StartOpacityAnimation(EmptyStateHost, 0, 1, ItemsViewTransitionMs);
+                ScheduleTransitionSafetyFallback(EmptyStateHost);
             }
+        });
+    }
+
+    private void ScheduleTransitionSafetyFallback(UIElement element)
+    {
+        // Safety fallback: if the Composition animation fails to start or
+        // complete (e.g., the Visual isn't fully composed yet), ensure the
+        // element is still visible after the expected animation duration.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var timer = DispatcherQueue.CreateTimer();
+            timer.Interval = TimeSpan.FromMilliseconds(ItemsViewTransitionMs + 80);
+            timer.IsRepeating = false;
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                if (element.Visibility == Visibility.Visible)
+                {
+                    var visual = ElementCompositionPreview.GetElementVisual(element);
+                    if (visual.Opacity < 0.99f)
+                    {
+                        visual.StopAnimation("Opacity");
+                        visual.Opacity = 1f;
+                    }
+                    element.Opacity = 1;
+                }
+            };
+            timer.Start();
         });
     }
 

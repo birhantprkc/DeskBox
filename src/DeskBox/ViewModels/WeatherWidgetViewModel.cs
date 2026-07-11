@@ -244,9 +244,10 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 
     /// <summary>
     /// Shows the loading overlay when data is being fetched for the first time
-    /// (no cached data available yet).
+    /// (no cached data available yet) or during a user-triggered refresh.
+    /// Auto-refresh (timer) with existing data only rotates the refresh icon.
     /// </summary>
-    public Visibility LoadingVisibility => !_hasData && _isRefreshing
+    public Visibility LoadingVisibility => _isRefreshing && (!_hasData || _refreshWasUserTriggered)
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -629,11 +630,11 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     /// </summary>
     private string DetermineLayoutMode(double width, double height)
     {
-        const double miniUpgradeW = 250, miniUpgradeH = 250;
-        const double miniDowngradeW = 210, miniDowngradeH = 210;
+        const double miniUpgradeW = 215, miniUpgradeH = 175;
+        const double miniDowngradeW = 200, miniDowngradeH = 165;
 
-        const double compactUpgradeW = 270, compactUpgradeH = 170;
-        const double compactDowngradeW = 240, compactDowngradeH = 150;
+        const double compactUpgradeW = 250, compactUpgradeH = 215;
+        const double compactDowngradeW = 230, compactDowngradeH = 200;
 
         const double detailedUpgradeW = 280, detailedUpgradeH = 280;
         const double detailedDowngradeW = 260, detailedDowngradeH = 250;

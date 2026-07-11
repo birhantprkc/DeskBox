@@ -15,20 +15,24 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.2.7
+Current release: 1.2.8
 
-- [DeskBox_Setup_1.2.7_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.7/DeskBox_Setup_1.2.7_x64.exe)
+- [DeskBox_Setup_1.2.8_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.8/DeskBox_Setup_1.2.8_x64.exe)
 
 The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.2.7
+## What's New In 1.2.8
 
-- Widget tray animations now use VSync-synced `CompositionTarget.Rendering` instead of a fixed 16ms timer, delivering native-refresh-rate animation on 60Hz, 120Hz, and 144Hz displays.
-- Backdrop refresh replaced three `Task.Delay` calls with a single staged `DispatcherQueueTimer`, reducing thread-pool overhead.
-- Removed an empty hover handler and added state guards so surface updates are skipped during window close, hide animation, or invisible states.
-- Music widget timers are stopped when deactivated and restarted on activation, eliminating idle CPU usage.
-- System theme and accent color changes are now debounced by 200ms, preventing redundant appearance refresh cascades.
-- Icon cache reduced from 500 to 200 entries with `DecodePixelWidth` set before source loading, lowering memory usage.
+- **Weather widget**: Full weather widget with Mini / Compact / Standard / Detailed layouts, offline city search, auto-location, hourly and weekly forecasts, sunrise/sunset, UV index, precipitation, humidity, wind, pressure, rich skin backgrounds, and configurable refresh interval. Horizontal scrollbar support, week view scrollable on small widgets, and loading animation on refresh.
+- **Resize snap guide**: When resizing a widget, alignment guides highlight edges that match other widgets or the work area boundary, making it easier to align widgets precisely.
+- **Quick Capture fixes**: Data is now properly cleared when resetting the widget. Tab switching no longer shows a blank view on first switch — data appears immediately.
+- **Settings defaults unified**: Default appearance is now Mica material, Medium border, Round corners for both new installs and reset-to-defaults. Global reset now restores `CustomAccentColor` and `FocusClickedWidgetOnRaise`. Todo widget reset restores reminder settings. Weather widget reset clears saved coordinates.
+- **Settings UI expansion**: Added standalone material type selector (Mica / Acrylic / Solid) and border style selector (None / Thin / Medium) to the Appearance settings page.
+- **Widget layer improvement**: Added `SetWindowToDesktopLevel` to prevent widgets from being hidden by Win+D while staying at desktop level.
+- **Code refactoring**: Extracted `WidgetWindowBase.cs` (1027 lines) as shared base for all widget windows. Split `WidgetWindow.xaml.cs` (~5000 lines) into 6 partial classes. Split `WidgetManager.cs` (3532 lines) into 4 partial classes. Log rotation added (5MB threshold with backup). Settings writes are now atomic via temp-file-and-move pattern. `FolderWatcherService` debounce migrated to `DispatcherQueueTimer`.
+- **Memory leak fix**: `TodoWidgetViewModel` and `TodoWidgetContentAdapter` now implement `IDisposable` to prevent leaks on widget disposal.
+- **Title font size**: Content widget titles now dynamically follow the global text size setting instead of using a fixed size.
+- **Localization**: Shortened drag-and-drop diagnostics text for clearer, more concise messaging.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -133,7 +137,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.2.7_x64.exe
+Output\DeskBox_Setup_1.2.8_x64.exe
 ```
 
 ## Project Structure
@@ -152,6 +156,12 @@ docs\releases               GitHub Releases copy
 - Settings are stored under `%LocalAppData%\DeskBox\data`.
 - The default managed storage root is `%UserProfile%\DeskBox`.
 - Generated folders such as `bin`, `obj`, `Output`, `artifacts`, and `TestResults` are ignored by Git.
+
+## Contributing
+
+DeskBox is currently developed and maintained entirely by a solo developer. To ensure architectural consistency and maintain clear copyright for future project paths, I am not accepting external Pull Requests (PRs) at this time.
+
+However, community feedback is crucial to the project's growth! If you encounter any bugs, have feature requests, or want to share UI/UX feedback, please feel free to open an [Issue](https://github.com/Tianyu199509/DeskBox/issues). Thank you for your support and understanding!
 
 ## Feedback
 

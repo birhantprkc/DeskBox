@@ -15,18 +15,24 @@ DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量
 
 可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
 
-当前版本：1.2.7
+当前版本：1.2.8
 
-- [DeskBox_Setup_1.2.7_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.7/DeskBox_Setup_1.2.7_x64.exe)
+- [DeskBox_Setup_1.2.8_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.8/DeskBox_Setup_1.2.8_x64.exe)
 
 安装器会检测 .NET 10 Runtime x64 和 Windows App Runtime 2.2 x64。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
 
 ## 最新更新
 
-- 待办提醒进一步完善：支持每条任务独立提醒、稍后提醒、重启后恢复提醒状态，并可在系统通知里直接完成或延后任务。
-- 重复待办体验更清爽：完成后的重复历史会折叠在当前任务下方，不再把列表堆得越来越长。
-- 随记切换更顺滑：优化 Tab 切换时的列表刷新、空状态布局、内容过渡动画和剪贴板默认联动，减少卡顿和错位。
-- 待办和随记的多选复制、框选、拖拽文本和 Esc 取消选择继续补齐，日常批量整理更顺手。
+- **天气格子**：全新天气格子，支持迷你 / 紧凑 / 标准 / 详细四种布局，离线城市搜索、自动定位、逐小时和每周预报、日出日落、紫外线、降水、湿度、风速、气压、丰富皮肤背景和可配置刷新频率。横向滚动条支持、周视图小尺寸可滚动和刷新加载动画。
+- **调整大小参考线**：拖动调整格子大小时，对齐参考线会高亮匹配的边缘（其他格子边缘或工作区边界），方便精准对齐。
+- **随记修复**：重置格子时数据现在会被正确清理。Tab 切换不再首次空白——数据立即显示。
+- **默认设置统一**：默认外观改为云母材质、中等边框、大圆角，新安装和恢复默认均一致。全局重置现在恢复 `CustomAccentColor` 和 `FocusClickedWidgetOnRaise`。待办格子重置恢复提醒设置。天气格子重置清除保存的坐标。
+- **设置页扩展**：外观设置新增独立的材质类型选择（云母 / 亚克力 / 纯色）和边框样式选择（无边框 / 细 / 中）。
+- **格子层级改进**：新增 `SetWindowToDesktopLevel`，防止 Win+D 隐藏格子，同时保持桌面层级。
+- **代码重构**：提取 `WidgetWindowBase.cs`（1027 行）作为所有格子窗口的共享基类。`WidgetWindow.xaml.cs`（约 5000 行）拆分为 6 个 partial 类。`WidgetManager.cs`（3532 行）拆分为 4 个 partial 类。新增日志轮转（5MB 阈值自动备份）。设置写入改为原子操作。`FolderWatcherService` 防抖迁移至 `DispatcherQueueTimer`。
+- **内存泄漏修复**：`TodoWidgetViewModel` 和 `TodoWidgetContentAdapter` 实现 `IDisposable`，防止格子销毁后内存泄漏。
+- **标题字号**：功能格子标题现在动态跟随全局文字大小设置，不再使用固定字号。
+- **本地化**：精简拖拽诊断文案，表述更简洁明了。
 
 完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -129,7 +135,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 安装包输出：
 
 ```text
-Output\DeskBox_Setup_1.2.7_x64.exe
+Output\DeskBox_Setup_1.2.8_x64.exe
 ```
 
 ## 项目结构
@@ -148,6 +154,12 @@ docs\releases               GitHub Releases 发布文案
 - 应用设置保存在 `%LocalAppData%\DeskBox\data`。
 - 默认收纳路径为 `%UserProfile%\DeskBox`。
 - `bin`、`obj`、`Output`、`artifacts` 和 `TestResults` 等生成目录已被 Git 忽略。
+
+## 贡献与反馈
+
+本项目目前由个人开发者独立维护，并作为长期的个人产品进行演进。为了保证代码架构的绝对一致性以及后续版权的清晰度，本项目当前暂不接受外部的代码合并（Pull Request）。
+
+尽管如此，DeskBox 的成长离不开社区的反馈！如果您在使用中遇到了 Bug，或者对新功能有绝佳的想法，非常欢迎您通过提交 [Issue](https://github.com/Tianyu199509/DeskBox/issues) 的方式与我交流。感谢您的理解与支持！
 
 ## 反馈
 

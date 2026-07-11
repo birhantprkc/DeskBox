@@ -228,8 +228,10 @@ settings.WeatherRefreshIntervalMinutes = 60;
         settings.GlobalHotkeyKey = DefaultGlobalHotkeyKey;
         settings.DoubleClickToOpen = true;
         settings.HideShortcutArrowOverlay = true;
-        settings.ShowListItemDetails = false;
-        settings.ShowFileItemPathTooltips = true;
+settings.ShowListItemDetails = false;
+settings.ShowFileItemPathTooltips = true;
+settings.CustomAccentColor = "#0078D4";
+settings.FocusClickedWidgetOnRaise = false;
     }
 
     public SettingsService()

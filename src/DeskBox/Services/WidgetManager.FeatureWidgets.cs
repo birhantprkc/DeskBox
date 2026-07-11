@@ -1,4 +1,4 @@
-﻿// Copyright (c) DeskBox. All rights reserved.
+﻿﻿// Copyright (c) DeskBox. All rights reserved.
 
 using DeskBox.Models;
 using DeskBox.Helpers;
@@ -659,6 +659,7 @@ public sealed partial class WidgetManager
             switch (kind)
             {
                 case WidgetKind.QuickCapture:
+                    await _quickCaptureService.ClearAsync();
                     var quickCaptureWindow = await CreateQuickCaptureWidgetFromConfigAsync(config);
                     quickCaptureWindow.RevealFromTray(autoRestore: false);
                     break;

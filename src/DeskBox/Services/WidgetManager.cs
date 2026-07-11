@@ -1,4 +1,4 @@
-﻿using DeskBox.Models;
+﻿﻿using DeskBox.Models;
 using DeskBox.Helpers;
 using DeskBox.Controls.WidgetContents;
 using DeskBox.ViewModels;
@@ -1251,7 +1251,7 @@ public sealed partial class WidgetManager
                 Math.Max(_settingsService.Settings.DefaultWidgetWidth, 320),
                 Math.Max(_settingsService.Settings.DefaultWidgetHeight, 420)),
             WidgetKind.Music => (380, 190),
-            WidgetKind.Weather => (200, 200),
+            WidgetKind.Weather => (260, 230),
             _ => (
                 _settingsService.Settings.DefaultWidgetWidth,
                 _settingsService.Settings.DefaultWidgetHeight)

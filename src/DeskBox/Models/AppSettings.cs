@@ -133,19 +133,19 @@ public class AppSettings
     /// Material type for widget window backdrops.
     /// Valid values: <c>"Mica"</c>, <c>"Acrylic"</c>, <c>"Solid"</c>, <c>"Transparent"</c>.
     /// </summary>
-    public string WidgetMaterialType { get; set; } = "Acrylic";
+    public string WidgetMaterialType { get; set; } = "Mica";
 
     /// <summary>
     /// Border style for widget windows.
     /// Valid values: <c>"None"</c>, <c>"Thin"</c>, <c>"Medium"</c>, <c>"Thick"</c>.
     /// </summary>
-    public string WidgetBorderStyle { get; set; } = "Thin";
+    public string WidgetBorderStyle { get; set; } = "Medium";
 
     /// <summary>
     /// Native DWM corner style for widget windows.
     /// Valid values: <c>"Default"</c>, <c>"Square"</c>, <c>"Small"</c>, <c>"Round"</c>.
     /// </summary>
-    public string WidgetCornerPreference { get; set; } = "Small";
+    public string WidgetCornerPreference { get; set; } = "Round";
 
     /// <summary>
     /// Animation effect used when desktop widgets show or hide.

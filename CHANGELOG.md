@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.2.8 - 2026-07-11
+
+### English
+
+- **Weather widget**: Added a full-featured weather widget with four layout modes (Mini, Compact, Standard, Detailed), city search with offline `cities.json` database and Windows Location API, auto-location, hourly and weekly forecasts, sunrise/sunset times, UV index, precipitation probability, humidity, wind speed, atmospheric pressure, rich skin backgrounds, and configurable refresh interval. Standard view activates at 250×215 and above. Horizontal scrollbar and mouse wheel support for the hourly temperature list. Week forecast fills remaining space and is scrollable even on small widgets. Loading animation with rotating refresh icon and content hiding during refresh.
+- **Resize snap guide**: Added `ResizeGuideOverlayService` that detects edge alignment (8px threshold) with other widgets and work area boundaries during widget resize, showing accent-colored highlight bars on matched edges. Integrated into `WidgetWindow`, `QuickCaptureWidgetWindow`, and `ContentWidgetWindow`.
+- **Quick Capture fixes**: Widget reset now properly clears all internal data via `QuickCaptureService.ClearAsync()`. Fixed blank display on first tab switch — data now appears immediately instead of requiring multiple switches. Added `ScheduleTransitionSafetyFallback` to `PlayItemsViewTransition` for more reliable content transitions.
+- **Settings defaults unified**: Default appearance changed to Mica material, Medium border, Round corners — consistent across new installs, reset-to-defaults, and `AppSettings` initial values. Global reset (`ApplyDefaultPreferences`) now restores `CustomAccentColor` to `#0078D4` and `FocusClickedWidgetOnRaise` to `false`. Todo widget single-widget reset now restores `TodoReminderEnabled` and `TodoDefaultReminderOffsetMinutes`. Weather widget single-widget reset now clears `WeatherLatitude` and `WeatherLongitude` to prevent inconsistent location behavior.
+- **Widget title font size**: Content widget titles now dynamically compute `TitleTextSize` and `TitleIconSize` from user settings (`TextSize`/`IconSize`) instead of using fixed values. Added `RefreshMetrics()` method to update title metrics when settings change.
+- **Memory leak fix**: `TodoWidgetViewModel` now implements `IDisposable`, and `TodoWidgetContentAdapter` properly disposes the ViewModel on widget disposal, preventing memory leaks.
+- **Delete widget button**: Added delete widget option to the "more" menu for all widget types, not just file widgets. Fixed `ContentWidgetWindow` more flyout placement.
+- **Settings UI expansion**: Added standalone material type selector (Mica / Acrylic / Solid) and border style selector (None / Thin / Medium) to the Appearance settings page.
+- **Widget layer improvement**: Added `SetWindowToDesktopLevel` method in `WidgetLayerService` that pushes windows to desktop level without using `HWND_BOTTOM`, preventing widgets from being hidden by Win+D while staying at desktop level.
+- **Localization simplification**: Shortened drag-and-drop diagnostics text across both Chinese and English for clearer, more concise messaging.
+- **FolderWatcherService optimization**: Replaced `CancellationTokenSource`-based debounce with `DispatcherQueueTimer`, reducing thread-pool task creation for file system change notifications.
+- **Code refactoring — WidgetWindowBase**: Extracted a new `WidgetWindowBase.cs` (1027 lines) consolidating window setup, backdrop management, layer/Z-order control, drag/resize logic, and display-change restoration. `ContentWidgetWindow` and `QuickCaptureWidgetWindow` now inherit from this shared base, eliminating duplicated window management code.
+- **Code refactoring — WidgetWindow**: Split `WidgetWindow.xaml.cs` (~5000 lines) into 6 partial classes: `Rename` (335 lines), `Menus` (677), `ItemSurface` (364), `Clipboard` (249), `Selection` (397), `DragDrop` (806). Main file reduced to 2828 lines.
+- **Code refactoring — WidgetManager**: Split `WidgetManager.cs` (3532 lines) into 4 partial classes: `WidgetManager.TrayAnimation.cs` (353 lines, tray show/hide animation), `WidgetManager.ZOrder.cs` (376 lines, Z-order/layer management/mouse hook), `WidgetManager.Storage.cs` (595 lines, managed storage/folder mapping/orphan cleanup), `WidgetManager.FeatureWidgets.cs` (889 lines, Music/Weather/Todo/QuickCapture feature widgets). Core file reduced to 1383 lines.
+- **Log rotation**: Added `TryRotateLogFileIfNeeded` with a 5MB size threshold — automatically backs up to `.bak` and cleans up old logs.
+- **Atomic settings writes**: `SettingsService.SaveToFileOnlyAsync` now writes to a `.tmp` file first, then moves it to the final path, preventing configuration corruption from interrupted writes.
+- **Onboarding redesign**: Simplified onboarding animation API and refined the first-run experience.
+
+### 中文
+
+- **天气格子**：新增完整功能天气格子，支持四种布局模式（迷你、紧凑、标准、详细），城市搜索（离线 `cities.json` 数据库 + Windows Location API）、自动定位、逐小时和每周预报、日出日落时间、紫外线指数、降水概率、湿度、风速、大气压、丰富皮肤背景和可配置刷新频率。标准视图在 250×215 及以上尺寸激活。逐小时温度列表支持横向滚动条和鼠标滚轮。周预报填满剩余空间，小尺寸下也可滚动。刷新时显示旋转加载动画并隐藏内容。
+- **调整大小参考线**：新增 `ResizeGuideOverlayService`，在调整格子大小时检测边缘对齐（8px 阈值），与其他格子边缘和工作区边界对齐时显示强调色高亮条。已集成到 `WidgetWindow`、`QuickCaptureWidgetWindow` 和 `ContentWidgetWindow`。
+- **随记修复**：格子重置现在通过 `QuickCaptureService.ClearAsync()` 正确清理所有内部数据。修复首次切换 Tab 时空白显示的问题——数据现在立即显示，无需多次切换。为 `PlayItemsViewTransition` 添加 `ScheduleTransitionSafetyFallback` 安全兜底，提升内容切换可靠性。
+- **默认设置统一**：默认外观改为云母材质、中等边框、大圆角——新安装、恢复默认和 `AppSettings` 初始值三处保持一致。全局重置（`ApplyDefaultPreferences`）现在恢复 `CustomAccentColor` 为 `#0078D4`、`FocusClickedWidgetOnRaise` 为 `false`。待办格子单格子重置现在恢复 `TodoReminderEnabled` 和 `TodoDefaultReminderOffsetMinutes`。天气格子单格子重置现在清除 `WeatherLatitude` 和 `WeatherLongitude`，避免定位行为不一致。
+- **格子标题字号**：功能格子标题现在根据用户设置（`TextSize`/`IconSize`）动态计算 `TitleTextSize` 和 `TitleIconSize`，不再使用固定值。新增 `RefreshMetrics()` 方法在设置变化时更新标题度量。
+- **内存泄漏修复**：`TodoWidgetViewModel` 实现 `IDisposable`，`TodoWidgetContentAdapter` 在格子销毁时正确释放 ViewModel，防止内存泄漏。
+- **删除格子按钮**：所有类型格子的"更多"菜单中均可删除格子，不再限于文件格子。修复 `ContentWidgetWindow` 更多菜单弹出位置。
+- **设置页扩展**：外观设置新增独立的材质类型选择（云母 / 亚克力 / 纯色）和边框样式选择（无边框 / 细 / 中）。
+- **格子层级改进**：`WidgetLayerService` 新增 `SetWindowToDesktopLevel` 方法，不使用 `HWND_BOTTOM` 即可将窗口推至桌面层级，防止 Win+D 隐藏格子。
+- **本地化文案精简**：精简拖拽诊断相关文案（中英文），表述更简洁明了。
+- **FolderWatcherService 优化**：将基于 `CancellationTokenSource` 的防抖替换为 `DispatcherQueueTimer`，减少文件系统变更通知时的线程池任务创建。
+- **代码重构 — WidgetWindowBase**：提取新的 `WidgetWindowBase.cs`（1027 行），统一窗口设置、背景管理、层级控制、拖拽/调整大小逻辑和显示器变化恢复。`ContentWidgetWindow` 和 `QuickCaptureWidgetWindow` 现在继承此共享基类，消除重复的窗口管理代码。
+- **代码重构 — WidgetWindow**：将 `WidgetWindow.xaml.cs`（约 5000 行）拆分为 6 个 partial 类：`Rename`（335 行）、`Menus`（677）、`ItemSurface`（364）、`Clipboard`（249）、`Selection`（397）、`DragDrop`（806）。主文件降至 2828 行。
+- **代码重构 — WidgetManager**：将 `WidgetManager.cs`（3532 行）拆分为 4 个 partial 类：`WidgetManager.TrayAnimation.cs`（353 行，托盘显示/隐藏动画）、`WidgetManager.ZOrder.cs`（376 行，层级管理/鼠标钩子）、`WidgetManager.Storage.cs`（595 行，收纳管理/文件夹映射/孤立清理）、`WidgetManager.FeatureWidgets.cs`（889 行，音乐/天气/待办/随记功能格子）。核心文件降至 1383 行。
+- **日志轮转**：新增 `TryRotateLogFileIfNeeded`，基于 5MB 大小阈值自动备份到 `.bak` 并清理旧日志。
+- **原子化设置写入**：`SettingsService.SaveToFileOnlyAsync` 改为先写入 `.tmp` 临时文件再移动到最终路径，防止写入中断导致配置损坏。
+- **新用户引导优化**：简化引导动画 API，优化首次启动体验。
+
 ## 1.2.7 - 2026-07-09
 
 ### English

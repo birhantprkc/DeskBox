@@ -353,6 +353,22 @@ public sealed partial class WeatherWidgetContent : UserControl
         _ = _viewModel.RefreshAsync(userTriggered: true);
     }
 
+    private void HourlyScroll_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is ScrollViewer sv)
+        {
+            var delta = e.GetCurrentPoint(sv).Properties.MouseWheelDelta;
+            if (delta != 0)
+            {
+                // Natural horizontal scroll: wheel up scrolls left, wheel down scrolls right.
+                // Amplify by 2x for smoother navigation through 24 hours.
+                double offset = sv.HorizontalOffset - delta * 2;
+                sv.ChangeView(offset, null, null);
+                e.Handled = true;
+            }
+        }
+    }
+
     private void InitializeRefreshRotation()
     {
         // Rebuild storyboard each time icons may have changed (layout switch)
