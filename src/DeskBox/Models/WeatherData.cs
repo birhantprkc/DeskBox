@@ -29,6 +29,10 @@ public sealed class WeatherData
     /// <summary>Display name resolved from geocoding or user input.</summary>
     [JsonIgnore]
     public string LocationName { get; set; } = string.Empty;
+
+    /// <summary>Whether this payload is stale data returned after a failed refresh.</summary>
+    [JsonIgnore]
+    public bool IsStale { get; set; }
 }
 
 public sealed class WeatherCurrent

@@ -596,6 +596,13 @@ public sealed partial class WidgetShell : UserControl
         TitlePointerReleased?.Invoke(this, e);
     }
 
+    private void TitleBarGrid_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        // When pointer capture is lost mid-drag (e.g., alt-tab, UAC),
+        // notify the parent window so it can call EndWindowDragCore.
+        TitlePointerReleased?.Invoke(this, e);
+    }
+
     private void OverlayDragHandle_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         _isDragHandlePressed = true;
@@ -617,6 +624,9 @@ public sealed partial class WidgetShell : UserControl
 
     private void OverlayDragHandle_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
     {
+        // When pointer capture is lost mid-drag (e.g., alt-tab, UAC),
+        // notify the parent window so it can call EndWindowDragCore.
+        DragHandlePointerReleased?.Invoke(this, e);
         EndDragHandlePress(e.Pointer);
     }
 

@@ -260,7 +260,6 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
             }
 
             _localizationService.SetLanguage(normalizedValue);
-            RefreshLocalizedProperties();
         }
     }
 
@@ -2758,6 +2757,7 @@ _ = RefreshQuickAccessStateAsync();
         try
         {
             SettingsService.ApplyDefaultPreferences(_settingsService.Settings);
+            IconHelper.ClearAllThumbnailCaches();
             SelectedTheme = ThemeSystem;
             SelectedTrayIconStyle = TrayIconStyleColorful;
             UseSystemAccentColor = true;
@@ -3372,6 +3372,11 @@ RefreshWeatherCityPopularCities();
         _cachedTodoTabStyleDisplayNames = null;
         _cachedTodoReminderOffsetDisplayNames = null;
         _cachedMusicRhythmStyleDisplayNames = null;
+        _cachedWeatherTempUnitDisplayNames = null;
+        _cachedWeatherWindUnitDisplayNames = null;
+        _cachedWeatherDefaultViewDisplayNames = null;
+        _cachedWeatherSkinDisplayNames = null;
+        _cachedWeatherRefreshIntervalDisplayNames = null;
         OnPropertyChanged(nameof(AvailableThemeDisplayNames));
         OnPropertyChanged(nameof(AvailableTrayIconStyleDisplayNames));
         OnPropertyChanged(nameof(AvailableLanguageDisplayNames));
@@ -3441,6 +3446,16 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesIndex));
         OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
         OnPropertyChanged(nameof(SelectedMusicRhythmStyleIndex));
+        OnPropertyChanged(nameof(AvailableWeatherTemperatureUnitDisplayNames));
+        OnPropertyChanged(nameof(SelectedWeatherTemperatureUnitIndex));
+        OnPropertyChanged(nameof(AvailableWeatherWindSpeedUnitDisplayNames));
+        OnPropertyChanged(nameof(SelectedWeatherWindSpeedUnitIndex));
+        OnPropertyChanged(nameof(AvailableWeatherDefaultViewDisplayNames));
+        OnPropertyChanged(nameof(SelectedWeatherDefaultViewIndex));
+        OnPropertyChanged(nameof(AvailableWeatherSkinDisplayNames));
+        OnPropertyChanged(nameof(SelectedWeatherSkinIndex));
+        OnPropertyChanged(nameof(AvailableWeatherRefreshIntervalDisplayNames));
+        OnPropertyChanged(nameof(SelectedWeatherRefreshIntervalIndex));
     }
 
     private bool CanToggleHoverButtonAction(bool isSelected)

@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace DeskBox.Services;
 
@@ -75,7 +76,7 @@ public static class Localized
         obj.SetValue(DescriptionKeyProperty, value);
     }
 
-    public static void RefreshAll(LocalizationService localizationService)
+        public static void RefreshAll(LocalizationService localizationService)
     {
         for (int index = s_targets.Count - 1; index >= 0; index--)
         {
@@ -85,7 +86,41 @@ public static class Localized
                 continue;
             }
 
-            Apply(target, localizationService);
+            try
+            {
+                Apply(target, localizationService);
+            }
+            catch (Exception ex)
+            {
+                // An exception on a single element (e.g., disposed object,
+                // cross-thread access) must not abort the entire refresh.
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Localized] RefreshAll Apply failed for {target.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
+    public static void UntrackTree(DependencyObject root)
+    {
+        for (int index = s_targets.Count - 1; index >= 0; index--)
+        {
+            if (!s_targets[index].TryGetTarget(out var target) ||
+                ReferenceEquals(target, root) ||
+                IsDescendantOf(target, root))
+            {
+                s_targets.RemoveAt(index);
+            }
+        }
+    }
+
+    public static void PruneDeadTargets()
+    {
+        for (int index = s_targets.Count - 1; index >= 0; index--)
+        {
+            if (!s_targets[index].TryGetTarget(out _))
+            {
+                s_targets.RemoveAt(index);
+            }
         }
     }
 
@@ -105,12 +140,44 @@ public static class Localized
 
     private static void Track(DependencyObject target)
     {
-        if (s_targets.Any(reference => reference.TryGetTarget(out var existing) && ReferenceEquals(existing, target)))
+        for (int index = s_targets.Count - 1; index >= 0; index--)
         {
-            return;
+            if (!s_targets[index].TryGetTarget(out var existing))
+            {
+                s_targets.RemoveAt(index);
+                continue;
+            }
+
+            if (ReferenceEquals(existing, target))
+            {
+                return;
+            }
         }
 
         s_targets.Add(new WeakReference<DependencyObject>(target));
+    }
+
+    private static bool IsDescendantOf(DependencyObject target, DependencyObject root)
+    {
+        DependencyObject? current = target;
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, root))
+            {
+                return true;
+            }
+
+            try
+            {
+                current = VisualTreeHelper.GetParent(current);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     private static void Apply(DependencyObject target, LocalizationService localizationService)

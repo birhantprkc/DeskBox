@@ -264,6 +264,12 @@ public sealed class ResizeGuideOverlayService
                 continue;
             }
 
+            // Skip hidden windows so alignment guides don't snap to invisible widgets
+            if (!Win32Helper.IsWindowVisible(hwnd))
+            {
+                continue;
+            }
+
             if (Win32Helper.GetWindowRect(hwnd, out var rect) &&
                 rect.Right > rect.Left && rect.Bottom > rect.Top)
             {

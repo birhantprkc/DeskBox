@@ -479,7 +479,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         _refreshTimer?.Start();
     }
 
-    public async Task RefreshAsync(bool userTriggered = false)
+    public async Task RefreshAsync(bool userTriggered = false, bool forceRefresh = false)
     {
         if (_isDisposed || _isRefreshing)
         {
@@ -498,17 +498,35 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
                 return;
             }
 
-            _weatherData = await _weatherService.GetWeatherAsync(_latitude, _longitude, _locationName);
+            TimeSpan cacheDuration = TimeSpan.FromMinutes(
+                _settingsService is null
+                    ? 30
+                    : Math.Clamp(
+                        _settingsService.Settings.WeatherRefreshIntervalMinutes,
+                        SettingsService.WeatherRefreshMinMinutes,
+                        SettingsService.WeatherRefreshMaxMinutes));
+            _weatherData = await _weatherService.GetWeatherAsync(
+                _latitude,
+                _longitude,
+                _locationName,
+                forceRefresh: userTriggered || forceRefresh,
+                cacheDuration: cacheDuration);
             if (_isDisposed)
             {
                 return;
             }
 
-            if (_weatherData is not null)
+            if (_weatherData?.Current is not null)
             {
                 ApplyWeatherData(_weatherData);
                 HasData = true;
-                refreshSucceeded = true;
+                refreshSucceeded = !_weatherData.IsStale;
+            }
+            else
+            {
+                // API failed and no cached data for this location.
+                // Clear the display so we don't show a previous city's weather.
+                HasData = false;
             }
         }
         catch (Exception ex)
@@ -1258,7 +1276,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 
             if (locationChanged)
             {
-                _ = RefreshAsync();
+                _ = RefreshAsync(forceRefresh: true);
             }
         }
     }

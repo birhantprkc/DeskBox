@@ -78,6 +78,10 @@ public sealed class TodoReminderService : IDisposable
             return;
         }
 
+        // Clear notified keys from any previous session so that reminders
+        // that were already shown before the app restarted can fire again.
+        _sessionNotifiedKeys.Clear();
+
         _timer = _dispatcherQueue.CreateTimer();
         _timer.Interval = ScanInterval;
         _timer.Tick += Timer_Tick;
@@ -101,6 +105,10 @@ public sealed class TodoReminderService : IDisposable
         {
             if (_timer is null && _dispatcherQueue is not null)
             {
+                // Clear notified keys when the timer is being (re)started
+                // after being stopped — old keys from a previous active
+                // period are no longer relevant.
+                _sessionNotifiedKeys.Clear();
                 _timer = _dispatcherQueue.CreateTimer();
                 _timer.Interval = ScanInterval;
                 _timer.Tick += Timer_Tick;
@@ -112,6 +120,9 @@ public sealed class TodoReminderService : IDisposable
             _timer.Tick -= Timer_Tick;
             _timer.Stop();
             _timer = null;
+            // Clear notified keys when the feature is disabled so they
+            // don't accumulate indefinitely while inactive.
+            _sessionNotifiedKeys.Clear();
         }
     }
 

@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.ComponentModel;
+using DeskBox.Services;
 using DeskBox.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -49,6 +50,7 @@ public sealed partial class MusicWidgetContent : UserControl
     public MusicWidgetContent(MusicWidgetViewModel viewModel)
         : this()
     {
+        // ViewModel setter calls ApplyRhythmStyle automatically.
         ViewModel = viewModel;
     }
 
@@ -67,6 +69,14 @@ public sealed partial class MusicWidgetContent : UserControl
             if (value is not null)
             {
                 value.PropertyChanged += ViewModel_PropertyChanged;
+                ApplyRhythmStyle(value.RhythmStyle);
+            }
+            else
+            {
+                // ViewModel is being detached (Dispose path).
+                // Stop the title marquee timer to prevent it from
+                // referencing the old ViewModel after disposal.
+                StopTitleMarquee();
             }
 
             UpdateProgressVisuals();
@@ -165,6 +175,18 @@ public sealed partial class MusicWidgetContent : UserControl
     {
         InlineVolumePanel.Visibility = Visibility.Collapsed;
         StopTitleMarquee();
+    }
+
+    public void OnWindowVisibilityChanged(bool visible)
+    {
+        if (visible)
+        {
+            QueueTitleMarqueeUpdate();
+        }
+        else
+        {
+            StopTitleMarquee();
+        }
     }
 
     private void TitleMarqueeHost_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -447,6 +469,45 @@ public sealed partial class MusicWidgetContent : UserControl
         {
             QueueTitleMarqueeUpdate();
         }
+
+        if (e.PropertyName == nameof(MusicWidgetViewModel.RhythmStyle))
+        {
+            ApplyRhythmStyle(ViewModel?.RhythmStyle ?? SettingsService.MusicRhythmStyleSoftWave);
+        }
+    }
+
+    /// <summary>
+    /// Swaps the ItemTemplate of the single RhythmItemsControl based on the
+    /// current rhythm style.  Setting ItemTemplate causes WinUI to regenerate
+    /// all containers with the new template and release the old ones, which
+    /// avoids the 5x container overhead of having parallel collapsed
+    /// ItemsControls.
+    /// </summary>
+    private void ApplyRhythmStyle(string rhythmStyle)
+    {
+        string templateKey = SettingsService.NormalizeMusicRhythmStyle(rhythmStyle) switch
+        {
+            SettingsService.MusicRhythmStyleGlassSpectrum => "RhythmGlassSpectrumTemplate",
+            SettingsService.MusicRhythmStyleDotPulse => "RhythmDotPulseTemplate",
+            SettingsService.MusicRhythmStyleLineSpectrum => "RhythmLineSpectrumTemplate",
+            SettingsService.MusicRhythmStyleStackedEqualizer => "RhythmStackedEqualizerTemplate",
+            _ => "RhythmSoftWaveTemplate"
+        };
+
+        if (Resources[templateKey] is DataTemplate template)
+        {
+            RhythmItemsControl.ItemTemplate = template;
+        }
+
+        // Each skin has slightly different bottom margins for visual alignment.
+        double bottomMargin = SettingsService.NormalizeMusicRhythmStyle(rhythmStyle) switch
+        {
+            SettingsService.MusicRhythmStyleDotPulse => 9,
+            SettingsService.MusicRhythmStyleLineSpectrum => 5,
+            SettingsService.MusicRhythmStyleStackedEqualizer => 5,
+            _ => 7
+        };
+        RhythmItemsControl.Margin = new Thickness(12, 0, 12, bottomMargin);
     }
 
     private void EnsureTitleMarqueeTimer()

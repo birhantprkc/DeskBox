@@ -50,6 +50,7 @@ public abstract class WidgetWindowBase : Window
     protected long BackdropRefreshGeneration;
     private DispatcherQueueTimer? _backdropRefreshTimer;
     private int _backdropRefreshStage;
+    private bool _isTrackedForDiagnostics;
 
     // ── Protected state: drag & resize ─────────────────────────
     protected bool IsDragging;
@@ -149,6 +150,12 @@ public abstract class WidgetWindowBase : Window
 
     protected void ConfigureWindowCore()
     {
+        if (!_isTrackedForDiagnostics)
+        {
+            PerformanceLogger.TrackWindowOpen(LogPrefix);
+            _isTrackedForDiagnostics = true;
+        }
+
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.SetBorderAndTitleBar(false, false);
@@ -642,13 +649,13 @@ public abstract class WidgetWindowBase : Window
             return;
         }
 
-        long generation = ++BackdropRefreshGeneration;
+        ++BackdropRefreshGeneration;
         _backdropRefreshStage = 0;
 
         if (_backdropRefreshTimer is null)
         {
             _backdropRefreshTimer = DispatcherQueue.CreateTimer();
-            _backdropRefreshTimer.Tick += (_, _) => OnBackdropRefreshTick(generation);
+            _backdropRefreshTimer.Tick += (_, _) => OnBackdropRefreshTick(BackdropRefreshGeneration);
         }
         else
         {
@@ -977,6 +984,60 @@ public abstract class WidgetWindowBase : Window
         e.Handled = true;
     }
 
+    /// <summary>
+    /// Handles PointerCaptureLost for resize borders.  If the system steals
+    /// pointer capture mid-resize (e.g., alt-tab, UAC, tablet mode), the
+    /// PointerReleased event never fires and the resize guide highlights
+    /// would be leaked forever.  This method ensures cleanup.
+    /// </summary>
+    protected void ResizeBorder_PointerCaptureLostCore(object sender, PointerRoutedEventArgs e)
+    {
+        if (!IsResizing)
+        {
+            return;
+        }
+
+        IsResizing = false;
+        ResizeDirection = string.Empty;
+        DragCaptureElement = null;
+        App.Current?.ResizeGuideOverlay.EndResize();
+        var finalPosition = AppWindow.Position;
+        var finalSize = AppWindow.Size;
+        CapturePositionAnchor(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height);
+        UpdateConfigBoundsFromPhysical(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+        OnResizeEnd();
+        DisplayChangeWatcher?.ResumeRestore();
+        QueueBackdropRefresh();
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Handles PointerCaptureLost for drag-move.  Same rationale as
+    /// ResizeBorder_PointerCaptureLostCore — ensures EndDrag is called
+    /// even when the system steals pointer capture mid-drag.
+    /// </summary>
+    protected void DragPointerCaptureLostCore(object sender, PointerRoutedEventArgs e)
+    {
+        if (!IsDragging)
+        {
+            return;
+        }
+
+        IsDragging = false;
+        bool hasMoved = HasMovedTitleBarDrag;
+        DragCaptureElement = null;
+        App.Current?.ResizeGuideOverlay.EndDrag();
+        var finalPosition = AppWindow.Position;
+        var finalSize = AppWindow.Size;
+        CapturePositionAnchor(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height);
+        UpdateConfigBoundsFromPhysical(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+        OnDragEnd(hasMoved);
+        DisplayChangeWatcher?.ResumeRestore();
+        HasMovedTitleBarDrag = false;
+        QueueBackdropRefresh();
+        e.Handled = true;
+    }
+
     // ── Interaction layer helpers ──────────────────────────────
 
     protected void BeginInteractionLayer(string reason, bool elevate = true)
@@ -1023,5 +1084,17 @@ public abstract class WidgetWindowBase : Window
         DisposeAcrylicController();
         DisposeMicaController();
         WidgetLayerService.ReleaseWindow(HWnd);
+        TrackWindowClosedForDiagnostics();
+    }
+
+    protected void TrackWindowClosedForDiagnostics()
+    {
+        if (!_isTrackedForDiagnostics)
+        {
+            return;
+        }
+
+        PerformanceLogger.TrackWindowClose(LogPrefix);
+        _isTrackedForDiagnostics = false;
     }
 }

@@ -101,7 +101,8 @@
                     RightTapped="TitleBarGrid_RightTapped"
                     PointerPressed="TitleBarGrid_PointerPressed"
                     PointerMoved="TitleBarGrid_PointerMoved"
-                    PointerReleased="TitleBarGrid_PointerReleased">
+                    PointerReleased="TitleBarGrid_PointerReleased"
+                    PointerCaptureLost="TitleBarGrid_PointerCaptureLost">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -520,5 +521,17 @@
                 </StackPanel>
             </Border>
         </Grid>
+
+        <!-- Breathing border highlight shown when files are dragged over the widget.
+             Uses a Composition ScalarKeyFrameAnimation to pulse Opacity in a loop. -->
+        <Border
+            x:Name="DragHighlightBorder"
+            Grid.RowSpan="2"
+            Background="Transparent"
+            BorderBrush="Transparent"
+            BorderThickness="2"
+            CornerRadius="8"
+            IsHitTestVisible="False"
+            Visibility="Collapsed" />
     </Grid>
 </views:WidgetWindowBase>

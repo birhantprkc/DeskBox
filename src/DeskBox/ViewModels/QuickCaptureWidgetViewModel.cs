@@ -780,6 +780,8 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         OnPropertyChanged(nameof(RecentTabText));
         OnPropertyChanged(nameof(EnableRecentCaptureText));
         OnPropertyChanged(nameof(SearchPlaceholderText));
+        OnPropertyChanged(nameof(InputPlaceholderText));
+        OnPropertyChanged(nameof(ExpandInputTooltipText));
         OnPropertyChanged(nameof(SearchScopeText));
         OnPropertyChanged(nameof(SearchScopeVisibility));
         OnPropertyChanged(nameof(RecentCaptureStatusText));

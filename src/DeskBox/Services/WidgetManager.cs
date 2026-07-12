@@ -1,4 +1,4 @@
-﻿﻿using DeskBox.Models;
+﻿﻿﻿﻿using DeskBox.Models;
 using DeskBox.Helpers;
 using DeskBox.Controls.WidgetContents;
 using DeskBox.ViewModels;
@@ -867,6 +867,55 @@ public sealed partial class WidgetManager
     }
 
     /// <summary>
+    /// Restores all loaded widget windows to their correct positions for
+    /// the current display topology.  Called when displays are added,
+    /// removed, or reconfigured (hot-plug, resolution change, DPI change).
+    /// </summary>
+    public async Task RestoreWidgetPositionsAsync()
+    {
+        using var perfScope = PerformanceLogger.Measure("WidgetManager.RestoreWidgetPositions");
+        App.Log("[WidgetManager] Restoring widget positions for current display topology");
+
+        foreach (var entry in _widgets.Values.ToList())
+        {
+            try
+            {
+                entry.Window.RestoreBoundsForCurrentTopology();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Failed to restore position for widget '{entry.Window.Identity.WidgetId}': {ex.Message}");
+            }
+        }
+
+        foreach (var window in _contentWidgets.Values.ToList())
+        {
+            try
+            {
+                window.RestoreBoundsForCurrentTopology();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Failed to restore position for content widget: {ex.Message}");
+            }
+        }
+
+        foreach (var entry in _quickCaptureWidgets.Values.ToList())
+        {
+            try
+            {
+                entry.Window.RestoreBoundsForCurrentTopology();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Failed to restore position for quick capture widget: {ex.Message}");
+            }
+        }
+
+        await Task.Yield();
+    }
+
+    /// <summary>
     /// Remove a widget and close its window.
     /// </summary>
     public async Task RemoveWidgetAsync(string widgetId, WidgetRemovalAction removalAction = WidgetRemovalAction.RemoveWidgetOnly)
@@ -880,8 +929,8 @@ public sealed partial class WidgetManager
             entry.ViewModel.Dispose();
             _widgets.Remove(widgetId);
             _widgetWindowHandles.Remove(entry.Window.WindowHandle);
-            entry.Window.HideWindow();
-            try { entry.Window.Close(); } catch { }
+            try { entry.Window.HideWindow(); } catch (Exception ex) { App.Log($"[WidgetManager] HideWindow failed during delete: {ex.Message}"); }
+            try { entry.Window.Close(); } catch (Exception ex) { App.Log($"[WidgetManager] Close failed during delete: {ex.Message}"); }
         }
 
         if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))
@@ -890,7 +939,8 @@ public sealed partial class WidgetManager
             quickCaptureEntry.ViewModel.Dispose();
             _quickCaptureWidgets.Remove(widgetId);
             _widgetWindowHandles.Remove(quickCaptureEntry.Window.WindowHandle);
-            quickCaptureEntry.Window.HideWindow();
+            try { quickCaptureEntry.Window.HideWindow(); } catch (Exception ex) { App.Log($"[WidgetManager] HideWindow failed during delete: {ex.Message}"); }
+            try { quickCaptureEntry.Window.Close(); } catch (Exception ex) { App.Log($"[WidgetManager] Close failed during delete: {ex.Message}"); }
         }
 
         if (_contentWidgets.TryGetValue(widgetId, out var contentWindow))
@@ -898,8 +948,21 @@ public sealed partial class WidgetManager
             App.Log($"[WidgetManager] Retiring content widget window for delete: {widgetId}");
             _contentWidgets.Remove(widgetId);
             _widgetWindowHandles.Remove(contentWindow.WindowHandle);
-            contentWindow.HideWindow();
-            try { contentWindow.Close(); } catch { }
+            // Explicitly dispose content (e.g. MusicWidgetViewModel) BEFORE
+            // closing the window.  The Closed event handler also calls
+            // DisposeContent, but if the event is delayed or fails, the
+            // MusicSessionService's event subscriptions on the WinRT
+            // singleton would keep the old ViewModel alive indefinitely.
+            try
+            {
+                if (contentWindow.CurrentContent is IDisposable disposableContent)
+                {
+                    disposableContent.Dispose();
+                }
+            }
+            catch (Exception ex) { App.Log($"[WidgetManager] Content dispose failed during delete: {ex.Message}"); }
+            try { contentWindow.HideWindow(); } catch (Exception ex) { App.Log($"[WidgetManager] HideWindow failed during delete: {ex.Message}"); }
+            try { contentWindow.Close(); } catch (Exception ex) { App.Log($"[WidgetManager] Close failed during delete: {ex.Message}"); }
         }
 
         if (config is not null)
@@ -1171,6 +1234,16 @@ public sealed partial class WidgetManager
 
         foreach (var (_, window) in _contentWidgets.ToList())
         {
+            try
+            {
+                if (window.CurrentContent is IDisposable disposableContent)
+                {
+                    disposableContent.Dispose();
+                }
+            }
+            catch
+            {
+            }
             try
             {
                 window.Close();

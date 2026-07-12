@@ -1,4 +1,6 @@
 using Microsoft.UI.Dispatching;
+using Windows.Storage;
+using Windows.Storage.Search;
 
 namespace DeskBox.Services;
 
@@ -8,6 +10,9 @@ public sealed record FolderChangeBatch(string WatchedPath, IReadOnlyList<FolderC
 
 /// <summary>
 /// Watches a folder for file system changes and notifies via events.
+/// Uses <see cref="StorageFileQueryResult"/> as the primary watcher for
+/// better performance on large/indexed directories, falling back to
+/// <see cref="FileSystemWatcher"/> for unsupported paths (network, etc.).
 /// Implements debouncing using a DispatcherQueueTimer to avoid creating
 /// short-lived thread-pool tasks on every file-system event.
 /// </summary>
@@ -16,7 +21,8 @@ public sealed class FolderWatcherService : IDisposable
     private const int DebounceDelayMs = 250;
     private const int MaxBufferedChangesBeforeReload = 64;
 
-    private FileSystemWatcher? _watcher;
+    private FileSystemWatcher? _legacyWatcher;
+    private StorageFileQueryResult? _queryWatcher;
     private readonly DispatcherQueueTimer _debounceTimer;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly object _lock = new();
@@ -46,14 +52,67 @@ public sealed class FolderWatcherService : IDisposable
     /// <summary>
     /// Start watching a folder for changes.
     /// </summary>
-    public void Start(string folderPath)
+    public async Task StartAsync(string folderPath)
     {
         Stop();
 
         if (!Directory.Exists(folderPath)) return;
 
         WatchedPath = folderPath;
-        _watcher = new FileSystemWatcher
+
+        if (await TryStartQueryWatcherAsync(folderPath))
+        {
+            App.LogVerbose($"[FolderWatcher] Using StorageFileQueryResult for '{folderPath}'");
+            return;
+        }
+
+        App.LogVerbose($"[FolderWatcher] Falling back to FileSystemWatcher for '{folderPath}'");
+        StartLegacyWatcher(folderPath);
+    }
+
+    /// <summary>
+    /// Attempt to create a StorageFileQueryResult for the folder.
+    /// This leverages the Windows search index for better performance.
+    /// </summary>
+    private async Task<bool> TryStartQueryWatcherAsync(string folderPath)
+    {
+        try
+        {
+            var folder = await StorageFolder.GetFolderFromPathAsync(folderPath);
+            if (folder is null)
+            {
+                return false;
+            }
+
+            var options = new QueryOptions
+            {
+                FolderDepth = FolderDepth.Shallow,
+                IndexerOption = IndexerOption.UseIndexerWhenAvailable,
+            };
+
+            _queryWatcher = folder.CreateFileQueryWithOptions(options);
+            _queryWatcher.ContentsChanged += OnQueryContentsChanged;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.LogVerbose($"[FolderWatcher] StorageFileQueryResult creation failed: {ex.Message}");
+            _queryWatcher = null;
+            return false;
+        }
+    }
+
+    private void OnQueryContentsChanged(IStorageQueryResultBase sender, object args)
+    {
+        // StorageFileQueryResult.ContentsChanged does not provide details
+        // about what changed — it only signals that something in the folder
+        // changed.  We treat this as a full-reload signal.
+        QueueFullReload();
+    }
+
+    private void StartLegacyWatcher(string folderPath)
+    {
+        _legacyWatcher = new FileSystemWatcher
         {
             Path = folderPath,
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName |
@@ -63,11 +122,11 @@ public sealed class FolderWatcherService : IDisposable
             EnableRaisingEvents = true
         };
 
-        _watcher.Created += OnChanged;
-        _watcher.Deleted += OnChanged;
-        _watcher.Renamed += OnRenamed;
-        _watcher.Changed += OnChanged;
-        _watcher.Error += OnWatcherError;
+        _legacyWatcher.Created += OnChanged;
+        _legacyWatcher.Deleted += OnChanged;
+        _legacyWatcher.Renamed += OnRenamed;
+        _legacyWatcher.Changed += OnChanged;
+        _legacyWatcher.Error += OnWatcherError;
     }
 
     /// <summary>
@@ -83,16 +142,28 @@ public sealed class FolderWatcherService : IDisposable
             _requiresFullReload = false;
         }
 
-        if (_watcher is not null)
+        if (_queryWatcher is not null)
         {
-            _watcher.EnableRaisingEvents = false;
-            _watcher.Created -= OnChanged;
-            _watcher.Deleted -= OnChanged;
-            _watcher.Renamed -= OnRenamed;
-            _watcher.Changed -= OnChanged;
-            _watcher.Error -= OnWatcherError;
-            _watcher.Dispose();
-            _watcher = null;
+            _queryWatcher.ContentsChanged -= OnQueryContentsChanged;
+            // StorageFileQueryResult is a WinRT COM object (not IDisposable).
+            // Explicitly release the RCW to avoid leaking the native query handle
+            // until the next GC. This is especially important when switching
+            // mapped folder paths, which calls Stop()+StartAsync() repeatedly.
+            try { System.Runtime.InteropServices.Marshal.ReleaseComObject(_queryWatcher); }
+            catch { }
+            _queryWatcher = null;
+        }
+
+        if (_legacyWatcher is not null)
+        {
+            _legacyWatcher.EnableRaisingEvents = false;
+            _legacyWatcher.Created -= OnChanged;
+            _legacyWatcher.Deleted -= OnChanged;
+            _legacyWatcher.Renamed -= OnRenamed;
+            _legacyWatcher.Changed -= OnChanged;
+            _legacyWatcher.Error -= OnWatcherError;
+            _legacyWatcher.Dispose();
+            _legacyWatcher = null;
         }
         WatchedPath = null;
     }

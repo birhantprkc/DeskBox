@@ -116,6 +116,10 @@ public sealed partial class WidgetWindow
 
         ResetItemSurfaceBrushCache();
         UpdateInteractiveSurfaces();
+
+        // Keep the drag highlight border's corner radius in sync with the window's
+        // corner preference so the breathing border matches the widget shape.
+        DragHighlightBorder.CornerRadius = new CornerRadius(GetCornerRadiusFromPreference());
     }
 
     private void UpdateInteractiveSurfaces()

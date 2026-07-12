@@ -62,8 +62,43 @@ public sealed class LocalizationService
         }
 
         _settingsService.Settings.Language = normalizedLanguage;
-        _settingsService.SaveDebounced();
-        LanguageChanged?.Invoke();
+        try
+        {
+            _settingsService.SaveDebounced();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] SaveDebounced failed during language switch: {ex.Message}");
+        }
+        // RaiseLanguageChanged must always be called, even if SaveDebounced
+        // failed, so that the UI updates to the new language immediately.
+        RaiseLanguageChanged();
+    }
+
+    /// <summary>
+    /// Invokes all LanguageChanged handlers, catching exceptions per-handler
+    /// so that one failing subscriber does not prevent subsequent subscribers
+    /// from receiving the notification.
+    /// </summary>
+    private void RaiseLanguageChanged()
+    {
+        if (LanguageChanged is null)
+        {
+            return;
+        }
+
+        foreach (var handler in LanguageChanged.GetInvocationList())
+        {
+            try
+            {
+                ((Action)handler).Invoke();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[LocalizationService] LanguageChanged handler '{handler.Method.DeclaringType?.Name}.{handler.Method.Name}' threw: {ex.Message}");
+            }
+        }
     }
 
     public string T(string key)
@@ -924,6 +959,10 @@ public sealed class LocalizationService
         ["Tray.Settings"] = "设置",
         ["Tray.AutoStart"] = "开机启动",
         ["Tray.Exit"] = "退出",
+        ["JumpList.ToggleWidgets"] = "显示/隐藏全部格子",
+        ["JumpList.NewFolderWidget"] = "新建文件夹格子",
+        ["JumpList.OpenSettings"] = "打开设置",
+        ["JumpList.OpenStorage"] = "打开收纳目录",
         ["Widget.DefaultName"] = "Deskbox",
         ["Widget.DefaultNameShort"] = "Deskbox",
         ["Widget.DefaultDesktopName"] = "我的桌面",
@@ -931,6 +970,8 @@ public sealed class LocalizationService
         ["Widget.MappedShortcutBaseName"] = "映射文件夹",
         ["Widget.Migration.Title"] = "正在迁移",
         ["Widget.Migration.Description"] = "完成前请勿操作",
+        ["Widget.Import.Title"] = "正在导入",
+        ["Widget.Import.Description"] = "正在处理拖入的文件",
         ["Widget.NewFolderName"] = "新建文件夹",
         ["Widget.Mode.Managed"] = "收纳",
         ["Widget.Mode.Mapped"] = "映射",
@@ -1985,6 +2026,10 @@ public sealed class LocalizationService
         ["Tray.Settings"] = "Settings",
         ["Tray.AutoStart"] = "Launch at Startup",
         ["Tray.Exit"] = "Exit",
+        ["JumpList.ToggleWidgets"] = "Toggle All Widgets",
+        ["JumpList.NewFolderWidget"] = "New Folder Widget",
+        ["JumpList.OpenSettings"] = "Open Settings",
+        ["JumpList.OpenStorage"] = "Open Storage Folder",
         ["Widget.DefaultName"] = "Deskbox",
         ["Widget.DefaultNameShort"] = "Deskbox",
         ["Widget.DefaultDesktopName"] = "My Desktop",
@@ -1992,6 +2037,8 @@ public sealed class LocalizationService
         ["Widget.MappedShortcutBaseName"] = "Mapped Folder",
         ["Widget.Migration.Title"] = "Moving storage",
         ["Widget.Migration.Description"] = "Please wait",
+        ["Widget.Import.Title"] = "Importing",
+        ["Widget.Import.Description"] = "Processing dropped files",
         ["Widget.NewFolderName"] = "New Folder",
         ["Widget.Mode.Managed"] = "Managed",
         ["Widget.Mode.Mapped"] = "Mapped",

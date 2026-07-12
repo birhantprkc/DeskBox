@@ -992,8 +992,14 @@ public static partial class Win32Helper
     /// </summary>
     public static void ShowInExplorer(string path)
     {
-        ShellExecute(IntPtr.Zero, "open", "explorer.exe",
+        var result = ShellExecute(IntPtr.Zero, "open", "explorer.exe",
             $"/select,\"{path}\"", null, SW_SHOWNORMAL);
+
+        // ShellExecute returns an error code (<= 32) when it fails.
+        if ((long)result <= 32)
+        {
+            App.Log($"[ShowInExplorer] ShellExecute failed for '{path}', error code={(long)result}");
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

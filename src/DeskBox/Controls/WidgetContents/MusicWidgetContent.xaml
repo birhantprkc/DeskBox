@@ -172,6 +172,115 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Rhythm visualizer DataTemplates — only one is active at a time.
+             Extracted from inline ItemsControl.ItemTemplate to avoid 5x
+             container generation (WinUI generates containers for collapsed
+             ItemsControls too). -->
+        <DataTemplate x:Key="RhythmSoftWaveTemplate">
+            <Border
+                Width="4"
+                Height="{Binding Height}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                CornerRadius="2"
+                Opacity="{Binding Opacity}">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="{Binding AccentColor}" />
+                        <GradientStop Offset="1" Color="{Binding GlassEndColor}" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="RhythmGlassSpectrumTemplate">
+            <Border
+                Width="3"
+                Height="{Binding Height}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                BorderThickness="1"
+                CornerRadius="2.5"
+                Opacity="{Binding Opacity}">
+                <Border.BorderBrush>
+                    <SolidColorBrush Color="{Binding GlassStrokeColor}" />
+                </Border.BorderBrush>
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="{Binding GlassStartColor}" />
+                        <GradientStop Offset="0.42" Color="{Binding GlassMidColor}" />
+                        <GradientStop Offset="1" Color="{Binding GlassEndColor}" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="RhythmDotPulseTemplate">
+            <Ellipse
+                Width="{Binding DotSize}"
+                Height="{Binding DotSize}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Opacity="{Binding Opacity}"
+                Stroke="{Binding GlassStrokeColor}"
+                StrokeThickness="0.5">
+                <Ellipse.Fill>
+                    <SolidColorBrush Color="{Binding AccentColor}" />
+                </Ellipse.Fill>
+            </Ellipse>
+        </DataTemplate>
+
+        <DataTemplate x:Key="RhythmLineSpectrumTemplate">
+            <Border
+                Width="2"
+                Height="{Binding Height}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                CornerRadius="1"
+                Opacity="{Binding Opacity}">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="{Binding AccentColor}" />
+                        <GradientStop Offset="1" Color="{Binding GlassMidColor}" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="RhythmStackedEqualizerTemplate">
+            <Grid
+                Width="5"
+                Height="43"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom">
+                <ItemsControl
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    ItemsSource="{Binding EqualizerSegments}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel
+                                Orientation="Vertical"
+                                Spacing="1.2"
+                                VerticalAlignment="Bottom" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border
+                                Width="5"
+                                Height="3"
+                                CornerRadius="1"
+                                Opacity="{Binding Opacity}">
+                                <Border.Background>
+                                    <SolidColorBrush Color="{Binding Color}" />
+                                </Border.Background>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </DataTemplate>
     </UserControl.Resources>
 
     <Grid
@@ -202,12 +311,15 @@
             IsHitTestVisible="False"
             Opacity="{Binding RhythmBarsOpacity}"
             Visibility="{Binding RhythmBarsVisibility}">
+            <!-- Single ItemsControl — ItemTemplate is swapped from code-behind
+                 when RhythmStyle changes, so old containers are properly
+                 released instead of staying alive in collapsed controls. -->
             <ItemsControl
+                x:Name="RhythmItemsControl"
                 Margin="12,0,12,7"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
-                ItemsSource="{Binding VisualizerBars}"
-                Visibility="{Binding SoftWaveVisibility}">
+                ItemsSource="{Binding VisualizerBars}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel
@@ -217,185 +329,6 @@
                             VerticalAlignment="Bottom" />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border
-                            Width="4"
-                            Height="{Binding Height}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Bottom"
-                            CornerRadius="2"
-                            Opacity="{Binding Opacity}">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Offset="0" Color="{Binding AccentColor}" />
-                                    <GradientStop Offset="1" Color="{Binding GlassEndColor}" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <ItemsControl
-                Margin="12,0,12,7"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Bottom"
-                ItemsSource="{Binding VisualizerBars}"
-                Visibility="{Binding GlassSpectrumVisibility}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel
-                            HorizontalAlignment="Center"
-                            Orientation="Horizontal"
-                            Spacing="2"
-                            VerticalAlignment="Bottom" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border
-                            Width="3"
-                            Height="{Binding Height}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Bottom"
-                            BorderThickness="1"
-                            CornerRadius="2.5"
-                            Opacity="{Binding Opacity}">
-                            <Border.BorderBrush>
-                                <SolidColorBrush Color="{Binding GlassStrokeColor}" />
-                            </Border.BorderBrush>
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Offset="0" Color="{Binding GlassStartColor}" />
-                                    <GradientStop Offset="0.42" Color="{Binding GlassMidColor}" />
-                                    <GradientStop Offset="1" Color="{Binding GlassEndColor}" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <ItemsControl
-                Margin="12,0,12,9"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Bottom"
-                ItemsSource="{Binding VisualizerBars}"
-                Visibility="{Binding DotPulseVisibility}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel
-                            HorizontalAlignment="Center"
-                            Orientation="Horizontal"
-                            Spacing="2"
-                            VerticalAlignment="Bottom" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Ellipse
-                            Width="{Binding DotSize}"
-                            Height="{Binding DotSize}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Bottom"
-                            Opacity="{Binding Opacity}"
-                            Stroke="{Binding GlassStrokeColor}"
-                            StrokeThickness="0.5">
-                            <Ellipse.Fill>
-                                <SolidColorBrush Color="{Binding AccentColor}" />
-                            </Ellipse.Fill>
-                        </Ellipse>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <ItemsControl
-                Margin="12,0,12,5"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Bottom"
-                ItemsSource="{Binding VisualizerBars}"
-                Visibility="{Binding LineSpectrumVisibility}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel
-                            HorizontalAlignment="Center"
-                            Orientation="Horizontal"
-                            Spacing="2"
-                            VerticalAlignment="Bottom" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border
-                            Width="2"
-                            Height="{Binding Height}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Bottom"
-                            CornerRadius="1"
-                            Opacity="{Binding Opacity}">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Offset="0" Color="{Binding AccentColor}" />
-                                    <GradientStop Offset="1" Color="{Binding GlassMidColor}" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <ItemsControl
-                Margin="12,0,12,5"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Bottom"
-                ItemsSource="{Binding VisualizerBars}"
-                Visibility="{Binding StackedEqualizerVisibility}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel
-                            HorizontalAlignment="Center"
-                            Orientation="Horizontal"
-                            Spacing="2"
-                            VerticalAlignment="Bottom" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Grid
-                            Width="5"
-                            Height="43"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Bottom">
-                            <ItemsControl
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Bottom"
-                                ItemsSource="{Binding EqualizerSegments}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel
-                                            Orientation="Vertical"
-                                            Spacing="1.2"
-                                            VerticalAlignment="Bottom" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border
-                                            Width="5"
-                                            Height="3"
-                                            CornerRadius="1"
-                                            Opacity="{Binding Opacity}">
-                                            <Border.Background>
-                                                <SolidColorBrush Color="{Binding Color}" />
-                                            </Border.Background>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
             </ItemsControl>
         </Grid>
 

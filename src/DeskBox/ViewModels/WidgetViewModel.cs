@@ -389,6 +389,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         EmptyStateText = isManagedStorage
             ? _localizationService.Format("Widget.Empty.ManagedText", managedAction, mappedFolderName)
             : _localizationService.Format("Widget.Empty.MappedText", mappedFolderName);
+        OnPropertyChanged(nameof(SortModeLabel));
     }
 
     private string GetManagedActionText()
@@ -568,8 +569,8 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         {
             EnsureFolderBackedConfig();
             MappedFolderPath = Config.MappedFolderPath;
-            await LoadFolderContentsAsync(MappedFolderPath!);
-            ConfigureFolderWatchers(MappedFolderPath);
+await LoadFolderContentsAsync(MappedFolderPath!);
+await ConfigureFolderWatchersAsync(MappedFolderPath);
         }
         finally
         {
@@ -724,9 +725,41 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         MappedFolderPath = Config.MappedFolderPath;
         OnPropertyChanged(nameof(FollowsDefaultStoragePath));
 
-        await LoadFolderContentsAsync(MappedFolderPath!, clearIconCacheBeforeHydration: true);
-        ConfigureFolderWatchers(MappedFolderPath);
+await LoadFolderContentsAsync(MappedFolderPath!, clearIconCacheBeforeHydration: true);
+await ConfigureFolderWatchersAsync(MappedFolderPath);
         UpdateDependentProperties();
+    }
+
+    /// <summary>
+    /// Lightweight folder refresh that only reloads the contents without
+    /// restarting the folder watcher.  Use this when the watcher is already
+    /// running and you just need to re-read the current disk state — e.g.
+    /// after a drag-out operation where the Shell may still be moving files.
+    /// Uses the same semaphore as <see cref="OnFolderChanged"/> to avoid
+    /// concurrent <see cref="LoadFolderContentsAsync"/> calls.
+    /// </summary>
+    public async Task RefreshFolderContentsAsync()
+    {
+        if (string.IsNullOrEmpty(MappedFolderPath))
+        {
+            return;
+        }
+
+        await _folderRefreshGate.WaitAsync();
+        try
+        {
+            if (string.IsNullOrEmpty(MappedFolderPath))
+            {
+                return;
+            }
+
+            await LoadFolderContentsAsync(MappedFolderPath);
+            UpdateDependentProperties();
+        }
+        finally
+        {
+            _folderRefreshGate.Release();
+        }
     }
 
     public async Task UpdateMappedFolderPathAsync(string folderPath)
@@ -754,8 +787,8 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         }
 
         _settingsService.UpdateWidget(Config);
-        await LoadFolderContentsAsync(normalizedPath);
-        ConfigureFolderWatchers(normalizedPath);
+await LoadFolderContentsAsync(normalizedPath);
+await ConfigureFolderWatchersAsync(normalizedPath);
         UpdateDependentProperties();
     }
 
@@ -1364,7 +1397,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         NormalizeSortOrder();
     }
 
-    private void ConfigureFolderWatchers(string? folderPath)
+    private async Task ConfigureFolderWatchersAsync(string? folderPath)
     {
         _folderWatcher.Stop();
         _publicFolderWatcher.Stop();
@@ -1374,12 +1407,12 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _folderWatcher.Start(folderPath);
+        await _folderWatcher.StartAsync(folderPath);
 
         var (userDesktop, publicDesktop) = FileService.GetDesktopPaths();
         if (folderPath.Equals(userDesktop, StringComparison.OrdinalIgnoreCase))
         {
-            _publicFolderWatcher.Start(publicDesktop);
+            await _publicFolderWatcher.StartAsync(publicDesktop);
         }
     }
 

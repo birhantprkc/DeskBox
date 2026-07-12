@@ -39,6 +39,21 @@ public sealed record MusicSessionInfo(
     MusicPlaybackMode PlaybackMode,
     IRandomAccessStreamReference? Thumbnail);
 
+public sealed record MusicTimelineSnapshot(
+    TimeSpan Position,
+    TimeSpan Duration);
+
+public sealed record MusicPlaybackSnapshot(
+    MusicPlaybackState PlaybackState,
+    bool CanPlay,
+    bool CanPause,
+    bool CanGoPrevious,
+    bool CanGoNext,
+    bool CanSeek,
+    bool CanChangeShuffle,
+    bool CanChangeRepeat,
+    MusicPlaybackMode PlaybackMode);
+
 public sealed class MusicSessionService : IDisposable
 {
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
@@ -98,6 +113,58 @@ public sealed class MusicSessionService : IDisposable
         return session is null
             ? null
             : await CreateInfoAsync(session);
+    }
+
+    public async Task<MusicTimelineSnapshot?> GetCurrentTimelineAsync(string? preferredSessionId = null)
+    {
+        await InitializeAsync();
+        if (_isDisposed)
+        {
+            return null;
+        }
+
+        var session = ResolveSession(preferredSessionId);
+        AttachCurrentSession(session);
+        if (session is null)
+        {
+            return null;
+        }
+
+        var timeline = session.GetTimelineProperties();
+        return new MusicTimelineSnapshot(
+            timeline.Position,
+            timeline.EndTime > timeline.StartTime
+                ? timeline.EndTime - timeline.StartTime
+                : TimeSpan.Zero);
+    }
+
+    public async Task<MusicPlaybackSnapshot?> GetCurrentPlaybackAsync(string? preferredSessionId = null)
+    {
+        await InitializeAsync();
+        if (_isDisposed)
+        {
+            return null;
+        }
+
+        var session = ResolveSession(preferredSessionId);
+        AttachCurrentSession(session);
+        if (session is null)
+        {
+            return null;
+        }
+
+        var playbackInfo = session.GetPlaybackInfo();
+        var controls = playbackInfo.Controls;
+        return new MusicPlaybackSnapshot(
+            MapPlaybackState(playbackInfo.PlaybackStatus),
+            controls.IsPlayEnabled,
+            controls.IsPauseEnabled,
+            controls.IsPreviousEnabled,
+            controls.IsNextEnabled,
+            controls.IsPlaybackPositionEnabled,
+            controls.IsShuffleEnabled,
+            controls.IsRepeatEnabled,
+            MapPlaybackMode(playbackInfo));
     }
 
     public async Task<bool> TrySetPreferredSessionAsync(string sessionId)

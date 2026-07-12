@@ -13,7 +13,7 @@ public sealed class WeatherService : IDisposable
     private const string ForecastBaseUrl = "https://api.open-meteo.com/v1/forecast";
     private const string GeocodingBaseUrl = "https://geocoding-api.open-meteo.com/v1/search";
     private const string ReverseGeocodingBaseUrl = "https://geocoding-api.open-meteo.com/v1/get-by-id";
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan DefaultCacheDuration = TimeSpan.FromMinutes(30);
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -66,14 +66,20 @@ public sealed class WeatherService : IDisposable
         double latitude,
         double longitude,
         string locationName = "",
-        bool forceRefresh = false)
+        bool forceRefresh = false,
+        TimeSpan? cacheDuration = null)
     {
         string cacheKey = $"{latitude:F4},{longitude:F4}";
+        TimeSpan effectiveCacheDuration = cacheDuration.GetValueOrDefault(DefaultCacheDuration);
+        if (effectiveCacheDuration < TimeSpan.Zero)
+        {
+            effectiveCacheDuration = TimeSpan.Zero;
+        }
 
         if (!forceRefresh &&
             _cachedData is not null &&
             string.Equals(_cacheLocationKey, cacheKey, StringComparison.Ordinal) &&
-            DateTimeOffset.UtcNow - _cacheTimestamp < CacheDuration)
+            DateTimeOffset.UtcNow - _cacheTimestamp < effectiveCacheDuration)
         {
             _cachedData.LocationName = locationName;
             return _cachedData;
@@ -88,6 +94,7 @@ public sealed class WeatherService : IDisposable
             if (data is not null)
             {
                 data.LocationName = locationName;
+                data.IsStale = false;
                 _cachedData = data;
                 _cacheTimestamp = DateTimeOffset.UtcNow;
                 _cacheLocationKey = cacheKey;
@@ -98,7 +105,18 @@ public sealed class WeatherService : IDisposable
         catch (Exception ex)
         {
             App.Log($"[WeatherService] GetWeatherAsync failed: {ex.Message}");
-            return _cachedData; // Return stale cache if available
+            // Only return stale cache if it's for the same location —
+            // returning a different city's weather when the user just
+            // switched cities would be misleading.
+            if (string.Equals(_cacheLocationKey, cacheKey, StringComparison.Ordinal))
+            {
+                if (_cachedData is not null)
+                {
+                    _cachedData.IsStale = true;
+                }
+                return _cachedData;
+            }
+            return null;
         }
     }
 

@@ -1,4 +1,4 @@
-﻿// Copyright (c) DeskBox. All rights reserved.
+﻿﻿// Copyright (c) DeskBox. All rights reserved.
 
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -31,6 +31,11 @@ public sealed partial class WidgetWindow
     private bool _surfaceDragCompletionHandled;
     private bool _isFileDropSubclassInstalled;
 
+    // ── Native IDropTarget (OLE drag-drop) ──
+    private NativeDropTarget? _nativeDropTarget;
+    private bool _isNativeDragActive;
+    private Border? _nativeDragHighlightBorder;
+
     private void InstallFileDropSubclass()
     {
         if (_isFileDropSubclassInstalled)
@@ -46,6 +51,24 @@ public sealed partial class WidgetWindow
         App.LogVerbose(
             $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage=NativeSubclassInstall " +
             $"hwnd=0x{_hWnd.ToInt64():X} installed={_isFileDropSubclassInstalled}");
+
+        // Register IDropTarget for richer drag-over feedback.
+        // This supersedes WM_DROPFILES for OLE-aware drag sources (Explorer).
+        // WM_DROPFILES is kept as fallback for legacy sources.
+        try
+        {
+            _nativeDropTarget = new NativeDropTarget(_hWnd);
+            _nativeDropTarget.DragEnterEvent += OnNativeDragEnter;
+            _nativeDropTarget.DragOverEvent += OnNativeDragOver;
+            _nativeDropTarget.DragLeaveEvent += OnNativeDragLeave;
+            _nativeDropTarget.DropEvent += OnNativeDrop;
+            _nativeDropTarget.Register();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[DropTarget] Failed to register IDropTarget: {ex.Message}");
+            _nativeDropTarget = null;
+        }
     }
 
     private void RemoveFileDropSubclass()
@@ -57,6 +80,18 @@ public sealed partial class WidgetWindow
 
         Win32Helper.RemoveWindowSubclass(_hWnd, _fileDropSubclassProc, FileDropSubclassId);
         _isFileDropSubclassInstalled = false;
+
+        if (_nativeDropTarget is not null)
+        {
+            _nativeDropTarget.DragEnterEvent -= OnNativeDragEnter;
+            _nativeDropTarget.DragOverEvent -= OnNativeDragOver;
+            _nativeDropTarget.DragLeaveEvent -= OnNativeDragLeave;
+            _nativeDropTarget.DropEvent -= OnNativeDrop;
+            _nativeDropTarget.Dispose();
+            _nativeDropTarget = null;
+        }
+
+        ClearNativeDragHighlight();
     }
 
     private IntPtr FileDropSubclassProc(
@@ -92,6 +127,7 @@ public sealed partial class WidgetWindow
             return;
         }
 
+        bool? moveWhenMapped = null;
         try
         {
             bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
@@ -104,9 +140,24 @@ public sealed partial class WidgetWindow
                 return;
             }
 
-            bool? moveWhenMapped = movesIntoFolder
+            moveWhenMapped = movesIntoFolder
                 ? ShouldMoveForAcceptedOperation(acceptedOperation)
                 : null;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[DropDiagnostic] NativeDropPrecheck failed widget='{ViewModel.Name}' id={ViewModel.Config.Id}: {ex}");
+            return;
+        }
+
+        // Show the import overlay for large transfers, same as the WinUI drop path.
+        bool showOverlay = ShouldShowImportOverlay(paths);
+        if (showOverlay)
+        {
+            SetImportBusy(true);
+        }
+        try
+        {
             await ViewModel.ImportPathsAsync(paths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
             ClearCutState();
         }
@@ -114,6 +165,192 @@ public sealed partial class WidgetWindow
         {
             App.Log($"[DropDiagnostic] NativeDropFailed widget='{ViewModel.Name}' id={ViewModel.Config.Id}: {ex}");
         }
+        finally
+        {
+            if (showOverlay)
+            {
+                SetImportBusy(false);
+            }
+        }
+    }
+
+    // ── IDropTarget event handlers (native OLE drag-drop) ──
+
+    private void OnNativeDragEnter(int screenX, int screenY, bool hasFileData)
+    {
+        if (!hasFileData || _isMigrationBusy)
+        {
+            return;
+        }
+
+        _isNativeDragActive = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            StartDragHighlight();
+            ShowNativeDragHighlight(screenX, screenY);
+        });
+    }
+
+    private void OnNativeDragOver(int screenX, int screenY)
+    {
+        if (!_isNativeDragActive)
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ShowNativeDragHighlight(screenX, screenY);
+        });
+    }
+
+    private void OnNativeDragLeave()
+    {
+        _isNativeDragActive = false;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ClearNativeDragHighlight();
+            StopDragHighlight();
+        });
+    }
+
+    private void OnNativeDrop(IReadOnlyList<string> paths, int screenX, int screenY)
+    {
+        _isNativeDragActive = false;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ClearNativeDragHighlight();
+            StopDragHighlight();
+        });
+
+        if (paths.Count == 0)
+        {
+            return;
+        }
+
+        App.Log(
+            $"[DropDiagnostic] widget='{ViewModel.Name}' id={ViewModel.Config.Id} stage=NativeIDropTargetDrop " +
+            $"count={paths.Count} mapped={!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath)} " +
+            $"managed={ViewModel.FollowsDefaultStoragePath}");
+
+        // Check if the drop is over a folder item
+        if (TryGetFolderItemAtScreenPoint(screenX, screenY, out var folderBorder, out var folderItem))
+        {
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                bool showOverlay = ShouldShowImportOverlay(paths);
+                if (showOverlay)
+                {
+                    SetImportBusy(true);
+                }
+                try
+                {
+                    bool move = ShouldMoveForAcceptedOperation(
+                        NormalizePathDropOperation(DataPackageOperation.Copy | DataPackageOperation.Move, movesIntoFolder: true));
+                    var results = await App.Current.FileService.TransferItemsWithResultAsync(
+                        paths, folderItem.Path, move);
+
+                    if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
+                    {
+                        await ViewModel.RefreshFromConfigAsync();
+                    }
+
+                    ShowStatusToast(_localizationService.Format(
+                        move ? "Widget.MovedToFolder" : "Widget.CopiedToFolder",
+                        folderItem.Name,
+                        results.Count));
+                }
+                catch (Exception ex)
+                {
+                    App.Log($"[DropTarget] Folder drop failed: {ex.Message}");
+                }
+                finally
+                {
+                    if (showOverlay)
+                    {
+                        SetImportBusy(false);
+                    }
+                }
+            });
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(async () => await ImportNativeDropPathsAsync(paths));
+    }
+
+    /// <summary>
+    /// Shows visual highlight during native drag-over.
+    /// Highlights the folder item under the cursor, or the root grid as fallback.
+    /// </summary>
+    private void ShowNativeDragHighlight(int screenX, int screenY)
+    {
+        if (TryGetFolderItemAtScreenPoint(screenX, screenY, out var border, out _))
+        {
+            if (!ReferenceEquals(_nativeDragHighlightBorder, border))
+            {
+                ClearNativeDragHighlight();
+                _nativeDragHighlightBorder = border;
+                ApplyWidgetItemSurfaceState(border, ItemSurfaceState.DropTarget);
+            }
+            return;
+        }
+
+        // No folder under cursor — clear folder highlight, show root-level feedback
+        ClearNativeDragHighlight();
+        // Root-level feedback is handled by the existing _isNativeDragActive flag
+        // which could be used to show a subtle border glow on the window.
+    }
+
+    private void ClearNativeDragHighlight()
+    {
+        if (_nativeDragHighlightBorder is not null)
+        {
+            var border = _nativeDragHighlightBorder;
+            _nativeDragHighlightBorder = null;
+            ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Normal);
+        }
+
+        // Also clear the shared folder drop target if set
+        ClearFolderDropTarget();
+    }
+
+    /// <summary>
+    /// Hit-tests a screen coordinate against interactive folder surfaces.
+    /// Returns the border and WidgetItem if the point is over a folder item.
+    /// </summary>
+    private bool TryGetFolderItemAtScreenPoint(int screenX, int screenY, out Border border, out WidgetItem folder)
+    {
+        foreach (var surface in _interactiveSurfaces.ToArray())
+        {
+            if (surface.DataContext is not WidgetItem { IsFolder: true } item ||
+                !Directory.Exists(item.Path) ||
+                surface.XamlRoot is null ||
+                surface.ActualWidth <= 0 ||
+                surface.ActualHeight <= 0)
+            {
+                continue;
+            }
+
+            var topLeft = surface.TransformToVisual(null)
+                .TransformPoint(new Windows.Foundation.Point(0, 0));
+            double scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
+            var left = _appWindow.Position.X + (topLeft.X * scale);
+            var top = _appWindow.Position.Y + (topLeft.Y * scale);
+            var right = left + (surface.ActualWidth * scale);
+            var bottom = top + (surface.ActualHeight * scale);
+
+            if (screenX >= left && screenX <= right &&
+                screenY >= top && screenY <= bottom)
+            {
+                border = surface;
+                folder = item;
+                return true;
+            }
+        }
+
+        border = null!;
+        folder = null!;
+        return false;
     }
 
     private void RootGrid_DragOver(object sender, DragEventArgs e)
@@ -153,10 +390,11 @@ public sealed partial class WidgetWindow
             : _localizationService.T("Widget.DragCaption.Reference");
     }
 
-    private void RootGrid_DragEnter(object sender, DragEventArgs e)
-    {
-        LogDropDiagnostic("RootDragEnter", e.DataView, e.AcceptedOperation, !string.IsNullOrEmpty(ViewModel.MappedFolderPath));
-    }
+private void RootGrid_DragEnter(object sender, DragEventArgs e)
+{
+LogDropDiagnostic("RootDragEnter", e.DataView, e.AcceptedOperation, !string.IsNullOrEmpty(ViewModel.MappedFolderPath));
+StartDragHighlight();
+}
 
     private string GetRootFolderDropCaptionKey()
     {
@@ -203,17 +441,19 @@ public sealed partial class WidgetWindow
         };
     }
 
-    private void RootGrid_DragLeave(object sender, DragEventArgs e)
-    {
-        e.Handled = true;
-        ClearFolderDropTarget();
-        _lastRootDragDiagnosticSignature = null;
-    }
+private void RootGrid_DragLeave(object sender, DragEventArgs e)
+{
+e.Handled = true;
+ClearFolderDropTarget();
+StopDragHighlight();
+_lastRootDragDiagnosticSignature = null;
+}
 
-    private async void RootGrid_Drop(object sender, DragEventArgs e)
-    {
-        e.Handled = true;
-        ClearFolderDropTarget();
+private async void RootGrid_Drop(object sender, DragEventArgs e)
+{
+e.Handled = true;
+ClearFolderDropTarget();
+StopDragHighlight();
         _lastRootDragDiagnosticSignature = null;
 
         var deferral = e.GetDeferral();
@@ -266,16 +506,45 @@ public sealed partial class WidgetWindow
                 return;
             }
 
-            await ViewModel.ImportPathsAsync(paths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
+            // Extract all needed data from the DataPackageView before completing
+            // the deferral — the DataView becomes invalid after Complete().
+            string? syncSourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
+            var syncSourcePaths = TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths");
 
-            if (moveWhenMapped == true)
+            // Complete the deferral early so the drag glyph disappears immediately.
+            // The actual file transfer continues in the background with a visual overlay.
+            deferral.Complete();
+            deferral = null;
+
+            // Only show the import overlay for large transfers to avoid
+            // flashing for small files.
+            bool showOverlay = ShouldShowImportOverlay(paths);
+            if (showOverlay)
             {
-                await SyncMoveSourceAsync(
-                    TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId"),
-                    TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths"));
+                SetImportBusy(true);
             }
+            try
+            {
+                await ViewModel.ImportPathsAsync(paths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
 
-            ClearCutState();
+                if (moveWhenMapped == true)
+                {
+                    await SyncMoveSourceAsync(syncSourceWidgetId, syncSourcePaths);
+                }
+
+                ClearCutState();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[Widget] RootGrid_Drop failed: {ex}");
+            }
+            finally
+            {
+                if (showOverlay)
+                {
+                    SetImportBusy(false);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -283,7 +552,7 @@ public sealed partial class WidgetWindow
         }
         finally
         {
-            deferral.Complete();
+            deferral?.Complete();
         }
     }
 
@@ -323,20 +592,39 @@ public sealed partial class WidgetWindow
             return;
         }
 
+        bool cursorOnDesktop = IsCursorOnDesktop();
+        bool cursorOverWindow = IsCursorOverThisWindow();
+
+        App.Log(
+            $"[DragComplete] widget='{ViewModel.Name}' followsDefault={ViewModel.FollowsDefaultStoragePath} " +
+            $"mapped='{ViewModel.MappedFolderPath}' dropResult={dropResult} hasStorageItems={hasStorageItems} " +
+            $"cursorOnDesktop={cursorOnDesktop} cursorOverWindow={cursorOverWindow} paths={draggedPaths.Length}");
+
         if (ViewModel.FollowsDefaultStoragePath &&
-            IsCursorOnDesktop() &&
-            !IsCursorOverThisWindow())
+            cursorOnDesktop &&
+            !cursorOverWindow)
         {
             if (hasStorageItems || dropResult == DataPackageOperation.Move)
             {
-                await Task.Delay(250);
-                await ViewModel.RefreshFromConfigAsync();
-                ClearRemovedCutPaths();
-                UpdateEmptyState();
+                await RefreshAfterDragOutAsync(draggedPaths);
                 return;
             }
 
             await MoveDraggedPathsBackToDesktopAsync(draggedPaths, useShellProgress: true);
+            return;
+        }
+
+        // For mapped folder widgets, when items are dragged out to desktop
+        // (or any location outside this widget), the shell handles the
+        // move directly via OLE.  WinUI reports dropResult=None because
+        // the drop happened outside any WinUI drop target.  We need to
+        // refresh to remove the moved items.
+        if (!ViewModel.FollowsDefaultStoragePath &&
+            !string.IsNullOrEmpty(ViewModel.MappedFolderPath) &&
+            !cursorOverWindow &&
+            (hasStorageItems || dropResult == DataPackageOperation.Move))
+        {
+            await RefreshAfterDragOutAsync(draggedPaths);
             return;
         }
 
@@ -346,6 +634,65 @@ public sealed partial class WidgetWindow
         }
 
         ClearRemovedCutPaths();
+    }
+
+    /// <summary>
+    /// Handles the post-drag-out refresh for items dragged from this widget
+    /// to an external target (Explorer, desktop, etc.).
+    ///
+    /// The Shell OLE move may take anywhere from milliseconds (small files)
+    /// to many minutes (large files/folders).  We must NOT:
+    /// - Do optimistic removal (we don't know if it's a copy or a move)
+    /// - Call RefreshFromConfigAsync (it restarts the folder watcher,
+    ///   clearing pending events and potentially missing the deletion)
+    /// - Poll continuously at a fixed interval (wastes resources for long transfers)
+    ///
+    /// Instead we use exponential backoff: start at 300ms and double each
+    /// iteration, capped at 5 minutes.  This gives:
+    ///   300ms → 600ms → 1.2s → 2.4s → 4.8s → 9.6s → 19s → 38s → 76s → 152s → 300s
+    /// Small files are caught within ~300-600ms; large files are caught
+    /// whenever the transfer finishes.  Each check is a single File.Exists
+    /// probe — essentially zero cost.
+    /// </summary>
+    private async Task RefreshAfterDragOutAsync(string[] draggedPaths)
+    {
+        ClearRemovedCutPaths();
+        UpdateEmptyState();
+
+        int delayMs = 300;
+        while (delayMs <= 300_000)
+        {
+            await Task.Delay(delayMs);
+
+            // Window may have been closed while we were waiting.
+            if (IsClosing)
+            {
+                return;
+            }
+
+            bool anyExists = false;
+            foreach (var path in draggedPaths)
+            {
+                if (File.Exists(path) || Directory.Exists(path))
+                {
+                    anyExists = true;
+                    break;
+                }
+            }
+
+            if (!anyExists)
+            {
+                App.Log($"[DragComplete] Files gone after ~{delayMs}ms, refreshing.");
+                await ViewModel.RefreshFolderContentsAsync();
+                ClearRemovedCutPaths();
+                UpdateEmptyState();
+                return;
+            }
+
+            delayMs = (int)Math.Min(delayMs * 2, 300_000);
+        }
+
+        App.Log("[DragComplete] Files still exist after 10min, giving up.");
     }
 
     private IReadOnlyList<WidgetItem> GetDragItems(WidgetItem? fallbackItem)
@@ -645,6 +992,8 @@ public sealed partial class WidgetWindow
             return;
         }
 
+        StopDragHighlight();
+
         if (!TryGetFolderDropTarget(sender, out _, out var targetFolder))
         {
             return;
@@ -691,29 +1040,58 @@ public sealed partial class WidgetWindow
             }
 
             bool move = ShouldMoveForAcceptedOperation(acceptedOperation);
-            var results = await App.Current.FileService.TransferItemsWithResultAsync(sourcePaths, targetFolder.Path, move);
-            if (results.Count == 0)
-            {
-                return;
-            }
 
-            if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
-            {
-                await ViewModel.RefreshFromConfigAsync();
-            }
+            // Extract all needed data from the DataPackageView before completing
+            // the deferral — the DataView becomes invalid after Complete().
+            string? syncSourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
+            var syncSourcePaths = TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths");
 
-            if (move)
-            {
-                await SyncMoveSourceAsync(
-                    TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId"),
-                    TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths"));
-                ClearRemovedCutPaths();
-            }
+            // Complete the deferral early so the drag glyph disappears immediately.
+            deferral.Complete();
+            deferral = null;
 
-            ShowStatusToast(_localizationService.Format(
-                move ? "Widget.MovedToFolder" : "Widget.CopiedToFolder",
-                targetFolder.Name,
-                results.Count));
+            // Only show the import overlay for large transfers to avoid
+            // flashing for small files.
+            bool showOverlay = ShouldShowImportOverlay(sourcePaths);
+            if (showOverlay)
+            {
+                SetImportBusy(true);
+            }
+            try
+            {
+                var results = await App.Current.FileService.TransferItemsWithResultAsync(sourcePaths, targetFolder.Path, move);
+                if (results.Count == 0)
+                {
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
+                {
+                    await ViewModel.RefreshFromConfigAsync();
+                }
+
+                if (move)
+                {
+                    await SyncMoveSourceAsync(syncSourceWidgetId, syncSourcePaths);
+                    ClearRemovedCutPaths();
+                }
+
+                ShowStatusToast(_localizationService.Format(
+                    move ? "Widget.MovedToFolder" : "Widget.CopiedToFolder",
+                    targetFolder.Name,
+                    results.Count));
+            }
+            catch (Exception ex)
+            {
+                await ShowErrorDialogAsync(_localizationService.T("Widget.MoveToFolderFailed"), ex.Message);
+            }
+            finally
+            {
+                if (showOverlay)
+                {
+                    SetImportBusy(false);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -721,7 +1099,7 @@ public sealed partial class WidgetWindow
         }
         finally
         {
-            deferral.Complete();
+            deferral?.Complete();
         }
     }
 
@@ -803,6 +1181,46 @@ public sealed partial class WidgetWindow
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Determines whether the import overlay should be shown based on the
+    /// total size of the files being transferred.  Small files complete
+    /// almost instantly, so showing the overlay would cause an annoying flash.
+    /// </summary>
+    private static bool ShouldShowImportOverlay(IReadOnlyList<string> paths)
+    {
+        const long ThresholdBytes = 10 * 1024 * 1024; // 10 MB
+
+        long totalSize = 0;
+        foreach (string path in paths)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    totalSize += new FileInfo(path).Length;
+                }
+                else if (Directory.Exists(path))
+                {
+                    // For directories, enumerate is too expensive — assume
+                    // large and show the overlay.
+                    return true;
+                }
+            }
+            catch
+            {
+                // If we can't stat the file, err on the side of showing the overlay.
+                return true;
+            }
+
+            if (totalSize >= ThresholdBytes)
+            {
+                return true;
+            }
+        }
+
+        return totalSize >= ThresholdBytes;
     }
 
     private static bool IsInvalidFolderDrop(IReadOnlyList<string> sourcePaths, string destinationFolder)

@@ -12,6 +12,7 @@ public sealed class WidgetShellContentHost
     private IWidgetContent? _pendingContent;
     private int _contentVersion;
     private bool _isDisposed;
+    private bool _isWindowVisible;
 
     public WidgetShellContentHost(WidgetShell shell)
     {
@@ -74,6 +75,7 @@ public sealed class WidgetShellContentHost
         _pendingContent = null;
         _setContent(content);
         content.ApplyAppearance();
+        content.OnWindowVisibilityChanged(_isWindowVisible);
     }
 
     public Task RefreshAsync()
@@ -98,6 +100,7 @@ public sealed class WidgetShellContentHost
 
     public void OnWindowVisibilityChanged(bool visible)
     {
+        _isWindowVisible = visible;
         CurrentContent?.OnWindowVisibilityChanged(visible);
     }
 
@@ -116,6 +119,7 @@ public sealed class WidgetShellContentHost
             _pendingContent = null;
         }
 
+        CurrentContent?.OnWindowVisibilityChanged(false);
         CurrentContent?.OnDeactivated();
         (CurrentContent as IDisposable)?.Dispose();
         CurrentContent = null;

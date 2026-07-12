@@ -398,7 +398,11 @@ public sealed class FileService
             {
                 if (Directory.Exists(path))
                 {
-                    items.Add(await StorageFolder.GetFolderFromPathAsync(path));
+                    var folder = await TryGetStorageFolderAsync(path);
+                    if (folder is not null)
+                    {
+                        items.Add(folder);
+                    }
                 }
                 else if (File.Exists(path))
                 {
@@ -431,7 +435,11 @@ public sealed class FileService
             {
                 if (Directory.Exists(path))
                 {
-                    items.Add(StorageFolder.GetFolderFromPathAsync(path).AsTask().GetAwaiter().GetResult());
+                    var folder = TryGetStorageFolder(path);
+                    if (folder is not null)
+                    {
+                        items.Add(folder);
+                    }
                 }
                 else if (File.Exists(path))
                 {
@@ -451,8 +459,60 @@ public sealed class FileService
         return items;
     }
 
+    /// <summary>
+    /// WinRT's StorageFile/StorageFolder APIs cannot access files or folders
+    /// that carry <see cref="FileAttributes.Hidden"/> or
+    /// <see cref="FileAttributes.System"/> attributes, failing with
+    /// UNABLE_TO_MASK_PATH (0x8007016C).  This is especially common for
+    /// .lnk shortcut files created by certain installers.
+    ///
+    /// This helper temporarily strips those blocking attributes, returns the
+    /// original attribute set (so the caller can restore them), and logs the
+    /// action for diagnostics.
+    /// </summary>
+    private static System.IO.FileAttributes? StripBlockingAttributes(string path)
+    {
+        try
+        {
+            var attrs = File.GetAttributes(path);
+            var blocking = attrs & (System.IO.FileAttributes.Hidden | System.IO.FileAttributes.System);
+            if (blocking == 0)
+            {
+                return null;
+            }
+
+            File.SetAttributes(path, attrs & ~blocking);
+            App.Log($"[StorageItems] Temporarily stripped {blocking} attributes from '{path}'");
+            return attrs; // return original so caller can restore
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void RestoreAttributes(string path, System.IO.FileAttributes? original)
+    {
+        if (original is null)
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetAttributes(path, original.Value);
+        }
+        catch
+        {
+            // Best-effort restore; the file may have been moved/deleted.
+        }
+    }
+
     private static async Task<StorageFile?> TryGetStorageFileAsync(string path)
     {
+        // WinRT broker cannot access files with Hidden/System attributes.
+        var originalAttrs = StripBlockingAttributes(path);
+
         try
         {
             return await StorageFile.GetFileFromPathAsync(path);
@@ -469,8 +529,17 @@ public sealed class FileService
                     return null;
                 }
 
-                var parent = await StorageFolder.GetFolderFromPathAsync(parentPath);
-                return await parent.GetFileAsync(fileName);
+                // Also strip attributes from the parent folder if needed.
+                var parentAttrs = StripBlockingAttributes(parentPath);
+                try
+                {
+                    var parent = await StorageFolder.GetFolderFromPathAsync(parentPath);
+                    return await parent.GetFileAsync(fileName);
+                }
+                finally
+                {
+                    RestoreAttributes(parentPath, parentAttrs);
+                }
             }
             catch (Exception parentEx)
             {
@@ -478,10 +547,16 @@ public sealed class FileService
                 return null;
             }
         }
+        finally
+        {
+            RestoreAttributes(path, originalAttrs);
+        }
     }
 
     private static StorageFile? TryGetStorageFile(string path)
     {
+        var originalAttrs = StripBlockingAttributes(path);
+
         try
         {
             return StorageFile.GetFileFromPathAsync(path).AsTask().GetAwaiter().GetResult();
@@ -498,14 +573,62 @@ public sealed class FileService
                     return null;
                 }
 
-                var parent = StorageFolder.GetFolderFromPathAsync(parentPath).AsTask().GetAwaiter().GetResult();
-                return parent.GetFileAsync(fileName).AsTask().GetAwaiter().GetResult();
+                var parentAttrs = StripBlockingAttributes(parentPath);
+                try
+                {
+                    var parent = StorageFolder.GetFolderFromPathAsync(parentPath).AsTask().GetAwaiter().GetResult();
+                    return parent.GetFileAsync(fileName).AsTask().GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    RestoreAttributes(parentPath, parentAttrs);
+                }
             }
             catch (Exception parentEx)
             {
                 App.Log($"[StorageItems] Failed to access '{path}': {directEx.Message}; parent lookup: {parentEx.Message}");
                 return null;
             }
+        }
+        finally
+        {
+            RestoreAttributes(path, originalAttrs);
+        }
+    }
+
+    private static async Task<StorageFolder?> TryGetStorageFolderAsync(string path)
+    {
+        var originalAttrs = StripBlockingAttributes(path);
+        try
+        {
+            return await StorageFolder.GetFolderFromPathAsync(path);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[StorageItems] Failed to access folder '{path}': {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            RestoreAttributes(path, originalAttrs);
+        }
+    }
+
+    private static StorageFolder? TryGetStorageFolder(string path)
+    {
+        var originalAttrs = StripBlockingAttributes(path);
+        try
+        {
+            return StorageFolder.GetFolderFromPathAsync(path).AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[StorageItems] Failed to access folder '{path}': {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            RestoreAttributes(path, originalAttrs);
         }
     }
 

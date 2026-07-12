@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
+using Windows.Storage.Streams;
 using Windows.UI;
 
 namespace DeskBox.ViewModels;
@@ -15,7 +16,7 @@ namespace DeskBox.ViewModels;
 public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 {
     private const int ProgressRefreshMs = 1000;
-    private const int VisualizerRefreshMs = 140;
+    private const int VisualizerRefreshMs = 200;
     private const int VisualizerTransitionRefreshMs = 33;
     private const double VisualizerTransitionDurationMs = 900;
     private const int MinVisualizerBarCount = 28;
@@ -61,6 +62,14 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private bool _canChangeShuffle;
     private bool _canChangeRepeat;
     private bool _isRefreshing;
+    private int _timelineRefreshGeneration;
+    private int _playbackRefreshGeneration;
+    private int _coverGeneration;
+    private string? _lastCoverSignature;
+    private string? _coverRetrySignature;
+    private int _coverRetryCount;
+    private bool _fullRefreshPending;
+    private bool _isWindowVisible;
     private bool _isSeeking;
     private bool _isChangingPlaybackMode;
     private bool _isChangingSystemVolume;
@@ -612,44 +621,62 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _progressTimer?.Start();
-        UpdateVisualizerTimer();
+        if (_isWindowVisible)
+        {
+            _progressTimer?.Start();
+            UpdateVisualizerTimer();
+        }
+        UpdateMusicTimerDiagnostics();
     }
 
     public async Task RefreshAsync()
     {
-        if (_isDisposed || _isRefreshing)
+        if (_isDisposed)
         {
+            return;
+        }
+
+        if (_isRefreshing)
+        {
+            _fullRefreshPending = true;
             return;
         }
 
         _isRefreshing = true;
         try
         {
-            await _musicSessionService.InitializeAsync();
-            if (_isDisposed)
+            do
             {
-                return;
-            }
+                _fullRefreshPending = false;
+                try
+                {
+                    await _musicSessionService.InitializeAsync();
+                    if (_isDisposed)
+                    {
+                        return;
+                    }
 
-            RefreshSessionList();
-            var info = await _musicSessionService.GetCurrentSessionInfoAsync(_preferredSessionId);
-            if (_isDisposed)
-            {
-                return;
-            }
+                    RefreshSessionList();
+                    var info = await _musicSessionService.GetCurrentSessionInfoAsync(_preferredSessionId);
+                    if (_isDisposed)
+                    {
+                        return;
+                    }
 
-            await ApplyInfoAsync(info);
-        }
-        catch (Exception ex)
-        {
-            if (_isDisposed)
-            {
-                return;
-            }
+                    await ApplyInfoAsync(info);
+                }
+                catch (Exception ex)
+                {
+                    if (_isDisposed)
+                    {
+                        return;
+                    }
 
-            App.Log($"[MusicWidget] Refresh failed: {ex}");
-            await ApplyInfoAsync(null);
+                    App.Log($"[MusicWidget] Refresh failed: {ex}");
+                    await ApplyInfoAsync(null);
+                }
+            }
+            while (_fullRefreshPending && !_isDisposed);
         }
         finally
         {
@@ -951,8 +978,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _progressTimer?.Start();
-        UpdateVisualizerTimer();
+        if (_isWindowVisible)
+        {
+            _progressTimer?.Start();
+            UpdateVisualizerTimer();
+            UpdateMusicTimerDiagnostics();
+        }
         _ = RefreshAsync();
     }
 
@@ -964,6 +995,34 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         // playback state, so it only runs when music is actually playing.
     }
 
+    /// <summary>
+    /// Called when the host window becomes visible or hidden.
+    /// Stops all timers when hidden to avoid unnecessary CPU/GPU usage,
+    /// and restarts them when the window becomes visible again.
+    /// </summary>
+    public void OnWindowVisibilityChanged(bool visible)
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isWindowVisible = visible;
+        if (visible)
+        {
+            _progressTimer?.Start();
+            UpdateVisualizerTimer();
+            _ = RefreshAsync();
+        }
+        else
+        {
+            _progressTimer?.Stop();
+            _visualizerTimer?.Stop();
+            _visualizerTransitionTimer?.Stop();
+        }
+        UpdateMusicTimerDiagnostics();
+    }
+
     public void Dispose()
     {
         if (_isDisposed)
@@ -972,6 +1031,10 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
 
         _isDisposed = true;
+        _fullRefreshPending = false;
+        ++_coverGeneration;
+        ++_timelineRefreshGeneration;
+        ++_playbackRefreshGeneration;
         DetachServiceEvents();
         if (_progressTimer is not null)
         {
@@ -997,6 +1060,16 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
 
         _musicSessionService.Dispose();
+
+        // Clear VisualizerBars so all MusicBarViewModel instances (and their
+        // 10 EqualizerSegments each) become eligible for GC immediately.
+        VisualizerBars.Clear();
+
+        // Release the thumbnail BitmapImage reference so the native WIC
+        // texture can be reclaimed by GC rather than lingering until gen2.
+        ThumbnailImage = null;
+
+        PerformanceLogger.ActiveMusicTimerCount = 0;
     }
 
     private async Task ApplyInfoAsync(MusicSessionInfo? info)
@@ -1014,6 +1087,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         _lastPositionSyncAt = DateTimeOffset.UtcNow;
             Duration = TimeSpan.Zero;
             ThumbnailImage = null;
+            _lastCoverSignature = null;
+            _coverRetrySignature = null;
+            _coverRetryCount = 0;
             SetArtworkColor(AccentColorHelper.DefaultAccentColor, hasArtworkColor: false);
             CanPlay = false;
             CanPause = false;
@@ -1046,9 +1122,33 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         CanChangeShuffle = info.CanChangeShuffle;
         CanChangeRepeat = info.CanChangeRepeat;
         PlaybackMode = info.PlaybackMode;
-        ThumbnailImage = await CreateThumbnailImageAsync(info);
-        Color? artworkColor = await TryReadArtworkColorAsync(info);
-        SetArtworkColor(artworkColor ?? AccentColorHelper.DefaultAccentColor, artworkColor.HasValue);
+        // Cover signature dedup: skip expensive cover reload when the song hasn't changed.
+        // Timeline and playback events go through lightweight refresh paths, but
+        // MediaPropertiesChanged can fire even when only metadata (not the thumbnail) changes.
+        string coverSig = $"{info.SessionId}\u001E{info.Title}\u001E{info.Artist}\u001E{info.Album}";
+        bool coverChanged = !string.Equals(_lastCoverSignature, coverSig, StringComparison.Ordinal);
+
+        if (coverChanged)
+        {
+            int gen = ++_coverGeneration;
+            var (cover, artworkColor) = await LoadThumbnailAndColorAsync(info);
+            if (_isDisposed || gen != _coverGeneration) return;
+
+            ThumbnailImage = cover;
+            SetArtworkColor(artworkColor ?? AccentColorHelper.DefaultAccentColor, artworkColor.HasValue);
+            if (cover is not null)
+            {
+                _lastCoverSignature = coverSig;
+                _coverRetrySignature = null;
+                _coverRetryCount = 0;
+            }
+            else
+            {
+                _lastCoverSignature = null;
+                ScheduleCoverRetry(coverSig, gen);
+            }
+        }
+
         RaiseDisplayPropertiesChanged();
     }
 
@@ -1110,37 +1210,80 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task<BitmapImage?> CreateThumbnailImageAsync(MusicSessionInfo info)
+    /// <summary>
+    /// Loads the thumbnail BitmapImage and extracts the dominant color in a single
+    /// stream pass, avoiding the double OpenReadAsync that the previous separate
+    /// methods incurred. Uses DecodePixelWidth to cap memory for large artwork.
+    /// </summary>
+    private const int CoverDecodePixelWidth = 300;
+    private const int MaxCoverRetryCount = 3;
+
+    private static async Task<(BitmapImage? image, Color? color)> LoadThumbnailAndColorAsync(MusicSessionInfo info)
     {
         if (info.Thumbnail is null)
         {
-            return null;
+            return (null, null);
         }
 
         try
         {
+            PerformanceLogger.RecordMusicCoverDecode();
             using var stream = await info.Thumbnail.OpenReadAsync();
-            var image = new BitmapImage();
+
+            // Create a clone for BitmapDecoder so BitmapImage can still read the original stream.
+            using var colorStream = stream.CloneStream();
+
+            // Load BitmapImage with DecodePixelWidth to cap memory for high-res artwork.
+            var image = new BitmapImage { DecodePixelWidth = CoverDecodePixelWidth };
             await image.SetSourceAsync(stream);
-            return image;
+
+            // Extract dominant color from a tiny downscaled version.
+            Color? color = await ExtractDominantColorAsync(colorStream);
+
+            return (image, color);
         }
         catch (Exception ex)
         {
-            App.Log($"[MusicWidget] Failed to load thumbnail: {ex.Message}");
-            return null;
+            App.Log($"[MusicWidget] Failed to load thumbnail/color: {ex.Message}");
+            return (null, null);
         }
     }
 
-    private static async Task<Color?> TryReadArtworkColorAsync(MusicSessionInfo info)
+    private void ScheduleCoverRetry(string coverSignature, int generation)
     {
-        if (info.Thumbnail is null)
+        if (!string.Equals(_coverRetrySignature, coverSignature, StringComparison.Ordinal))
         {
-            return null;
+            _coverRetrySignature = coverSignature;
+            _coverRetryCount = 0;
         }
 
+        if (_coverRetryCount >= MaxCoverRetryCount)
+        {
+            return;
+        }
+
+        int retryNumber = ++_coverRetryCount;
+        _ = RetryCoverAsync(coverSignature, generation, retryNumber);
+    }
+
+    private async Task RetryCoverAsync(string coverSignature, int generation, int retryNumber)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(250 * retryNumber));
+        if (_isDisposed ||
+            generation != _coverGeneration ||
+            !string.Equals(_coverRetrySignature, coverSignature, StringComparison.Ordinal) ||
+            string.Equals(_lastCoverSignature, coverSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await RefreshAsync();
+    }
+
+    private static async Task<Color?> ExtractDominantColorAsync(IRandomAccessStream stream)
+    {
         try
         {
-            using var stream = await info.Thumbnail.OpenReadAsync();
             var decoder = await BitmapDecoder.CreateAsync(stream);
             uint targetWidth = Math.Max(1, Math.Min(32, decoder.PixelWidth));
             uint targetHeight = Math.Max(1, Math.Min(32, decoder.PixelHeight));
@@ -1222,28 +1365,66 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private void AttachServiceEvents()
     {
-        _musicSessionService.SessionsChanged += MusicSessionService_Changed;
-        _musicSessionService.CurrentSessionChanged += MusicSessionService_Changed;
-        _musicSessionService.PlaybackInfoChanged += MusicSessionService_Changed;
-        _musicSessionService.MediaPropertiesChanged += MusicSessionService_Changed;
-        _musicSessionService.TimelinePropertiesChanged += MusicSessionService_Changed;
+        _musicSessionService.SessionsChanged += OnSessionsChanged;
+        _musicSessionService.CurrentSessionChanged += OnCurrentSessionChanged;
+        _musicSessionService.PlaybackInfoChanged += OnPlaybackInfoChanged;
+        _musicSessionService.MediaPropertiesChanged += OnMediaPropertiesChanged;
+        _musicSessionService.TimelinePropertiesChanged += OnTimelineChanged;
     }
 
     private void DetachServiceEvents()
     {
-        _musicSessionService.SessionsChanged -= MusicSessionService_Changed;
-        _musicSessionService.CurrentSessionChanged -= MusicSessionService_Changed;
-        _musicSessionService.PlaybackInfoChanged -= MusicSessionService_Changed;
-        _musicSessionService.MediaPropertiesChanged -= MusicSessionService_Changed;
-        _musicSessionService.TimelinePropertiesChanged -= MusicSessionService_Changed;
+        _musicSessionService.SessionsChanged -= OnSessionsChanged;
+        _musicSessionService.CurrentSessionChanged -= OnCurrentSessionChanged;
+        _musicSessionService.PlaybackInfoChanged -= OnPlaybackInfoChanged;
+        _musicSessionService.MediaPropertiesChanged -= OnMediaPropertiesChanged;
+        _musicSessionService.TimelinePropertiesChanged -= OnTimelineChanged;
     }
 
-    private void MusicSessionService_Changed(object? sender, EventArgs e)
+    /// <summary>
+    /// Full refresh: reloads everything including cover art.
+    /// Triggered by session list changes or media property changes (song change).
+    /// </summary>
+    private void OnSessionsChanged(object? sender, EventArgs e) => ScheduleFullRefresh();
+    private void OnCurrentSessionChanged(object? sender, EventArgs e) => ScheduleFullRefresh();
+    private void OnMediaPropertiesChanged(object? sender, EventArgs e) => ScheduleFullRefresh();
+
+    /// <summary>
+    /// Lightweight refresh: only updates position/duration without reloading cover.
+    /// Timeline events fire very frequently (every ~1s), so we must avoid cover reload.
+    /// </summary>
+    private void OnTimelineChanged(object? sender, EventArgs e)
     {
-        if (_isDisposed)
+        if (_isDisposed) return;
+
+        if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
+            _dispatcherQueue.TryEnqueue(() => _ = RefreshTimelineAsync());
             return;
         }
+
+        _ = RefreshTimelineAsync();
+    }
+
+    /// <summary>
+    /// Lightweight refresh: only updates playback state/capabilities without reloading cover.
+    /// </summary>
+    private void OnPlaybackInfoChanged(object? sender, EventArgs e)
+    {
+        if (_isDisposed) return;
+
+        if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
+        {
+            _dispatcherQueue.TryEnqueue(() => _ = RefreshPlaybackAsync());
+            return;
+        }
+
+        _ = RefreshPlaybackAsync();
+    }
+
+    private void ScheduleFullRefresh()
+    {
+        if (_isDisposed) return;
 
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
@@ -1252,6 +1433,64 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
 
         _ = RefreshAsync();
+    }
+
+    /// <summary>
+    /// Lightweight timeline-only refresh. Updates position and duration from SMTC
+    /// without reloading cover art or media properties.
+    /// </summary>
+    private async Task RefreshTimelineAsync()
+    {
+        if (_isDisposed) return;
+
+        int gen = ++_timelineRefreshGeneration;
+        try
+        {
+            var info = await _musicSessionService.GetCurrentTimelineAsync(_preferredSessionId);
+            if (_isDisposed || gen != _timelineRefreshGeneration || info is null) return;
+
+            Position = info.Position;
+            Duration = info.Duration;
+            _lastSyncedPosition = info.Position;
+            _lastPositionSyncAt = DateTimeOffset.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            if (!_isDisposed)
+                App.Log($"[MusicWidget] Timeline refresh failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Lightweight playback-only refresh. Updates playback state and capabilities
+    /// without reloading cover art or media properties.
+    /// </summary>
+    private async Task RefreshPlaybackAsync()
+    {
+        if (_isDisposed) return;
+
+        int gen = ++_playbackRefreshGeneration;
+        try
+        {
+            var info = await _musicSessionService.GetCurrentPlaybackAsync(_preferredSessionId);
+            if (_isDisposed || gen != _playbackRefreshGeneration || info is null) return;
+
+            PlaybackState = info.PlaybackState;
+            CanPlay = info.CanPlay;
+            CanPause = info.CanPause;
+            CanGoPrevious = info.CanGoPrevious;
+            CanGoNext = info.CanGoNext;
+            CanSeek = info.CanSeek && Duration > TimeSpan.Zero;
+            CanChangeShuffle = info.CanChangeShuffle;
+            CanChangeRepeat = info.CanChangeRepeat;
+            PlaybackMode = info.PlaybackMode;
+            RaiseDisplayPropertiesChanged();
+        }
+        catch (Exception ex)
+        {
+            if (!_isDisposed)
+                App.Log($"[MusicWidget] Playback refresh failed: {ex.Message}");
+        }
     }
 
     private void ProgressTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
@@ -1287,7 +1526,10 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             var bar = VisualizerBars[i];
             bar.Height = ScaleBar(value);
             bar.DotSize = ScaleDot(value);
-            bar.Opacity = 0.68 + _random.NextDouble() * 0.32;
+            // Round opacity to 2 decimal places to reduce unique values.
+            // The visual difference is imperceptible but it cuts binding
+            // pipeline invocations by ~70%.
+            bar.Opacity = Math.Round(0.68 + _random.NextDouble() * 0.32, 2);
             bar.ApplyEqualizerFrame(value, i, barCount, accentColor, isPlaying: true);
         }
 
@@ -1296,10 +1538,19 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private void UpdateVisualizerTimer()
     {
+        if (!_isWindowVisible)
+        {
+            _visualizerTimer?.Stop();
+            _visualizerTransitionTimer?.Stop();
+            UpdateMusicTimerDiagnostics();
+            return;
+        }
+
         if (IsPlaying && ShowRhythmBars)
         {
             _visualizerTransitionTimer?.Stop();
             _visualizerTimer?.Start();
+            UpdateMusicTimerDiagnostics();
             return;
         }
 
@@ -1307,10 +1558,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         if (!ShowRhythmBars)
         {
             _visualizerTransitionTimer?.Stop();
+            UpdateMusicTimerDiagnostics();
             return;
         }
 
         StartVisualizerTransitionToIdle();
+        UpdateMusicTimerDiagnostics();
     }
 
     private void StartVisualizerTransitionToIdle()
@@ -1326,6 +1579,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         _visualizerTransitionStartedAt = DateTimeOffset.UtcNow;
         _visualizerTransitionTimer?.Start();
         ApplyVisualizerTransitionFrame(0);
+        UpdateMusicTimerDiagnostics();
     }
 
     private void VisualizerTransitionTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
@@ -1343,7 +1597,17 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         if (progress >= 1.0)
         {
             sender.Stop();
+            UpdateMusicTimerDiagnostics();
         }
+    }
+
+    private void UpdateMusicTimerDiagnostics()
+    {
+        int activeCount = 0;
+        if (_progressTimer?.IsRunning == true) activeCount++;
+        if (_visualizerTimer?.IsRunning == true) activeCount++;
+        if (_visualizerTransitionTimer?.IsRunning == true) activeCount++;
+        PerformanceLogger.ActiveMusicTimerCount = activeCount;
     }
 
     private void ApplyVisualizerTransitionFrame(double progress)

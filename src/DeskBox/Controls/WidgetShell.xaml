@@ -33,6 +33,7 @@
             PointerMoved="TitleBarGrid_PointerMoved"
             PointerPressed="TitleBarGrid_PointerPressed"
             PointerReleased="TitleBarGrid_PointerReleased"
+            PointerCaptureLost="TitleBarGrid_PointerCaptureLost"
             RightTapped="TitleBarGrid_RightTapped">
             <ContentPresenter
                 x:Name="CustomTitleBarContentPresenter"

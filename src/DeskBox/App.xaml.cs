@@ -47,6 +47,7 @@ public partial class App : Application
     private const string TodoSnoozeConfirmationNotificationGroup = "todo-feedback";
     private const string TodoSnoozeConfirmationNotificationTag = "todo-snooze-confirmation";
     private const string PendingNativeNotificationActivationFileName = "pending-notification-activation.txt";
+    private const string PendingJumpListArgumentFileName = "pending-jumplist-arg.txt";
     private const string VerboseLoggingEnvironmentVariable = "DESKBOX_VERBOSE_LOG";
     private static readonly bool EnableVerboseLogging = IsEnabledEnvironmentValue(
         Environment.GetEnvironmentVariable(VerboseLoggingEnvironmentVariable));
@@ -55,6 +56,9 @@ public partial class App : Application
     private static readonly string PendingNativeNotificationActivationPath = Path.Combine(
         DeskBoxDataPathService.Current.RootPath,
         PendingNativeNotificationActivationFileName);
+    private static readonly string PendingJumpListArgumentPath = Path.Combine(
+        DeskBoxDataPathService.Current.RootPath,
+        PendingJumpListArgumentFileName);
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> s_logQueue = new();
     private static readonly SemaphoreSlim s_logSignal = new(0);
     private static int s_logWorkerStarted;
@@ -77,6 +81,7 @@ public partial class App : Application
     private OnboardingWindow? _onboardingWindow;
     private NativeAppNotificationService? _nativeNotificationService;
     private TodoReminderService? _todoReminderService;
+    private DisplayAreaWatcherService? _displayAreaWatcher;
     private bool _widgetsRaisedFromTray;
     private bool _hasUpdateAvailable;
     private bool _updateNotificationShown;
@@ -101,6 +106,7 @@ public partial class App : Application
     public WidgetManager? WidgetManager { get; private set; }
     public ResizeGuideOverlayService ResizeGuideOverlay { get; } = new();
     public NativeAppNotificationService? NativeNotificationService => _nativeNotificationService;
+    public DisplayAreaWatcherService? DisplayAreaWatcher => _displayAreaWatcher;
     public TodoReminderService? TodoReminderService => _todoReminderService;
     public SettingsWindow? SettingsWindowInstance => _settingsWindow;
 
@@ -108,6 +114,10 @@ public partial class App : Application
 
     public App()
     {
+        // Register AUMID early so the taskbar button and Jump List work
+        // for both packaged (MSIX) and unpackaged (Direct) distributions.
+        JumpListService.RegisterAppUserModelId();
+
         Log("App() constructor start");
         bool launchedForStartup = IsStartupLaunch(Environment.GetCommandLineArgs());
         string? nativeNotificationActivationArguments = TryGetCurrentNativeNotificationActivationArguments();
@@ -123,6 +133,16 @@ public partial class App : Application
             {
                 Log("Another instance running; startup launch exiting silently");
                 Environment.Exit(0);
+            }
+            else
+            {
+                // Check for Jump List activation arguments from command line
+                string? jumpListArg = JumpListService.TryGetJumpListArgument(
+                    string.Join(' ', Environment.GetCommandLineArgs()));
+                if (jumpListArg is not null)
+                {
+                    StorePendingJumpListArgument(jumpListArg);
+                }
             }
 
             Log("Another instance running, signaling existing instance");
@@ -803,6 +823,23 @@ public partial class App : Application
             }
 
             ScheduleBackgroundUpdateCheck();
+            ScheduleMemoryDiagnostics();
+            SchedulePeriodicMemoryCleanup();
+
+            // Start display area watcher for hot-plug detection
+            _displayAreaWatcher = new DisplayAreaWatcherService(UiDispatcherQueue);
+            _displayAreaWatcher.DisplaysChanged += OnDisplaysChanged;
+            _displayAreaWatcher.Start();
+
+            // Configure taskbar Jump List with quick actions
+            _ = JumpListService.ConfigureAsync(LocalizationService);
+
+            // Handle Jump List activation on first launch (not second instance)
+            string? firstLaunchJumpArg = JumpListService.TryGetJumpListArgument(args.Arguments);
+            if (firstLaunchJumpArg is not null)
+            {
+                _ = JumpListService.HandleActivationAsync(firstLaunchJumpArg);
+            }
 
             Log("OnLaunched completed successfully");
         }
@@ -810,6 +847,107 @@ public partial class App : Application
         {
             Log($"Exception in OnLaunched: {ex}");
         }
+    }
+
+    /// <summary>
+    /// Called when the set of displays changes (hot-plug, resolution change, etc.).
+    /// Invalidates caches and triggers widget repositioning.
+    /// </summary>
+    private async void OnDisplaysChanged()
+    {
+        try
+        {
+            Log($"[DisplayAreaWatcher] Displays changed, triggering widget reposition");
+
+            // Invalidate the desktop icon view cache since work areas may have changed
+            WidgetLayerService.InvalidateDesktopIconViewCache();
+
+            // Reposition all widgets to ensure they're on visible screens
+            if (WidgetManager is not null)
+            {
+                await WidgetManager.RestoreWidgetPositionsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[DisplayAreaWatcher] OnDisplaysChanged failed: {ex}");
+        }
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _memoryDiagnosticTimer;
+    private CancellationTokenSource? _periodicGcCts;
+
+    /// <summary>
+    /// When perf logging is enabled, samples memory and cache statistics
+    /// every 30 seconds so long-running memory trends can be observed.
+    /// </summary>
+    private void ScheduleMemoryDiagnostics()
+    {
+        if (!PerformanceLogger.IsEnabled)
+        {
+            return;
+        }
+
+        var dq = UiDispatcherQueue;
+        if (dq is null)
+        {
+            return;
+        }
+
+        _memoryDiagnosticTimer = dq.CreateTimer();
+        _memoryDiagnosticTimer.Interval = TimeSpan.FromSeconds(30);
+        _memoryDiagnosticTimer.IsRepeating = true;
+        _memoryDiagnosticTimer.Tick += (_, _) => PerformanceLogger.SampleMemory();
+        _memoryDiagnosticTimer.Start();
+        Log("[Perf] Memory diagnostics timer started (30s interval)");
+    }
+
+    /// <summary>
+    /// Starts a background loop that periodically triggers GC to release
+    /// native Composition/COM resources that the WinUI framework holds via
+    /// finalizable wrappers.  Without this, high-frequency UI updates (e.g.
+    /// the music visualizer) accumulate native memory that the GC only
+    /// reclaims during gen2 collection, which may not happen for a long time.
+    /// </summary>
+    private void SchedulePeriodicMemoryCleanup()
+    {
+        _periodicGcCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Wait for initial startup to settle before first collection.
+                await Task.Delay(TimeSpan.FromMinutes(1), _periodicGcCts.Token);
+
+                while (!_periodicGcCts.Token.IsCancellationRequested)
+                {
+                    // Run on a background thread to avoid blocking the UI.
+                    // Two-pass collection: first pass promotes finalizable
+                    // objects to the freachable queue, second pass reclaims
+                    // them after finalizers have run.
+                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+
+                    if (PerformanceLogger.IsEnabled)
+                    {
+                        PerformanceLogger.SampleMemory();
+                        App.Log("[Perf] Periodic GC cleanup completed");
+                    }
+
+                    await Task.Delay(TimeSpan.FromMinutes(2), _periodicGcCts.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during shutdown.
+            }
+            catch (Exception ex)
+            {
+                Log($"[Perf] Periodic GC cleanup error: {ex}");
+            }
+        });
+        Log("[Perf] Periodic memory cleanup scheduled (2 min interval)");
     }
 
     private void ScheduleBackgroundUpdateCheck()
@@ -1316,6 +1454,40 @@ public partial class App : Application
         }
     }
 
+    private static void StorePendingJumpListArgument(string argument)
+    {
+        try
+        {
+            Directory.CreateDirectory(DeskBoxDataPathService.Current.RootPath);
+            File.WriteAllText(PendingJumpListArgumentPath, argument);
+            Log($"[JumpList] Forwarded jump list activation to running instance arg={argument}");
+        }
+        catch (Exception ex)
+        {
+            Log($"[JumpList] Failed to forward jump list activation: {ex}");
+        }
+    }
+
+    private static string? TakePendingJumpListArgument()
+    {
+        try
+        {
+            if (!File.Exists(PendingJumpListArgumentPath))
+            {
+                return null;
+            }
+
+            string argument = File.ReadAllText(PendingJumpListArgumentPath);
+            File.Delete(PendingJumpListArgumentPath);
+            return string.IsNullOrWhiteSpace(argument) ? null : argument;
+        }
+        catch (Exception ex)
+        {
+            Log($"[JumpList] Failed to read forwarded jump list activation: {ex}");
+            return null;
+        }
+    }
+
     private void OnUpdateCheckCompleted(AppUpdateCheckResult result)
     {
         if (UiDispatcherQueue is { HasThreadAccess: false } dispatcherQueue)
@@ -1407,6 +1579,13 @@ public partial class App : Application
             HandleNativeNotificationActivation(
                 nativeNotificationActivationArguments,
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+            return;
+        }
+
+        string? jumpListArgument = TakePendingJumpListArgument();
+        if (!string.IsNullOrWhiteSpace(jumpListArgument))
+        {
+            await JumpListService.HandleActivationAsync(jumpListArgument);
             return;
         }
 
@@ -2022,12 +2201,13 @@ public partial class App : Application
 
     public void RefreshSettingsWindow()
     {
-        if (_settingsWindow is not null)
+        if (_settingsWindow is null)
         {
-            _settingsWindow.Close();
+            OpenSettings();
+            return;
         }
 
-        OpenSettings();
+        _settingsWindow.RefreshLocalizedContent();
     }
 
     private void OpenManagedStorageFromTray()
@@ -2075,7 +2255,8 @@ public partial class App : Application
         App.UiDispatcherQueue?.TryEnqueue(async () =>
         {
             await Task.Delay(2000);
-            GC.Collect(1, GCCollectionMode.Optimized, blocking: false, compacting: false);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
+            Localized.PruneDeadTargets();
         });
     }
 
@@ -2093,6 +2274,17 @@ public partial class App : Application
 
     private async Task ShutdownApplicationAsync()
     {
+        // Stop the display area watcher FIRST, before closing any widgets,
+        // so that no DisplaysChanged callback can fire during teardown
+        // and access half-closed window objects.
+        _displayAreaWatcher?.Dispose();
+        _displayAreaWatcher = null;
+
+        _memoryDiagnosticTimer?.Stop();
+        _memoryDiagnosticTimer = null;
+        _periodicGcCts?.Cancel();
+        _periodicGcCts?.Dispose();
+        _periodicGcCts = null;
         await SettingsService.SaveAsync();
         _nativeNotificationService?.Dispose();
         _nativeNotificationService = null;

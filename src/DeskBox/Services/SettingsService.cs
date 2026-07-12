@@ -142,6 +142,7 @@ public const int WeatherRefreshMaxMinutes = 180;
     private readonly string _settingsPath;
     private AppSettings _settings = new();
     private readonly object _lock = new();
+    private readonly SemaphoreSlim _fileWriteLock = new(1, 1);
     private CancellationTokenSource? _debounceCts;
     private CancellationTokenSource? _appearancePreviewCts;
 
@@ -336,6 +337,7 @@ changed |= NormalizeDeletionSettings(_settings);
 
     private async Task SaveToFileOnlyAsync()
     {
+        await _fileWriteLock.WaitAsync();
         try
         {
             string json;
@@ -349,9 +351,9 @@ changed |= NormalizeDeletionSettings(_settings);
                 NormalizeHotkeySettings(_settings);
                 NormalizeQuickCaptureSettings(_settings);
                 NormalizeTodoSettings(_settings);
-NormalizeMusicSettings(_settings);
-NormalizeWeatherSettings(_settings);
-json = JsonSerializer.Serialize(_settings, s_jsonOptions);
+                NormalizeMusicSettings(_settings);
+                NormalizeWeatherSettings(_settings);
+                json = JsonSerializer.Serialize(_settings, s_jsonOptions);
             }
 
             // Atomic write: serialize to a temp file, then rename to the target path.
@@ -370,6 +372,10 @@ json = JsonSerializer.Serialize(_settings, s_jsonOptions);
         {
             System.Diagnostics.Debug.WriteLine($"[SettingsService] Failed to save settings: {ex.Message}");
         }
+        finally
+        {
+            _fileWriteLock.Release();
+        }
     }
 
     /// <summary>
@@ -383,7 +389,20 @@ json = JsonSerializer.Serialize(_settings, s_jsonOptions);
             SettingsChanged?.Invoke();
         }
 
-        _debounceCts?.Cancel();
+        // Cancel and dispose the previous CTS to avoid leaking native
+        // kernel event handles.  Each undisposed CTS holds a native handle
+        // that is only reclaimed by the GC finalizer, which may not run
+        // for a long time in a large-heap app.
+        //
+        // Note: The CTS may have already been disposed by a completed
+        // Task.Run lambda's finally block (see below).  Catch
+        // ObjectDisposedException defensively to handle this race.
+        try
+        {
+            _debounceCts?.Cancel();
+            _debounceCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
         _debounceCts = new CancellationTokenSource();
         var token = _debounceCts.Token;
 
@@ -398,12 +417,24 @@ json = JsonSerializer.Serialize(_settings, s_jsonOptions);
                 }
             }
             catch (TaskCanceledException) { }
+            // Do NOT dispose the CTS here — _debounceCts may still
+            // reference it, and disposing it here would cause the next
+            // SaveDebounced call to throw ObjectDisposedException when
+            // it tries to Cancel/Dispose the (already-disposed) CTS.
+            // The CTS will be disposed by the next SaveDebounced call
+            // or by the GC finalizer.
         });
     }
 
     public void RequestAppearancePreview()
     {
-        _appearancePreviewCts?.Cancel();
+        // Dispose the previous CTS to avoid leaking native handles.
+        try
+        {
+            _appearancePreviewCts?.Cancel();
+            _appearancePreviewCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
         _appearancePreviewCts = new CancellationTokenSource();
         var token = _appearancePreviewCts.Token;
 
@@ -418,6 +449,7 @@ json = JsonSerializer.Serialize(_settings, s_jsonOptions);
                 }
             }
             catch (TaskCanceledException) { }
+            // Do NOT dispose the CTS here — same rationale as SaveDebounced.
         });
     }
 

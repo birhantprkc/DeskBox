@@ -46,7 +46,10 @@ public sealed partial class SettingsWindow : Window
     private readonly HashSet<Slider> _pressedAppearanceSliders = [];
     private readonly DispatcherTimer _resizeSettleTimer = new() { Interval = ResizeSettleDelay };
     private readonly DispatcherTimer _sectionLayoutSettleTimer = new() { Interval = SectionLayoutSettleDelay };
+    private readonly PointerEventHandler _settingsRootPointerPressedHandler;
+    private readonly PointerEventHandler _settingsRootPointerReleasedHandler;
     private bool _isSubclassInstalled;
+    private bool _isClosed;
     private bool _isAppearanceSliderDragging;
     private bool _isRecordingHotkey;
     private bool _isRefreshingFeatureWidgetList;
@@ -80,30 +83,21 @@ public sealed partial class SettingsWindow : Window
         _themeService = themeService;
         _localizationService = localizationService;
         ViewModel = new SettingsViewModel(settingsService, themeService, localizationService, App.Current.AppUpdateService);
+        _settingsRootPointerPressedHandler = SettingsRoot_PointerPressedHandled;
+        _settingsRootPointerReleasedHandler = SettingsRoot_PointerReleasedHandled;
         InitializeComponent();
 
         SettingsRoot.DataContext = ViewModel;
         SettingsRoot.AddHandler(
             UIElement.PointerPressedEvent,
-            new PointerEventHandler(SettingsRoot_PointerPressedHandled),
+            _settingsRootPointerPressedHandler,
             handledEventsToo: true);
         SettingsRoot.AddHandler(
             UIElement.PointerReleasedEvent,
-            new PointerEventHandler(SettingsRoot_PointerReleasedHandled),
+            _settingsRootPointerReleasedHandler,
             handledEventsToo: true);
         CollectResponsiveRows(SettingsRoot);
-        SettingsRoot.Loaded += (_, _) =>
-        {
-            CollectResponsiveRows(SettingsRoot);
-            RefreshFeatureWidgetList();
-            _ = ViewModel.RefreshQuickAccessStateAsync();
-            ViewModel.RefreshGlobalHotkeyState();
-            _ = ViewModel.RefreshQuickCaptureImageCacheInfoAsync();
-            RefreshGlobalHotkeyControls();
-            UpdateResponsiveLayout(GetWindowWidth());
-            ApplyToggleSwitchContentVisibility();
-            _isSettingsRootLoaded = true;
-        };
+        SettingsRoot.Loaded += SettingsRoot_Loaded;
 
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop
         {
@@ -143,36 +137,71 @@ public sealed partial class SettingsWindow : Window
         ShowSettingsSection("General");
         UpdateResponsiveLayout(GetWindowWidth());
 
-        SizeChanged += (_, args) =>
-        {
-            UpdateResponsiveLayout(args.Size.Width, preferMeasuredContentWidth: false);
-            RestartResizeSettleTimer();
-        };
+        SizeChanged += SettingsWindow_SizeChanged;
 
         _resizeSettleTimer.Tick += ResizeSettleTimer_Tick;
         _sectionLayoutSettleTimer.Tick += SectionLayoutSettleTimer_Tick;
+        Closed += SettingsWindow_Closed;
+    }
 
-        Closed += (_, _) =>
+    private void SettingsRoot_Loaded(object sender, RoutedEventArgs e)
+    {
+        CollectResponsiveRows(SettingsRoot);
+        RefreshFeatureWidgetList();
+        _ = ViewModel.RefreshQuickAccessStateAsync();
+        ViewModel.RefreshGlobalHotkeyState();
+        _ = ViewModel.RefreshQuickCaptureImageCacheInfoAsync();
+        RefreshGlobalHotkeyControls();
+        UpdateResponsiveLayout(GetWindowWidth());
+        ApplyToggleSwitchContentVisibility();
+        _isSettingsRootLoaded = true;
+    }
+
+    private void SettingsWindow_SizeChanged(object sender, WindowSizeChangedEventArgs args)
+    {
+        UpdateResponsiveLayout(args.Size.Width, preferMeasuredContentWidth: false);
+        RestartResizeSettleTimer();
+    }
+
+    private void SettingsWindow_Closed(object sender, WindowEventArgs args)
+    {
+        if (_isClosed)
         {
-            _resizeSettleTimer.Stop();
-            _resizeSettleTimer.Tick -= ResizeSettleTimer_Tick;
-            _sectionLayoutSettleTimer.Stop();
-            _sectionLayoutSettleTimer.Tick -= SectionLayoutSettleTimer_Tick;
-            Win32Helper.ClearWindowTopMost(_hWnd);
-            RemoveMinimumSizeHook();
-            _themeService.AppearanceChanged -= OnAppearanceChanged;
-            _localizationService.LanguageChanged -= OnLanguageChanged;
-            ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-            if (App.Current.GlobalHotkeyService is { } hotkeyService)
-            {
-                hotkeyService.RegistrationChanged -= OnGlobalHotkeyRegistrationChanged;
-            }
-            ViewModel.Dispose();
-            SettingsRoot.DataContext = null;
-            _settingRows.Clear();
-            _metricRows.Clear();
-            _pressedAppearanceSliders.Clear();
-        };
+            return;
+        }
+
+        _isClosed = true;
+        Closed -= SettingsWindow_Closed;
+        SizeChanged -= SettingsWindow_SizeChanged;
+        SettingsRoot.Loaded -= SettingsRoot_Loaded;
+        SettingsRoot.RemoveHandler(UIElement.PointerPressedEvent, _settingsRootPointerPressedHandler);
+        SettingsRoot.RemoveHandler(UIElement.PointerReleasedEvent, _settingsRootPointerReleasedHandler);
+
+        _resizeSettleTimer.Stop();
+        _resizeSettleTimer.Tick -= ResizeSettleTimer_Tick;
+        _sectionLayoutSettleTimer.Stop();
+        _sectionLayoutSettleTimer.Tick -= SectionLayoutSettleTimer_Tick;
+        Win32Helper.ClearWindowTopMost(_hWnd);
+        RemoveMinimumSizeHook();
+        _themeService.AppearanceChanged -= OnAppearanceChanged;
+        _localizationService.LanguageChanged -= OnLanguageChanged;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        if (App.Current.GlobalHotkeyService is { } hotkeyService)
+        {
+            hotkeyService.RegistrationChanged -= OnGlobalHotkeyRegistrationChanged;
+        }
+
+        Bindings.StopTracking();
+        Localized.UntrackTree(SettingsRoot);
+        SettingsRoot.DataContext = null;
+        FeatureWidgetList.Children.Clear();
+        ManagedStorageFolderList.Children.Clear();
+        ViewModel.Dispose();
+        _settingRows.Clear();
+        _metricRows.Clear();
+        _pressedAppearanceSliders.Clear();
+        SystemBackdrop = null;
+        Content = null;
     }
 
     private void SettingsNavigationView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -659,7 +688,31 @@ break;
 
     private void OnLanguageChanged()
     {
-        App.Current.RefreshSettingsWindow();
+        RefreshLocalizedContent();
+    }
+
+    public void RefreshLocalizedContent()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(RefreshLocalizedContent);
+            return;
+        }
+
+        if (_isClosed)
+        {
+            return;
+        }
+
+        ApplyLocalizedText();
+
+        // After ItemsSource is replaced with new localized strings, the
+        // ComboBox internally resets SelectedIndex to -1. The OneWay
+        // SelectedIndex binding may not push the value back because the
+        // binding engine still caches the old value. Defer to the next
+        // frame so all binding updates have been processed, then force
+        // each ComboBox to re-select from the ViewModel.
+        DispatcherQueue.TryEnqueue(RefreshComboBoxSelections);
     }
 
     private void ApplyLocalizedText()
@@ -673,6 +726,65 @@ break;
         if (string.Equals(_currentSettingsSection, "ManagedStorage", StringComparison.Ordinal))
         {
             RefreshManagedStorageFolderList();
+        }
+    }
+
+    /// <summary>
+    /// Forces every ComboBox in the settings tree to re-apply its
+    /// SelectedIndex from the ViewModel.  After a language change the
+    /// ItemsSource arrays are replaced; the ComboBox internally resets
+    /// SelectedIndex to -1, and the OneWay binding may not push the
+    /// value back because the engine still caches the old value.
+    /// </summary>
+    private void RefreshComboBoxSelections()
+    {
+        if (_isClosed)
+        {
+            return;
+        }
+
+        foreach (var combo in FindDescendants<ComboBox>(SettingsRoot))
+        {
+            if (combo.Tag is not string tag)
+            {
+                continue;
+            }
+
+            int index = tag switch
+            {
+                "Theme" => ViewModel.SelectedThemeIndex,
+                "TrayIconStyle" => ViewModel.SelectedTrayIconStyleIndex,
+                "Language" => ViewModel.SelectedLanguageIndex,
+                "WidgetCorner" => ViewModel.SelectedWidgetCornerPreferenceIndex,
+                "WidgetMaterial" => ViewModel.SelectedWidgetMaterialTypeIndex,
+                "WidgetBorder" => ViewModel.SelectedWidgetBorderStyleIndex,
+                "WidgetTitleIconMode" => ViewModel.SelectedWidgetTitleIconModeIndex,
+                "WidgetAnimationEffect" => ViewModel.SelectedWidgetAnimationEffectIndex,
+                "WidgetAnimationSpeed" => ViewModel.SelectedWidgetAnimationSpeedIndex,
+                "WidgetAnimationSlideDirection" => ViewModel.SelectedWidgetAnimationSlideDirectionIndex,
+                "WidgetAnimationEasingIntensity" => ViewModel.SelectedWidgetAnimationEasingIntensityIndex,
+                "DisplayWidgetChromeMode" => ViewModel.SelectedDisplayWidgetChromeModeIndex,
+                "InteractiveWidgetChromeMode" => ViewModel.SelectedInteractiveWidgetChromeModeIndex,
+                "WidgetLayerMode" => ViewModel.SelectedWidgetLayerModeIndex,
+                "QuickCaptureDefaultView" => ViewModel.SelectedQuickCaptureDefaultViewIndex,
+                "QuickCaptureTabStyle" => ViewModel.SelectedQuickCaptureTabStyleIndex,
+                "TodoNewTaskPosition" => ViewModel.SelectedTodoNewTaskPositionIndex,
+                "TodoDefaultFilter" => ViewModel.SelectedTodoDefaultFilterIndex,
+                "TodoTabStyle" => ViewModel.SelectedTodoTabStyleIndex,
+                "TodoReminderOffset" => ViewModel.SelectedTodoReminderOffsetMinutesIndex,
+                "MusicRhythmStyle" => ViewModel.SelectedMusicRhythmStyleIndex,
+                "WeatherTemperatureUnit" => ViewModel.SelectedWeatherTemperatureUnitIndex,
+                "WeatherWindSpeedUnit" => ViewModel.SelectedWeatherWindSpeedUnitIndex,
+                "WeatherDefaultView" => ViewModel.SelectedWeatherDefaultViewIndex,
+                "WeatherSkin" => ViewModel.SelectedWeatherSkinIndex,
+                "WeatherRefreshInterval" => ViewModel.SelectedWeatherRefreshIntervalIndex,
+                _ => -1
+            };
+
+            if (index >= 0 && combo.SelectedIndex != index)
+            {
+                combo.SelectedIndex = index;
+            }
         }
     }
 

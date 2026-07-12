@@ -1226,10 +1226,10 @@ public sealed partial class OnboardingWindow : Window
     private void OnLanguageChanged()
     {
         Title = _localizationService.T("Onboarding.WindowTitle");
+        Localized.RefreshAll(_localizationService);
         PrepareIntroContent();
         SetupStep(animate: false);
         UpdateFooterState();
-        Localized.RefreshAll(_localizationService);
     }
 
     // ════════════════════════════════════════════════════════════

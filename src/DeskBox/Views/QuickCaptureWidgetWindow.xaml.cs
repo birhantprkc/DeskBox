@@ -112,7 +112,6 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
     // ── QuickCapture-specific state ────────────────────────────
     private readonly LocalizationService _localizationService;
-    private readonly ThemeService? _themeService;
     private readonly WidgetContentDescriptor _chromeDescriptor;
     private readonly WidgetChromeModeResolver _chromeModeResolver;
     private bool _focusRootAfterDragClick;
@@ -214,7 +213,6 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         ViewModel = viewModel;
         SettingsService = settingsService;
         _localizationService = localizationService;
-        _themeService = App.Current.ThemeService;
         _chromeDescriptor = new WidgetContentFactory(_localizationService).GetDescriptor(WidgetKind.QuickCapture);
         _chromeModeResolver = new WidgetChromeModeResolver(settingsService);
         InitializeComponent();
@@ -468,11 +466,6 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         // (which fire synchronously from SaveDebounced / SaveAsync)
         // cannot reach a window whose WinRT objects are being torn down.
         _settingsService.SettingsChanged -= OnSettingsChanged;
-        if (_themeService is not null)
-        {
-            _themeService.AppearanceChanged -= OnThemeAppearanceChanged;
-        }
-
         _localizationService.LanguageChanged -= OnLanguageChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         Activated -= QuickCaptureWidgetWindow_Activated;
@@ -524,11 +517,6 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
     private void SetupEventHandlers()
     {
         _settingsService.SettingsChanged += OnSettingsChanged;
-        if (_themeService is not null)
-        {
-            _themeService.AppearanceChanged += OnThemeAppearanceChanged;
-        }
-
         _localizationService.LanguageChanged += OnLanguageChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         Activated += QuickCaptureWidgetWindow_Activated;
@@ -543,6 +531,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
                 child.PointerMoved += ResizeBorder_PointerMoved;
                 child.PointerReleased += ResizeBorder_PointerReleased;
                 child.PointerEntered += ResizeBorder_PointerEntered;
+                child.PointerCaptureLost += ResizeBorder_PointerCaptureLost;
             }
         }
 
@@ -555,11 +544,6 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             // Repeat here for the case where the window is closed via
             // an external path (e.g. Alt+F4) that bypasses CloseWindow().
             _settingsService.SettingsChanged -= OnSettingsChanged;
-            if (_themeService is not null)
-            {
-                _themeService.AppearanceChanged -= OnThemeAppearanceChanged;
-            }
-
             _localizationService.LanguageChanged -= OnLanguageChanged;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
             Activated -= QuickCaptureWidgetWindow_Activated;
@@ -569,9 +553,9 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
             // TrayAnimation.Stop() was already called in CloseWindow().
             // Call again only as a fallback; Stop() is safe to call twice.
-            _trayAnimation.Stop();
+            try { _trayAnimation.Stop(); } catch { }
 
-            CleanupBase();
+            try { CleanupBase(); } catch (Exception ex) { App.Log($"[QuickCapture] CleanupBase failed during close: {ex.Message}"); }
 
             foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
             {
@@ -580,6 +564,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
                     child.PointerMoved -= ResizeBorder_PointerMoved;
                     child.PointerReleased -= ResizeBorder_PointerReleased;
                     child.PointerEntered -= ResizeBorder_PointerEntered;
+                    child.PointerCaptureLost -= ResizeBorder_PointerCaptureLost;
                 }
             }
         };
@@ -683,23 +668,6 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         ApplyBackdropPreference();
         QueueBackdropRefresh();
         ApplyTitleBarLayout();
-    }
-
-    private void OnThemeAppearanceChanged()
-    {
-        if (!DispatcherQueue.HasThreadAccess)
-        {
-            DispatcherQueue.TryEnqueue(OnThemeAppearanceChanged);
-            return;
-        }
-
-        if (_isClosing)
-        {
-            return;
-        }
-
-        ApplyBackdropPreference();
-        QueueBackdropRefresh();
     }
 
     private async void AddButton_Click(object sender, RoutedEventArgs e)
@@ -3318,6 +3286,11 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         ResizeBorder_PointerReleasedCore(sender, e);
     }
 
+    private void ResizeBorder_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        ResizeBorder_PointerCaptureLostCore(sender, e);
+    }
+
     private void ResizeBorder_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not FrameworkElement element)
@@ -3716,9 +3689,12 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             var timer = DispatcherQueue.CreateTimer();
             timer.Interval = TimeSpan.FromMilliseconds(ItemsViewTransitionMs + 80);
             timer.IsRepeating = false;
-            timer.Tick += (_, _) =>
+            timer.Tick += OnTransitionSafetyFallbackTick;
+
+            void OnTransitionSafetyFallbackTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
             {
-                timer.Stop();
+                sender.Stop();
+                sender.Tick -= OnTransitionSafetyFallbackTick;
                 if (element.Visibility == Visibility.Visible)
                 {
                     var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -3729,7 +3705,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
                     }
                     element.Opacity = 1;
                 }
-            };
+            }
             timer.Start();
         });
     }

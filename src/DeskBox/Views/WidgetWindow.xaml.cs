@@ -202,7 +202,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         ConfigureWindow();
         SetupEventHandlers();
 
-        ViewModel.Items.CollectionChanged += (_, _) => QueueEmptyStateUpdate();
+        ViewModel.Items.CollectionChanged += ViewModel_ItemsCollectionChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         UpdateEmptyState();
         ApplyTitleBarLayout();
@@ -229,6 +229,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             {
                 element.PointerMoved += ResizeBorder_PointerMoved;
                 element.PointerReleased += ResizeBorder_PointerReleased;
+                element.PointerCaptureLost += ResizeBorder_PointerCaptureLost;
             }
         }
 
@@ -240,17 +241,22 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             _settingsService.SettingsChanged -= OnSettingsChanged;
             _localizationService.LanguageChanged -= OnLanguageChanged;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            ViewModel.Items.CollectionChanged -= ViewModel_ItemsCollectionChanged;
             _appWindow.Changed -= AppWindow_Changed;
             _displayChangeWatcher?.Dispose();
             _displayChangeWatcher = null;
             _autoRestoreTimer?.Stop();
             _autoRestoreTimer = null;
             StopBackdropRefreshTimer();
-            RemoveFileDropSubclass();
-            _trayAnimation.Stop();
-            RestoreItemContainerTransitions();
-            DisposeAcrylicController();
-            DisposeMicaController();
+            _topMostSafetyTimer?.Stop();
+            _topMostSafetyTimer = null;
+            try { RemoveFileDropSubclass(); } catch (Exception ex) { App.Log($"[WidgetWindow] RemoveFileDropSubclass failed during close: {ex.Message}"); }
+            try { _trayAnimation.Stop(); } catch { }
+            try { RestoreItemContainerTransitions(); } catch { }
+            try { DisposeAcrylicController(); } catch { }
+            try { DisposeMicaController(); } catch { }
+            try { StopDragHighlight(); } catch { }
+            try { TrackWindowClosedForDiagnostics(); } catch { }
 
             foreach (var child in ResizeGrid.Children)
             {
@@ -258,6 +264,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
                 {
                     element.PointerMoved -= ResizeBorder_PointerMoved;
                     element.PointerReleased -= ResizeBorder_PointerReleased;
+                    element.PointerCaptureLost -= ResizeBorder_PointerCaptureLost;
                 }
             }
         };
@@ -787,10 +794,39 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         }
 
         _isMigrationBusy = isBusy;
+        if (isBusy)
+        {
+            MigrationTitleText.Text = _localizationService.T("Widget.Migration.Title");
+            MigrationDescriptionText.Text = _localizationService.T("Widget.Migration.Description");
+        }
         MigrationOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
         MigrationProgressRing.IsActive = isBusy;
         ResizeGrid.IsHitTestVisible = !isBusy;
         RootGrid.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// Shows the overlay with "importing" text during drag-drop file transfers.
+    /// Separate from SetMigrationBusy to use different localized text.
+    /// </summary>
+    public void SetImportBusy(bool isBusy)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => SetImportBusy(isBusy));
+            return;
+        }
+
+        _isMigrationBusy = isBusy;
+        if (isBusy)
+        {
+            MigrationTitleText.Text = _localizationService.T("Widget.Import.Title");
+            MigrationDescriptionText.Text = _localizationService.T("Widget.Import.Description");
+            StopDragHighlight();
+        }
+        MigrationOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+        MigrationProgressRing.IsActive = isBusy;
+        ResizeGrid.IsHitTestVisible = !isBusy;
     }
 
     private void ElevateForInteraction()
@@ -2544,6 +2580,31 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         EndWindowDrag(e);
     }
 
+    private void TitleBarGrid_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isDragging)
+        {
+            return;
+        }
+
+        _isDragging = false;
+        bool hasMoved = _hasMovedTitleBarDrag;
+        _dragCaptureElement = null;
+        App.Current?.ResizeGuideOverlay.EndDrag();
+        if (hasMoved)
+        {
+            var finalPosition = _appWindow.Position;
+            var finalSize = _appWindow.Size;
+            CapturePositionAnchor(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height);
+            UpdateConfigBoundsFromPhysical(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+        }
+        ReleaseInteractionLayer("file-drag-capture-lost");
+        _displayChangeWatcher?.ResumeRestore();
+        _hasMovedTitleBarDrag = false;
+        QueueBackdropRefresh();
+        e.Handled = true;
+    }
+
     private void EndWindowDrag(PointerRoutedEventArgs e)
     {
         if (!_isDragging)
@@ -2953,6 +3014,27 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         e.Handled = true;
     }
 
+    private void ResizeBorder_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isResizing)
+        {
+            return;
+        }
+
+        _isResizing = false;
+        _resizeDirection = string.Empty;
+        _dragCaptureElement = null;
+        App.Current?.ResizeGuideOverlay.EndResize();
+        var finalPosition = _appWindow.Position;
+        var finalSize = _appWindow.Size;
+        CapturePositionAnchor(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height);
+        UpdateConfigBoundsFromPhysical(finalPosition.X, finalPosition.Y, finalSize.Width, finalSize.Height, persist: true);
+        ReleaseInteractionLayer("file-resize-capture-lost");
+        _displayChangeWatcher?.ResumeRestore();
+        QueueBackdropRefresh();
+        e.Handled = true;
+    }
+
     private void ResizeBorder_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not UIElement element)
@@ -2984,6 +3066,11 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         EmptyState.Visibility = ViewModel.Items.Count == 0 && !ViewModel.IsLoading
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void ViewModel_ItemsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        QueueEmptyStateUpdate();
     }
 
     private void QueueEmptyStateUpdate()

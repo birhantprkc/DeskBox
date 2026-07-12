@@ -89,7 +89,7 @@ public sealed class ThemeService
         }
 
         _settingsService.Settings.Theme = theme;
-        _settingsService.SaveDebounced();
+        _settingsService.SaveDebounced(notifySubscribers: false);
         RefreshAppearance();
     }
 
@@ -102,7 +102,7 @@ public sealed class ThemeService
         }
 
         _settingsService.Settings.AccentColorMode = normalizedMode;
-        _settingsService.SaveDebounced();
+        _settingsService.SaveDebounced(notifySubscribers: false);
         RefreshAppearance();
     }
 
@@ -120,7 +120,7 @@ public sealed class ThemeService
 
         _settingsService.Settings.CustomAccentColor = hex;
         _settingsService.Settings.AccentColorMode = AccentModeCustom;
-        _settingsService.SaveDebounced();
+        _settingsService.SaveDebounced(notifySubscribers: false);
         RefreshAppearance();
     }
 
@@ -129,10 +129,26 @@ public sealed class ThemeService
     /// </summary>
     public void TrackWindow(Window window)
     {
+        if (_trackedWindows.Contains(window))
+        {
+            ApplyToWindow(window);
+            return;
+        }
+
         _trackedWindows.Add(window);
         ApplyToWindow(window);
+        window.Closed += OnTrackedWindowClosed;
+    }
 
-        window.Closed += (_, _) => _trackedWindows.Remove(window);
+    private void OnTrackedWindowClosed(object sender, WindowEventArgs args)
+    {
+        if (sender is not Window window)
+        {
+            return;
+        }
+
+        window.Closed -= OnTrackedWindowClosed;
+        _trackedWindows.Remove(window);
     }
 
     /// <summary>

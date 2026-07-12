@@ -406,6 +406,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
                 child.PointerMoved += ResizeBorder_PointerMoved;
                 child.PointerReleased += ResizeBorder_PointerReleased;
                 child.PointerEntered += ResizeBorder_PointerEntered;
+                child.PointerCaptureLost += ResizeBorder_PointerCaptureLost;
             }
         }
 
@@ -418,8 +419,8 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             AppWindow.Changed -= OnAppWindowChanged;
             ContentWidgetShell.RightTapped -= ContentWidgetShell_RightTapped;
             ContentWidgetShell.TitleDoubleTapped -= ContentWidgetShell_TitleDoubleTapped;
-            CleanupBase();
-            _contentHost.DisposeContent();
+            try { CleanupBase(); } catch (Exception ex) { App.Log($"[ContentWidget] CleanupBase failed during close: {ex.Message}"); }
+            try { _contentHost.DisposeContent(); } catch (Exception ex) { App.Log($"[ContentWidget] DisposeContent failed during close: {ex.Message}"); }
 
             foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
             {
@@ -429,6 +430,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
                     child.PointerMoved -= ResizeBorder_PointerMoved;
                     child.PointerReleased -= ResizeBorder_PointerReleased;
                     child.PointerEntered -= ResizeBorder_PointerEntered;
+                    child.PointerCaptureLost -= ResizeBorder_PointerCaptureLost;
                 }
             }
         };
@@ -485,6 +487,16 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         EndWindowDragCore(e);
     }
 
+    private void TitleBarGrid_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        DragPointerCaptureLostCore(sender, e);
+    }
+
+    private void DragHandle_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        DragPointerCaptureLostCore(sender, e);
+    }
+
     protected override void OnDragEnd(bool hasMoved)
     {
         if (RestoreDesktopLayerWhenIdle)
@@ -508,6 +520,11 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     private void ResizeBorder_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
         ResizeBorder_PointerReleasedCore(sender, e);
+    }
+
+    private void ResizeBorder_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        ResizeBorder_PointerCaptureLostCore(sender, e);
     }
 
     protected override void OnResizeEnd()
