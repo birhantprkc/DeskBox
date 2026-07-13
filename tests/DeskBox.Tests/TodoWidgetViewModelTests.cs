@@ -862,6 +862,7 @@ public sealed class TodoWidgetViewModelTests : IDisposable
     public async Task AllCompletedEmptyState_IsShownWhenCompletedTasksAreHidden()
     {
         var settingsService = new SettingsService();
+        settingsService.Settings.Language = SettingsService.LanguageChinese;
         settingsService.Settings.TodoShowCompletedTasks = false;
         var viewModel = CreateViewModel("todo-widget", settingsService);
         await viewModel.InitializeAsync();
