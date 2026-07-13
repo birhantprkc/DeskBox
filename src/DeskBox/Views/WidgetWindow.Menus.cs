@@ -201,118 +201,59 @@ public sealed partial class WidgetWindow
 
     // ── Native context menu ────────────────────────────────────
 
-    /// <summary>
-    /// Shows the native Windows Explorer context menu for a single file item.
-    /// Handles Z-order elevation, coordinate conversion, and foreground window management.
-    /// </summary>
-    /// <returns>True if the native menu was shown (regardless of whether a command was invoked); false if it failed and the caller should fall back.</returns>
-    private bool TryShowNativeContextMenu(WidgetItem item, FrameworkElement element, Windows.Foundation.Point relativePoint)
-    {
-        try
-        {
-            // Convert the relative point to screen coordinates (physical pixels)
-            // TransformToVisual(null) gives coordinates relative to the window origin
-            var windowPoint = element.TransformToVisual(null).TransformPoint(relativePoint);
-            double scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
-            int screenX = (int)(_appWindow.Position.X + windowPoint.X * scale);
-            int screenY = (int)(_appWindow.Position.Y + windowPoint.Y * scale);
-
-            // Elevate the window to topmost so the context menu appears above other windows
-            BeginInteractionLayer("native-context-menu-opened");
-
-            // Set foreground window — required for TrackPopupMenuEx to dismiss properly
-            // when the user clicks outside the menu
-            Win32Helper.SetForegroundWindow(_hWnd);
-
-            var result = ShellContextMenuHelper.ShowContextMenu(_hWnd, item.Path, screenX, screenY);
-
-            // Release the interaction layer (restore desktop Z-order)
-            ReleaseInteractionLayer("native-context-menu-closed");
-
-            // Refresh the item list after the native menu closes, as the user may have
-            // performed file operations (rename, delete, etc.) through the native menu
-            if (result == ShellContextMenuHelper.NativeMenuResult.Invoked)
-            {
-                _ = DispatcherQueue.TryEnqueue(async () =>
-                {
-                    await Task.Delay(100);
-                    await ViewModel.RefreshFromConfigAsync();
-                    ClearRemovedCutPaths();
-                    UpdateEmptyState();
-                });
-            }
-
-            return result != ShellContextMenuHelper.NativeMenuResult.Failed;
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[NativeContextMenu] Failed: {ex.Message}");
-            ReleaseInteractionLayer("native-context-menu-error");
-            return false;
-        }
-    }
-
     // ── Multi-selection context menu items ─────────────────────
 
-    private void AddMultiSelectionItems(MenuFlyout flyout, int selectedCount)
+    private MenuFlyout CreateMultiSelectionFlyout()
     {
-        var titleItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.Format("Widget.SelectedCount", selectedCount),
-            Icon = new FontIcon { Glyph = "\uE762" },
-            IsEnabled = false
-        };
-        flyout.Items.Add(titleItem);
-        flyout.Items.Add(new MenuFlyoutSeparator());
+        var flyout = new MenuFlyout();
 
-        var copyItem = new MenuFlyoutItem
+        var cutItem = CreateFileContextCommand("Common.Cut", "\uE8C6");
+        cutItem.Click += async (_, _) =>
         {
-            Text = _localizationService.T("Common.Copy"),
-            Icon = new FontIcon { Glyph = "\uE8C8" }
+            flyout.Hide();
+            await CopySelectionToClipboardAsync(cut: true);
         };
-        copyItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: false);
-        flyout.Items.Add(copyItem);
-
-        var copyPathItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("Widget.CopyPath"),
-            Icon = new FontIcon { Glyph = "\uE8C8" }
-        };
-        copyPathItem.Click += (_, _) => CopySelectedPathsToClipboard();
-        flyout.Items.Add(copyPathItem);
-
-        var cutItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("Common.Cut"),
-            Icon = new FontIcon { Glyph = "\uE8C6" }
-        };
-        cutItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: true);
         flyout.Items.Add(cutItem);
 
-        var deleteItem = new MenuFlyoutItem
+        var copyItem = CreateFileContextCommand("Common.Copy", "\uE8C8");
+        copyItem.Click += async (_, _) =>
         {
-            Text = _localizationService.T("Common.Delete"),
-            Icon = new FontIcon
-            {
-                Glyph = "\uE74D",
-                Foreground = new SolidColorBrush(Colors.Red)
-            }
+            flyout.Hide();
+            await CopySelectionToClipboardAsync(cut: false);
         };
-        deleteItem.Click += async (_, _) => await DeleteSelectedItemsAsync();
-        flyout.Items.Add(deleteItem);
+        flyout.Items.Add(copyItem);
+
+        var deleteItem = CreateFileContextCommand("Common.Delete", "\uE74D");
+        deleteItem.Click += async (_, _) =>
+        {
+            flyout.Hide();
+            await DeleteSelectedItemsAsync();
+        };
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var copyPathItem = CreateFileContextCommand("Widget.CopyPath", "\uE8C8");
+        copyPathItem.Click += (_, _) =>
+        {
+            flyout.Hide();
+            CopySelectedPathsToClipboard();
+        };
+        flyout.Items.Add(copyPathItem);
 
         if (CanMoveItemsBackToDesktop())
         {
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            var moveBackToDesktopItem = new MenuFlyoutItem
+            var moveBackToDesktopItem = CreateFileContextCommand("Widget.MoveBackToDesktop", "\uE74A");
+            moveBackToDesktopItem.Click += async (_, _) =>
             {
-                Text = _localizationService.T("Widget.MoveBackToDesktop"),
-                Icon = new FontIcon { Glyph = "\uE74A" }
+                flyout.Hide();
+                await MoveSelectedItemsBackToDesktopAsync();
             };
-            moveBackToDesktopItem.Click += async (_, _) => await MoveSelectedItemsBackToDesktopAsync();
             flyout.Items.Add(moveBackToDesktopItem);
         }
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(deleteItem);
+
+        return flyout;
     }
 
     // ── Content area flyout ────────────────────────────────────
@@ -528,7 +469,15 @@ public sealed partial class WidgetWindow
             Text = _localizationService.T("Common.Rename"),
             Icon = new FontIcon { Glyph = "\uE8AC" }
         };
-        rename.Click += Rename_Click;
+        bool startRenameWhenClosed = false;
+        rename.Click += (_, _) => startRenameWhenClosed = true;
+        flyout.Closed += (_, _) =>
+        {
+            if (startRenameWhenClosed)
+            {
+                DispatcherQueue.TryEnqueue(StartRename);
+            }
+        };
         flyout.Items.Add(rename);
 
         var settingsItem = new MenuFlyoutItem

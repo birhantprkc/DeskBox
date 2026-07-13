@@ -100,17 +100,11 @@ public sealed class MusicWidgetContentAdapter : IWidgetContent, IDisposable
         // ViewModel reference.  The setter removes the event handler.
         if (_view is MusicWidgetContent musicContent)
         {
-            musicContent.ViewModel = null;
+            musicContent.Dispose();
         }
 
         // Dispose the ViewModel first (stops timers, detaches service events).
         ViewModel.Dispose();
-
-        // Clear the VisualizerBars collection so the MusicBarViewModel
-        // instances (and their EqualizerSegments) become eligible for GC.
-        // Without this, 28+ bar objects with 10 segments each stay alive
-        // in the collection even after Dispose.
-        ViewModel.VisualizerBars.Clear();
 
         _view = null;
     }

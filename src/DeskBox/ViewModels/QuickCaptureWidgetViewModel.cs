@@ -28,7 +28,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     private string _searchText = string.Empty;
     private bool _isSearchExpanded;
     private QuickCaptureViewMode _selectedView = QuickCaptureViewMode.Records;
-    private string _tabStyle = SettingsService.WidgetTabStylePivot;
+    private string _tabStyle = SettingsService.WidgetTabStyleButton;
     private double _widgetOpacity;
     private double _textSize;
     private double _iconSize;
@@ -155,7 +155,39 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public string InputPlaceholderText => _localizationService.T("QuickCapture.InputPlaceholder");
 
+    public string AddNoteText => _localizationService.T("QuickCapture.AddNote");
+
+    public string AddImageText => _localizationService.T("QuickCapture.AddImage");
+
     public string ExpandInputTooltipText => _localizationService.T("QuickCapture.ExpandInput");
+
+    public string DetailBackText => _localizationService.T("QuickCapture.Detail.Back");
+
+    public string DetailTitlePlaceholderText => _localizationService.T("QuickCapture.Detail.TitlePlaceholder");
+
+    public string DetailBodyPlaceholderText => _localizationService.T("QuickCapture.Detail.BodyPlaceholder");
+
+    public string DetailAppearanceText => _localizationService.T("QuickCapture.Detail.Appearance");
+
+    public string DetailCopyText => _localizationService.T("QuickCapture.Detail.Copy");
+
+    public string DetailCopyImageText => _localizationService.T("QuickCapture.Detail.CopyImage");
+
+    public string DetailReplaceImageText => _localizationService.T("QuickCapture.Detail.ReplaceImage");
+
+    public string DetailDeleteText => _localizationService.T("QuickCapture.Detail.Delete");
+
+    public string MaterialDefaultText => _localizationService.T("QuickCapture.Material.Default");
+
+    public string MaterialPaperText => _localizationService.T("QuickCapture.Material.Paper");
+
+    public string MaterialYellowText => _localizationService.T("QuickCapture.Material.Yellow");
+
+    public string MaterialRoseText => _localizationService.T("QuickCapture.Material.Rose");
+
+    public string MaterialMintText => _localizationService.T("QuickCapture.Material.Mint");
+
+    public string MaterialBlueText => _localizationService.T("QuickCapture.Material.Blue");
 
     public Visibility InputAreaVisibility => IsRecordsView && !IsSearchExpanded ? Visibility.Visible : Visibility.Collapsed;
 
@@ -223,6 +255,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
                 OnPropertyChanged(nameof(InputHeight));
                 OnPropertyChanged(nameof(InputButtonSize));
                 OnPropertyChanged(nameof(InputActionIconSize));
+                OnPropertyChanged(nameof(PrimaryIconSize));
                 OnPropertyChanged(nameof(InputPadding));
                 OnPropertyChanged(nameof(ItemTextLineHeight));
                 OnPropertyChanged(nameof(ItemMetaLineHeight));
@@ -232,7 +265,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public double TitleTextSize => Math.Min(SettingsService.MaxTextSize + 2, TextSize + 3);
 
-    public double SecondaryTextSize => Math.Max(SettingsService.MinTextSize - 1, TextSize - 2);
+    public double SecondaryTextSize => Math.Max(SettingsService.MinTextSize, TextSize - 1.5);
 
     public double CaptionTextSize => Math.Max(SettingsService.MinTextSize, TextSize);
 
@@ -248,11 +281,17 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public double InputActionIconSize => WidgetInputMetrics.Create(TextSize).ActionIconSize;
 
+    public double PrimaryIconSize => Math.Round(Math.Clamp(TextSize + 5, 16, 20));
+
     public Thickness InputPadding => WidgetInputMetrics.Create(TextSize).Padding;
 
     public double ItemTextLineHeight => Math.Round(TextSize * 1.24);
 
-    public double ItemMetaLineHeight => Math.Round(SecondaryTextSize * 1.08);
+    public double ItemMetaLineHeight => Math.Round(SecondaryTextSize * 1.16);
+
+    public Visibility CreatedTimeVisibility => _settingsService.Settings.QuickCaptureShowCreatedTime
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public double IconSize
     {
@@ -379,6 +418,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         OnPropertyChanged(nameof(InputAreaVisibility));
         OnPropertyChanged(nameof(RecentCaptureStatusVisibility));
         OnPropertyChanged(nameof(RecentCaptureActionVisibility));
+        OnPropertyChanged(nameof(CreatedTimeVisibility));
         await RefreshFromDataAsync(data);
     }
 
@@ -390,6 +430,11 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         }
 
         RefreshVisibleItemsFromCacheOrService();
+    }
+
+    public Task RefreshItemsAsync()
+    {
+        return RefreshVisibleItemsAsync();
     }
 
     public async Task AddInputAsync()
@@ -419,9 +464,58 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         }
     }
 
-    public Task<QuickCaptureItem?> AddImageFileAsync(string imagePath)
+    public async Task<QuickCaptureItem?> AddDetailedItemAsync(
+        string? title,
+        string body,
+        QuickCaptureAppearancePreset appearancePreset)
     {
-        return _quickCaptureService.AddImageFileItemAsync(imagePath);
+        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        QuickCaptureItem item = await _quickCaptureService.AddDetailedItemAsync(title, body, appearancePreset);
+        if (SelectedView != QuickCaptureViewMode.Records)
+        {
+            SelectedView = QuickCaptureViewMode.Records;
+        }
+        else
+        {
+            RefreshVisibleItemsImmediately();
+        }
+
+        return item;
+    }
+
+    public async Task<QuickCaptureItemViewModel?> AddImageFileAsync(string imagePath)
+    {
+        QuickCaptureItem? item = await _quickCaptureService.AddImageFileItemAsync(imagePath);
+        if (item is null)
+        {
+            return null;
+        }
+
+        if (SelectedView != QuickCaptureViewMode.Records)
+        {
+            SelectedView = QuickCaptureViewMode.Records;
+        }
+
+        await RefreshVisibleItemsAsync();
+        return Items.FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.Ordinal));
+    }
+
+    public async Task<QuickCaptureItemViewModel?> ReplaceItemImageAsync(
+        QuickCaptureItemViewModel item,
+        string imagePath)
+    {
+        QuickCaptureItem? updated = await _quickCaptureService.ReplaceItemImageAsync(item.Id, imagePath);
+        if (updated is null)
+        {
+            return null;
+        }
+
+        await RefreshVisibleItemsAsync();
+        return Items.FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.Ordinal));
     }
 
     public Task<string?> CreateImageExportFileAsync(QuickCaptureItemViewModel item, string fileNamePrefix)
@@ -434,18 +528,25 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         await WriteItemToClipboardWithRetryAsync(item);
         if (item.Type != QuickCaptureItemType.Image)
         {
-            _quickCaptureService.MarkClipboardTextWrittenByDeskBox(item.Body);
+            _quickCaptureService.MarkClipboardTextWrittenByDeskBox(item.CopyText);
         }
     }
 
-    private async Task WriteItemToClipboardWithRetryAsync(QuickCaptureItemViewModel item)
+    public Task CopyImageAsync(QuickCaptureItemViewModel item)
+    {
+        return WriteItemToClipboardWithRetryAsync(item, includeImageText: false);
+    }
+
+    private async Task WriteItemToClipboardWithRetryAsync(
+        QuickCaptureItemViewModel item,
+        bool includeImageText = true)
     {
         Exception? lastException = null;
         for (int attempt = 0; attempt <= s_clipboardRetryDelaysMs.Length; attempt++)
         {
             try
             {
-                await WriteItemToClipboardOnceAsync(item);
+                await WriteItemToClipboardOnceAsync(item, includeImageText);
                 return;
             }
             catch (COMException ex) when (IsRetryableClipboardException(ex) && attempt < s_clipboardRetryDelaysMs.Length)
@@ -461,7 +562,9 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         }
     }
 
-    private static async Task WriteItemToClipboardOnceAsync(QuickCaptureItemViewModel item)
+    private static async Task WriteItemToClipboardOnceAsync(
+        QuickCaptureItemViewModel item,
+        bool includeImageText)
     {
         var dataPackage = new DataPackage();
         if (item.Type == QuickCaptureItemType.Image &&
@@ -470,12 +573,20 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         {
             var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(item.ImagePath);
             dataPackage.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromFile(file));
-            DeskBoxClipboardWriteScope.MarkWrite(hasImage: true, paths: [item.ImagePath]);
+            if (includeImageText && !string.IsNullOrWhiteSpace(item.CopyText))
+            {
+                dataPackage.SetText(item.CopyText);
+            }
+
+            DeskBoxClipboardWriteScope.MarkWrite(
+                text: includeImageText && !string.IsNullOrWhiteSpace(item.CopyText) ? item.CopyText : null,
+                hasImage: true,
+                paths: [item.ImagePath]);
         }
         else
         {
-            dataPackage.SetText(item.Body);
-            DeskBoxClipboardWriteScope.MarkWrite(text: item.Body);
+            dataPackage.SetText(item.CopyText);
+            DeskBoxClipboardWriteScope.MarkWrite(text: item.CopyText);
         }
 
         Clipboard.SetContent(dataPackage);
@@ -502,6 +613,39 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         await _quickCaptureService.UpdateItemAsync(item.Id, body);
     }
 
+    public Task<bool> EditItemDetailsAsync(
+        QuickCaptureItemViewModel item,
+        string? title,
+        string body,
+        QuickCaptureAppearancePreset appearancePreset)
+    {
+        return _quickCaptureService.UpdateItemDetailsAsync(item.Id, title, body, appearancePreset);
+    }
+
+    public Task<bool> SetPinnedAsync(string itemId, bool isPinned)
+    {
+        return _quickCaptureService.SetPinnedAsync(itemId, isPinned);
+    }
+
+    public Task<int> SetPinnedAsync(IEnumerable<string> itemIds, bool isPinned)
+    {
+        return _quickCaptureService.SetPinnedAsync(itemIds, isPinned);
+    }
+
+    public Task<bool> SetAppearanceAsync(
+        QuickCaptureItemViewModel item,
+        QuickCaptureAppearancePreset appearancePreset)
+    {
+        return _quickCaptureService.UpdateItemDetailsAsync(item.Id, item.Title, item.Body, appearancePreset);
+    }
+
+    public Task<int> SetAppearanceAsync(
+        IEnumerable<string> itemIds,
+        QuickCaptureAppearancePreset appearancePreset)
+    {
+        return _quickCaptureService.SetAppearanceAsync(itemIds, appearancePreset);
+    }
+
     public async Task TogglePinnedAsync(QuickCaptureItemViewModel item)
     {
         await _quickCaptureService.SetPinnedAsync(item.Id, !item.IsPinned);
@@ -517,6 +661,20 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         await _quickCaptureService.MovePinnedItemAsync(item.Id, direction);
     }
 
+    public Task<bool> MovePinnedItemToIndexAsync(QuickCaptureItemViewModel item, int targetIndex)
+    {
+        return SelectedView == QuickCaptureViewMode.Pinned && !HasSearchText
+            ? _quickCaptureService.MovePinnedItemToIndexAsync(item.Id, targetIndex)
+            : Task.FromResult(false);
+    }
+
+    public Task<bool> MoveItemAsync(QuickCaptureItemViewModel item, int targetIndex)
+    {
+        return SelectedView == QuickCaptureViewMode.Records && !HasSearchText
+            ? _quickCaptureService.MoveItemAsync(item.Id, targetIndex)
+            : Task.FromResult(false);
+    }
+
     public async Task<QuickCaptureDeletedItemSnapshot?> DeleteItemAsync(QuickCaptureItemViewModel item)
     {
         if (item.IsRecent)
@@ -525,6 +683,13 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         }
 
         return await _quickCaptureService.DeleteItemAsync(item.Id);
+    }
+
+    public Task<IReadOnlyList<QuickCaptureDeletedItemSnapshot>> DeleteItemsAsync(
+        IEnumerable<string> itemIds,
+        bool isRecent)
+    {
+        return _quickCaptureService.DeleteItemsAsync(itemIds, isRecent);
     }
 
     public Task<bool> RestoreDeletedItemAsync(QuickCaptureDeletedItemSnapshot? snapshot)
@@ -781,7 +946,23 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         OnPropertyChanged(nameof(EnableRecentCaptureText));
         OnPropertyChanged(nameof(SearchPlaceholderText));
         OnPropertyChanged(nameof(InputPlaceholderText));
+        OnPropertyChanged(nameof(AddNoteText));
         OnPropertyChanged(nameof(ExpandInputTooltipText));
+        OnPropertyChanged(nameof(DetailBackText));
+        OnPropertyChanged(nameof(AddImageText));
+        OnPropertyChanged(nameof(DetailTitlePlaceholderText));
+        OnPropertyChanged(nameof(DetailBodyPlaceholderText));
+        OnPropertyChanged(nameof(DetailAppearanceText));
+        OnPropertyChanged(nameof(DetailCopyText));
+        OnPropertyChanged(nameof(DetailCopyImageText));
+        OnPropertyChanged(nameof(DetailReplaceImageText));
+        OnPropertyChanged(nameof(DetailDeleteText));
+        OnPropertyChanged(nameof(MaterialDefaultText));
+        OnPropertyChanged(nameof(MaterialPaperText));
+        OnPropertyChanged(nameof(MaterialYellowText));
+        OnPropertyChanged(nameof(MaterialRoseText));
+        OnPropertyChanged(nameof(MaterialMintText));
+        OnPropertyChanged(nameof(MaterialBlueText));
         OnPropertyChanged(nameof(SearchScopeText));
         OnPropertyChanged(nameof(SearchScopeVisibility));
         OnPropertyChanged(nameof(RecentCaptureStatusText));
@@ -809,6 +990,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
         UpdateEmptyStateText();
         RefreshAppearanceFromSettings();
+        OnPropertyChanged(nameof(CreatedTimeVisibility));
         OnPropertyChanged(nameof(RecentCaptureStatusText));
         OnPropertyChanged(nameof(RecentCaptureStatusVisibility));
         OnPropertyChanged(nameof(RecentCaptureActionVisibility));
@@ -971,8 +1153,13 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
         UpdateEmptyStateText();
         bool hasItems = Items.Count > 0;
-        EmptyStateVisibility = hasItems ? Visibility.Collapsed : Visibility.Visible;
-        ListVisibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+        bool showEmptyRecordsAddSurface = IsRecordsView && !HasSearchText;
+        EmptyStateVisibility = hasItems || showEmptyRecordsAddSurface
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        ListVisibility = hasItems || showEmptyRecordsAddSurface
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         OnPropertyChanged(nameof(RecentCaptureStatusText));
         OnPropertyChanged(nameof(RecentCaptureStatusVisibility));
         OnPropertyChanged(nameof(RecentCaptureActionVisibility));
@@ -1177,13 +1364,19 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
             return true;
         }
 
+        bool matchesMetadata = (!string.IsNullOrWhiteSpace(item.Title) &&
+                                item.Title.Contains(keyword, StringComparison.CurrentCultureIgnoreCase)) ||
+                               item.Tags.Any(tag => tag.Contains(keyword, StringComparison.CurrentCultureIgnoreCase));
+
         if (item.Type == QuickCaptureItemType.Image)
         {
-            return "Image".Contains(keyword, StringComparison.CurrentCultureIgnoreCase) ||
+            return matchesMetadata ||
+                   "Image".Contains(keyword, StringComparison.CurrentCultureIgnoreCase) ||
                    _localizationService.T("QuickCapture.ImageItem").Contains(keyword, StringComparison.CurrentCultureIgnoreCase);
         }
 
-        return item.Body.Contains(keyword, StringComparison.CurrentCultureIgnoreCase) ||
+        return matchesMetadata ||
+               item.Body.Contains(keyword, StringComparison.CurrentCultureIgnoreCase) ||
                (item.Url?.Contains(keyword, StringComparison.CurrentCultureIgnoreCase) ?? false);
     }
 }

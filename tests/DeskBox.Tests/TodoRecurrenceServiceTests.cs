@@ -59,6 +59,12 @@ public sealed class TodoRecurrenceServiceTests
         item.ReminderOffsetMinutes = 30;
         item.SnoozedUntil = completedAt.AddMinutes(10);
         item.SnoozeLastNotifiedAt = completedAt.AddMinutes(-5);
+        item.Notes = "repeat this context";
+        item.Steps =
+        [
+            new TodoStep { Text = "first", IsCompleted = true, SortOrder = 0 },
+            new TodoStep { Text = "second", IsCompleted = false, SortOrder = 1 }
+        ];
 
         bool created = TodoRecurrenceService.TryCreateNextOccurrence(item, completedAt, out TodoItem? nextItem);
 
@@ -73,6 +79,19 @@ public sealed class TodoRecurrenceServiceTests
         Assert.Equal(30, nextItem.ReminderOffsetMinutes);
         Assert.Null(nextItem.SnoozedUntil);
         Assert.Null(nextItem.SnoozeLastNotifiedAt);
+        Assert.Equal(item.Notes, nextItem.Notes);
+        Assert.Collection(
+            nextItem.Steps,
+            step =>
+            {
+                Assert.Equal("first", step.Text);
+                Assert.False(step.IsCompleted);
+            },
+            step =>
+            {
+                Assert.Equal("second", step.Text);
+                Assert.False(step.IsCompleted);
+            });
     }
 
     private static TodoItem CreateRecurringItem(string recurrenceMode, DateTimeOffset dueDate, DateTimeOffset? anchorDueDate = null)

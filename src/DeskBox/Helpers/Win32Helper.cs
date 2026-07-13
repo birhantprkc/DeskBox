@@ -8,6 +8,24 @@ namespace DeskBox.Helpers;
 /// </summary>
 public static partial class Win32Helper
 {
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr GetCurrentProcess();
+
+    [LibraryImport("psapi.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool EmptyWorkingSet(IntPtr process);
+
+    public static void TrimCurrentProcessWorkingSet()
+    {
+        try
+        {
+            EmptyWorkingSet(GetCurrentProcess());
+        }
+        catch
+        {
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────
     //  SetWindowPos – Z-order manipulation
     // ────────────────────────────────────────────────────────────────
@@ -104,6 +122,7 @@ public static partial class Win32Helper
     public static partial uint RegisterWindowMessage(string lpString);
 
     public const uint GA_ROOT = 2;
+    public const uint GA_ROOTOWNER = 3;
     public const uint SMTO_NORMAL = 0x0000;
 
     // ────────────────────────────────────────────────────────────────
@@ -111,6 +130,7 @@ public static partial class Win32Helper
     // ────────────────────────────────────────────────────────────────
 
     public const int GWL_EXSTYLE = -20;
+    public const int WS_EX_TOPMOST = 0x00000008;
     public const int WS_EX_TOOLWINDOW = 0x00000080;
     public const int WS_EX_TRANSPARENT = 0x00000020;
     public const int WS_EX_NOACTIVATE = 0x08000000;
@@ -273,7 +293,9 @@ public static partial class Win32Helper
     public const int WH_KEYBOARD_LL = 13;
     public const int WH_MOUSE_LL = 14;
     public const int WM_KEYDOWN = 0x0100;
+    public const int WM_KEYUP = 0x0101;
     public const int WM_SYSKEYDOWN = 0x0104;
+    public const int WM_SYSKEYUP = 0x0105;
     public const int WM_LBUTTONDOWN = 0x0201;
     public const int WM_RBUTTONDOWN = 0x0204;
     public const int WM_MBUTTONDOWN = 0x0207;
@@ -487,6 +509,11 @@ public static partial class Win32Helper
     {
         SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
+    public static bool IsWindowTopMost(IntPtr hWnd)
+    {
+        return (GetWindowLong(hWnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
     }
 
     public static IReadOnlyList<IntPtr> FindVisibleDialogWindowsForCurrentProcess(IntPtr excludeHwnd)

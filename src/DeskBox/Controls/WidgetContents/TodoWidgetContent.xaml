@@ -7,60 +7,98 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    KeyDown="TodoWidgetContent_KeyDown"
+    IsTabStop="True"
     mc:Ignorable="d">
 
     <UserControl.Resources>
         <Style x:Key="TodoColorFilterButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-            <Setter Property="Width" Value="22" />
-            <Setter Property="Height" Value="22" />
-            <Setter Property="MinWidth" Value="22" />
-            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="MinHeight" Value="24" />
             <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="11" />
-        </Style>
-
-        <Style x:Key="TodoColorFilterSelectedButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-            <Setter Property="Width" Value="22" />
-            <Setter Property="Height" Value="22" />
-            <Setter Property="MinWidth" Value="22" />
-            <Setter Property="MinHeight" Value="22" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="BorderThickness" Value="1.4" />
-            <Setter Property="CornerRadius" Value="11" />
-        </Style>
-
-        <Style x:Key="TodoCompletionButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-            <Setter Property="Width" Value="22" />
-            <Setter Property="Height" Value="22" />
-            <Setter Property="MinWidth" Value="22" />
-            <Setter Property="MinHeight" Value="22" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="BorderThickness" Value="0" />
-        </Style>
-
-        <Style x:Key="TodoItemActionButtonStyle" TargetType="Button" BasedOn="{StaticResource WidgetItemActionButtonStyle}" />
-
-        <Style x:Key="TodoEditorCommandButtonStyle" TargetType="Button" BasedOn="{StaticResource WidgetEditorCommandButtonStyle}" />
-
-        <Style x:Key="TodoConfirmCommandButtonStyle" TargetType="Button" BasedOn="{StaticResource WidgetConfirmCommandButtonStyle}" />
-
-        <Style x:Key="TodoRecurringHistoryButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-            <Setter Property="HorizontalAlignment" Value="Left" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="MinHeight" Value="22" />
-            <Setter Property="MinWidth" Value="0" />
             <Setter Property="CornerRadius" Value="4" />
         </Style>
 
-        <Style x:Key="TodoCustomDueTimeButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-            <Setter Property="Height" Value="36" />
-            <Setter Property="MinHeight" Value="36" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="CornerRadius" Value="6" />
+        <Style x:Key="TodoColorFilterSelectedButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
         </Style>
 
+        <Style x:Key="TodoCardIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <Style x:Key="TodoDetailHeaderIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <Style x:Key="TodoDetailToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <Style x:Key="TodoCardBorderStyle" TargetType="Border">
+            <Setter Property="MinHeight" Value="48" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <Style x:Key="TodoDetailRowButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+
+        <Style x:Key="TodoDetailGroupStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <Style x:Key="TodoDetailTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource WidgetBorderlessInputTextBoxStyle}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
     </UserControl.Resources>
 
     <Grid
@@ -68,48 +106,18 @@
         AllowDrop="True"
         DragOver="RootGrid_DragOver"
         Drop="RootGrid_Drop"
-        Padding="10,8,8,8"
+        Padding="8"
         RowSpacing="8">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" ColumnSpacing="6">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBox
-                x:Name="AddTextBox"
-                Grid.Column="0"
-                Height="{Binding InputHeight}"
-                MinHeight="{Binding InputHeight}"
-                Padding="{Binding InputPadding}"
-                FontSize="{Binding TextSize}"
-                KeyDown="AddTextBox_KeyDown"
-                PlaceholderText="{Binding AddPlaceholderText}"
-                Style="{StaticResource WidgetBorderlessInputTextBoxStyle}"
-                Text="{Binding InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-            <Button
-                x:Name="ExpandInputButton"
-                Grid.Column="1"
-                Click="ExpandInputButton_Click"
-                Width="{Binding InputButtonSize}"
-                Height="{Binding InputButtonSize}"
-                MinWidth="{Binding InputButtonSize}"
-                MinHeight="{Binding InputButtonSize}"
-                Style="{StaticResource WidgetCompactIconButtonStyle}"
-                ToolTipService.ToolTip="{Binding ExpandInputTooltipText}">
-                <FontIcon FontSize="{Binding InputActionIconSize}" Glyph="&#xE740;" />
-            </Button>
-        </Grid>
-
-        <StackPanel Grid.Row="1" Spacing="6">
+        <StackPanel
+            Grid.Row="0"
+            Spacing="6"
+            Visibility="{Binding ListPageVisibility}">
             <toolkit:Segmented
                 x:Name="TodoFilterSegmented"
                 MinHeight="{Binding SegmentHeight}"
@@ -119,314 +127,232 @@
                 SelectionChanged="TodoFilterSegmented_SelectionChanged"
                 SelectedIndex="0"
                 SizeChanged="TodoFilterSegmented_SizeChanged">
-                <toolkit:SegmentedItem
-                    Tag="All"
-                    ToolTipService.ToolTip="{Binding AllFilterText}">
-                    <TextBlock
-                        MinWidth="0"
-                        VerticalAlignment="Center"
-                        FontSize="{Binding SegmentTextSize}"
-                        MaxLines="1"
-                        Text="{Binding AllFilterText}"
-                        TextAlignment="Center"
-                        TextTrimming="CharacterEllipsis"
-                        TextWrapping="NoWrap" />
+                <toolkit:SegmentedItem Tag="All" ToolTipService.ToolTip="{Binding AllFilterText}">
+                    <TextBlock FontSize="{Binding SegmentTextSize}" MaxLines="1" Text="{Binding AllFilterText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </toolkit:SegmentedItem>
-                <toolkit:SegmentedItem
-                    Tag="Today"
-                    ToolTipService.ToolTip="{Binding TodayFilterText}">
-                    <TextBlock
-                        MinWidth="0"
-                        VerticalAlignment="Center"
-                        FontSize="{Binding SegmentTextSize}"
-                        MaxLines="1"
-                        Text="{Binding TodayFilterText}"
-                        TextAlignment="Center"
-                        TextTrimming="CharacterEllipsis"
-                        TextWrapping="NoWrap" />
+                <toolkit:SegmentedItem Tag="Today" ToolTipService.ToolTip="{Binding TodayFilterText}">
+                    <TextBlock FontSize="{Binding SegmentTextSize}" MaxLines="1" Text="{Binding TodayFilterText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </toolkit:SegmentedItem>
-                <toolkit:SegmentedItem
-                    Tag="Important"
-                    ToolTipService.ToolTip="{Binding ImportantFilterText}">
-                    <TextBlock
-                        MinWidth="0"
-                        VerticalAlignment="Center"
-                        FontSize="{Binding SegmentTextSize}"
-                        MaxLines="1"
-                        Text="{Binding ImportantFilterText}"
-                        TextAlignment="Center"
-                        TextTrimming="CharacterEllipsis"
-                        TextWrapping="NoWrap" />
+                <toolkit:SegmentedItem Tag="Important" ToolTipService.ToolTip="{Binding ImportantFilterText}">
+                    <TextBlock FontSize="{Binding SegmentTextSize}" MaxLines="1" Text="{Binding ImportantFilterText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </toolkit:SegmentedItem>
-                <toolkit:SegmentedItem
-                    Tag="Completed"
-                    ToolTipService.ToolTip="{Binding CompletedFilterText}">
-                    <TextBlock
-                        MinWidth="0"
-                        VerticalAlignment="Center"
-                        FontSize="{Binding SegmentTextSize}"
-                        MaxLines="1"
-                        Text="{Binding CompletedFilterText}"
-                        TextAlignment="Center"
-                        TextTrimming="CharacterEllipsis"
-                        TextWrapping="NoWrap" />
+                <toolkit:SegmentedItem Tag="Completed" ToolTipService.ToolTip="{Binding CompletedFilterText}">
+                    <TextBlock FontSize="{Binding SegmentTextSize}" MaxLines="1" Text="{Binding CompletedFilterText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </toolkit:SegmentedItem>
             </toolkit:Segmented>
 
-            <StackPanel
-                Orientation="Horizontal"
-                Spacing="6"
-                Visibility="{Binding ColorFilterVisibility}">
-                <Button
-                    x:Name="RedColorFilterButton"
-                    Click="RedColorFilterButton_Click"
-                    Style="{StaticResource TodoColorFilterButtonStyle}"
-                    Visibility="{Binding RedColorFilterVisibility}">
-                    <Ellipse Width="9" Height="9" Fill="#E34D4D" />
-                </Button>
-                <Button
-                    x:Name="OrangeColorFilterButton"
-                    Click="OrangeColorFilterButton_Click"
-                    Style="{StaticResource TodoColorFilterButtonStyle}"
-                    Visibility="{Binding OrangeColorFilterVisibility}">
-                    <Ellipse Width="9" Height="9" Fill="#F08A3C" />
-                </Button>
-                <Button
-                    x:Name="YellowColorFilterButton"
-                    Click="YellowColorFilterButton_Click"
-                    Style="{StaticResource TodoColorFilterButtonStyle}"
-                    Visibility="{Binding YellowColorFilterVisibility}">
-                    <Ellipse Width="9" Height="9" Fill="#F2C94C" />
-                </Button>
-                <Button
-                    x:Name="GreenColorFilterButton"
-                    Click="GreenColorFilterButton_Click"
-                    Style="{StaticResource TodoColorFilterButtonStyle}"
-                    Visibility="{Binding GreenColorFilterVisibility}">
-                    <Ellipse Width="9" Height="9" Fill="#4CAF6D" />
-                </Button>
-                <Button
-                    x:Name="BlueColorFilterButton"
-                    Click="BlueColorFilterButton_Click"
-                    Style="{StaticResource TodoColorFilterButtonStyle}"
-                    Visibility="{Binding BlueColorFilterVisibility}">
-                    <Ellipse Width="9" Height="9" Fill="#4D8FE3" />
-                </Button>
-                <Button
-                    x:Name="PurpleColorFilterButton"
-                    Click="PurpleColorFilterButton_Click"
-                    Style="{StaticResource TodoColorFilterButtonStyle}"
-                    Visibility="{Binding PurpleColorFilterVisibility}">
-                    <Ellipse Width="9" Height="9" Fill="#9B6BE8" />
-                </Button>
+            <StackPanel Orientation="Horizontal" Spacing="3" Visibility="{Binding ColorFilterVisibility}">
+                <Button x:Name="RedColorFilterButton" AutomationProperties.Name="{Binding RedColorText}" Click="RedColorFilterButton_Click" Style="{StaticResource TodoColorFilterButtonStyle}" ToolTipService.ToolTip="{Binding RedColorText}"><Border Width="18" Height="8" Background="#E34D4D" CornerRadius="4" /></Button>
+                <Button x:Name="OrangeColorFilterButton" AutomationProperties.Name="{Binding OrangeColorText}" Click="OrangeColorFilterButton_Click" Style="{StaticResource TodoColorFilterButtonStyle}" ToolTipService.ToolTip="{Binding OrangeColorText}"><Border Width="18" Height="8" Background="#F08A3C" CornerRadius="4" /></Button>
+                <Button x:Name="YellowColorFilterButton" AutomationProperties.Name="{Binding YellowColorText}" Click="YellowColorFilterButton_Click" Style="{StaticResource TodoColorFilterButtonStyle}" ToolTipService.ToolTip="{Binding YellowColorText}"><Border Width="18" Height="8" Background="#F2C94C" CornerRadius="4" /></Button>
+                <Button x:Name="GreenColorFilterButton" AutomationProperties.Name="{Binding GreenColorText}" Click="GreenColorFilterButton_Click" Style="{StaticResource TodoColorFilterButtonStyle}" ToolTipService.ToolTip="{Binding GreenColorText}"><Border Width="18" Height="8" Background="#4CAF6D" CornerRadius="4" /></Button>
+                <Button x:Name="BlueColorFilterButton" AutomationProperties.Name="{Binding BlueColorText}" Click="BlueColorFilterButton_Click" Style="{StaticResource TodoColorFilterButtonStyle}" ToolTipService.ToolTip="{Binding BlueColorText}"><Border Width="18" Height="8" Background="#4D8FE3" CornerRadius="4" /></Button>
+                <Button x:Name="PurpleColorFilterButton" AutomationProperties.Name="{Binding PurpleColorText}" Click="PurpleColorFilterButton_Click" Style="{StaticResource TodoColorFilterButtonStyle}" ToolTipService.ToolTip="{Binding PurpleColorText}"><Border Width="18" Height="8" Background="#9B6BE8" CornerRadius="4" /></Button>
+                <Button x:Name="TealColorFilterButton" AutomationProperties.Name="{Binding TealColorText}" Click="TealColorFilterButton_Click" Style="{StaticResource TodoColorFilterButtonStyle}" ToolTipService.ToolTip="{Binding TealColorText}"><Border Width="18" Height="8" Background="#2DB7A3" CornerRadius="4" /></Button>
+                <Button x:Name="PinkColorFilterButton" AutomationProperties.Name="{Binding PinkColorText}" Click="PinkColorFilterButton_Click" Style="{StaticResource TodoColorFilterButtonStyle}" ToolTipService.ToolTip="{Binding PinkColorText}"><Border Width="18" Height="8" Background="#E66AA2" CornerRadius="4" /></Button>
             </StackPanel>
         </StackPanel>
 
-        <Grid Grid.Row="2">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-                        <ListView
+        <Grid Grid.Row="1" Visibility="{Binding ListPageVisibility}">
+            <ListView
                 x:Name="TodoListView"
-                Grid.Row="0"
                 AllowDrop="True"
-                IsItemClickEnabled="False"
                 CanDragItems="True"
                 CanReorderItems="True"
-                DragOver="TodoListView_DragOver"
-                KeyDown="TodoListView_KeyDown"
-                PointerPressed="TodoListView_PointerPressed"
-                PointerMoved="TodoListView_PointerMoved"
-                PointerReleased="TodoListView_PointerReleased"
-                PointerCaptureLost="TodoListView_PointerCaptureLost"
-                DragItemsStarting="TodoListView_DragItemsStarting"
                 DragItemsCompleted="TodoListView_DragItemsCompleted"
+                DragItemsStarting="TodoListView_DragItemsStarting"
+                DragOver="TodoListView_DragOver"
+                IsItemClickEnabled="True"
+                ItemClick="TodoListView_ItemClick"
                 ItemsSource="{Binding VisibleItems}"
+                KeyDown="TodoListView_KeyDown"
+                PointerCaptureLost="TodoListView_PointerCaptureLost"
+                PointerMoved="TodoListView_PointerMoved"
+                PointerPressed="TodoListView_PointerPressed"
+                PointerReleased="TodoListView_PointerReleased"
                 SelectionMode="None"
-                Visibility="{Binding ListVisibility}"
                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListView.Header>
+                    <Button
+                        Margin="0,0,0,6"
+                        MinHeight="48"
+                        Padding="8,5"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        Click="AddCard_Click"
+                        CornerRadius="4">
+                            <Grid ColumnSpacing="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="32" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="{Binding PrimaryIconSize}"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Glyph="&#xE710;" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    FontSize="{Binding TextSize}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding AddPlaceholderText}" />
+                            </Grid>
+                    </Button>
+                </ListView.Header>
+
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0,0,0,4" />
+                        <Setter Property="Margin" Value="0,0,0,5" />
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="IsTabStop" Value="False" />
+                        <Setter Property="UseSystemFocusVisuals" Value="False" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                        <Setter Property="Transitions">
+                            <Setter.Value>
+                                <TransitionCollection>
+                                    <AddDeleteThemeTransition />
+                                    <ReorderThemeTransition />
+                                </TransitionCollection>
+                            </Setter.Value>
+                        </Setter>
                     </Style>
                 </ListView.ItemContainerStyle>
+
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Grid
+                        <Border
                             x:Name="TodoItemRoot"
-                            MinHeight="28"
-                            Padding="6,3"
-                            Background="Transparent"
-                            ColumnSpacing="4"
+                            Style="{StaticResource TodoCardBorderStyle}"
                             DataContextChanged="TodoItem_DataContextChanged"
                             PointerEntered="TodoItem_PointerEntered"
                             PointerExited="TodoItem_PointerExited"
                             RightTapped="TodoItem_RightTapped">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                            <Grid ColumnSpacing="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="32" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="32" />
+                                </Grid.ColumnDefinitions>
 
-                            <Border
-                                x:Name="TodoItemHoverBackground"
-                                Grid.ColumnSpan="3"
-                                Style="{StaticResource WidgetRowHoverBackgroundStyle}" />
+                                <Border
+                                    x:Name="TodoItemHoverBackground"
+                                    Grid.ColumnSpan="4"
+                                    Margin="-8,-5"
+                                    CornerRadius="4"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    IsHitTestVisible="False"
+                                    Opacity="0" />
 
-                            <Border
-                                Grid.ColumnSpan="3"
-                                Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                CornerRadius="6"
-                                Opacity="0.18"
-                                Visibility="{Binding CopySelectionVisibility}" />
+                                <Border
+                                    Grid.ColumnSpan="4"
+                                    Margin="-8,-5"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    CornerRadius="4"
+                                    IsHitTestVisible="False"
+                                    Opacity="0.12"
+                                    Visibility="{Binding CopySelectionVisibility}" />
 
-                            <Button
-                                Grid.Column="0"
-                                VerticalAlignment="Center"
-                                Click="ItemCompletionButton_Click"
-                                Style="{StaticResource TodoCompletionButtonStyle}">
-                                <Grid Width="14" Height="14">
-                                    <Border
-                                        x:Name="TodoCompletionBox"
-                                        BorderBrush="{ThemeResource TextFillColorSecondaryBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="3" />
-                                    <FontIcon
-                                        FontSize="10"
-                                        Glyph="{Binding CompletionGlyph}"
-                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                        Opacity="{Binding CompletionGlyphOpacity}" />
-                                </Grid>
-                            </Button>
-
-                            <Ellipse
-                                Grid.Column="1"
-                                Width="6"
-                                Height="6"
-                                Margin="-2,0,0,0"
-                                VerticalAlignment="Center"
-                                Fill="{Binding ColorMarkerBrush}"
-                                Visibility="{Binding ColorMarkerVisibility}" />
-
-                            <Grid
-                                Grid.Column="2"
-                                MinHeight="20"
-                                Margin="0,1,0,0"
-                                Background="Transparent"
-                                DoubleTapped="TodoItemContent_DoubleTapped"
-                                Opacity="{Binding ContentOpacity}"
-                                Tapped="TodoItemContent_Tapped"
-                                VerticalAlignment="Center"
-                                RowSpacing="1">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <TextBlock
-                                    Grid.Row="0"
-                                    HorizontalAlignment="Stretch"
-                                    VerticalAlignment="Center"
-                                    FontSize="{Binding ElementName=TodoListView, Path=DataContext.TextSize}"
-                                    CharacterSpacing="8"
-                                    LineHeight="{Binding ElementName=TodoListView, Path=DataContext.ItemTextLineHeight}"
-                                    LineStackingStrategy="BlockLineHeight"
-                                    MaxLines="10"
-                                    Text="{Binding Text, Mode=OneWay}"
-                                    TextAlignment="Left"
-                                    TextDecorations="{Binding TextDecorations}"
-                                    TextTrimming="CharacterEllipsis"
-                                    TextWrapping="Wrap"
-                                    Visibility="{Binding TextVisibility}" />
-
-                                <TextBlock
-                                    Grid.Row="1"
-                                    Margin="0,1,0,0"
-                                    VerticalAlignment="Center"
-                                    FontSize="{Binding ElementName=TodoListView, Path=DataContext.SecondaryTextSize}"
-                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                    Text="{Binding DueStatusText}"
-                                    TextTrimming="CharacterEllipsis"
-                                    Visibility="{Binding DueStatusNormalVisibility}" />
-
-                                <TextBlock
-                                    Grid.Row="1"
-                                    Margin="0,1,0,0"
-                                    VerticalAlignment="Center"
-                                    FontSize="{Binding ElementName=TodoListView, Path=DataContext.SecondaryTextSize}"
-                                    Foreground="#F7630C"
-                                    Text="{Binding DueStatusText}"
-                                    TextTrimming="CharacterEllipsis"
-                                    Visibility="{Binding DueStatusOverdueVisibility}" />
-
-                                <Button
-                                    Grid.Row="2"
-                                    Margin="0,2,0,0"
-                                    Click="RecurringHistoryToggleButton_Click"
-                                    Style="{StaticResource TodoRecurringHistoryButtonStyle}"
-                                    Visibility="{Binding RecurringHistoryToggleVisibility}">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Button Grid.Column="0" AutomationProperties.Name="{Binding CompletionToggleText}" Click="ItemCompletionButton_Click" Style="{StaticResource TodoCardIconButtonStyle}" ToolTipService.ToolTip="{Binding CompletionToggleText}">
+                                    <Grid Width="{Binding ElementName=TodoListView, Path=DataContext.CompletionIndicatorSize}" Height="{Binding ElementName=TodoListView, Path=DataContext.CompletionIndicatorSize}">
+                                        <Border
+                                            x:Name="TodoCompletionBox"
+                                            Background="Transparent"
+                                            BorderBrush="{ThemeResource TextFillColorSecondaryBrush}"
+                                            BorderThickness="{Binding CompletionBorderThickness}"
+                                            CornerRadius="11" />
                                         <FontIcon
-                                            FontSize="11"
-                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                            Glyph="{Binding RecurringHistoryToggleGlyph}" />
+                                            FontSize="{Binding ElementName=TodoListView, Path=DataContext.SmallIconSize}"
+                                            Foreground="White"
+                                            Glyph="{Binding CompletionGlyph}"
+                                            Opacity="{Binding CompletionGlyphOpacity}" />
+                                    </Grid>
+                                </Button>
+
+                                <Border
+                                    Grid.Column="1"
+                                    Width="3"
+                                    Height="20"
+                                    Margin="0,0,5,0"
+                                    VerticalAlignment="Center"
+                                    Background="{Binding ColorMarkerBrush}"
+                                    CornerRadius="1.5"
+                                    Visibility="{Binding ColorMarkerVisibility}" />
+
+                                <StackPanel
+                                    Grid.Column="2"
+                                    Margin="0,2"
+                                    VerticalAlignment="Center"
+                                    Opacity="{Binding ContentOpacity}"
+                                    Spacing="2">
+                                    <TextBlock
+                                        FontSize="{Binding ElementName=TodoListView, Path=DataContext.TextSize}"
+                                        LineHeight="{Binding ElementName=TodoListView, Path=DataContext.ItemTextLineHeight}"
+                                        LineStackingStrategy="BlockLineHeight"
+                                        MaxLines="10"
+                                        Text="{Binding Text}"
+                                        TextDecorations="{Binding TextDecorations}"
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="Wrap" />
+
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock
                                             FontSize="{Binding ElementName=TodoListView, Path=DataContext.SecondaryTextSize}"
                                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                            Text="{Binding RecurringHistoryToggleText}" />
+                                            MaxLines="1"
+                                            Text="{Binding DueStatusText}"
+                                            TextTrimming="CharacterEllipsis"
+                                            Visibility="{Binding DueStatusNormalVisibility}" />
+                                        <TextBlock
+                                            FontSize="{Binding ElementName=TodoListView, Path=DataContext.SecondaryTextSize}"
+                                            Foreground="#F7630C"
+                                            MaxLines="1"
+                                            Text="{Binding DueStatusText}"
+                                            TextTrimming="CharacterEllipsis"
+                                            Visibility="{Binding DueStatusOverdueVisibility}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="2" Visibility="{Binding AttachmentSummaryVisibility}">
+                                            <FontIcon FontSize="{Binding ElementName=TodoListView, Path=DataContext.SmallIconSize}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Glyph="&#xE723;" />
+                                            <TextBlock FontSize="{Binding ElementName=TodoListView, Path=DataContext.SecondaryTextSize}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{Binding AttachmentSummaryText}" />
+                                        </StackPanel>
                                     </StackPanel>
-                                </Button>
-                            </Grid>
-
-                            <Border
-                                x:Name="TodoItemActionHost"
-                                Grid.Column="2"
-                                Canvas.ZIndex="2"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center"
-                                Style="{StaticResource WidgetHoverActionHostStyle}">
-                                <StackPanel Orientation="Horizontal" Spacing="2">
-                                    <Button
-                                        Click="ImportantItemButton_Click"
-                                        Style="{StaticResource TodoItemActionButtonStyle}">
-                                        <FontIcon FontSize="12" Glyph="{Binding ImportantGlyph}" />
-                                    </Button>
 
                                     <Button
-                                        x:Name="DeleteItemButton"
-                                        Click="DeleteItemButton_Click"
-                                        Style="{StaticResource TodoItemActionButtonStyle}">
-                                        <FontIcon FontSize="12" Glyph="&#xE74D;" />
+                                        Click="RecurringHistoryToggleButton_Click"
+                                        HorizontalAlignment="Left"
+                                        MinHeight="22"
+                                        Padding="0"
+                                        Style="{StaticResource SubtleButtonStyle}"
+                                        Visibility="{Binding RecurringHistoryToggleVisibility}">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <FontIcon FontSize="{Binding ElementName=TodoListView, Path=DataContext.SmallIconSize}" Glyph="{Binding RecurringHistoryToggleGlyph}" />
+                                            <TextBlock FontSize="{Binding ElementName=TodoListView, Path=DataContext.SecondaryTextSize}" Text="{Binding RecurringHistoryToggleText}" />
+                                        </StackPanel>
                                     </Button>
                                 </StackPanel>
-                            </Border>
-                        </Grid>
+
+                                <Button Grid.Column="3" AutomationProperties.Name="{Binding ImportantToggleText}" Click="ImportantItemButton_Click" Style="{StaticResource TodoCardIconButtonStyle}" ToolTipService.ToolTip="{Binding ImportantToggleText}">
+                                    <FontIcon FontSize="{Binding ElementName=TodoListView, Path=DataContext.PrimaryIconSize}" Glyph="{Binding ImportantGlyph}" />
+                                </Button>
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
 
-            <Canvas
-                x:Name="TodoSelectionOverlay"
-                Grid.Row="0"
-                Background="Transparent"
-                IsHitTestVisible="False">
-                <Border
-                    x:Name="TodoSelectionRectangle"
-                    Width="0"
-                    Height="0"
-                    BorderThickness="1"
-                    CornerRadius="0"
-                    Visibility="Collapsed" />
+            <Canvas x:Name="TodoSelectionOverlay" Background="Transparent" IsHitTestVisible="False">
+                <Border x:Name="TodoSelectionRectangle" Width="0" Height="0" BorderThickness="1" Visibility="Collapsed" />
             </Canvas>
 
             <StackPanel
-                Grid.Row="0"
                 Spacing="4"
                 Style="{StaticResource WidgetEmptyStatePanelStyle}"
                 Visibility="{Binding EmptyStateVisibility}">
@@ -442,27 +368,20 @@
                     Style="{StaticResource WidgetEmptyStateDescriptionTextStyle}"
                     Text="{Binding EmptyStateText}" />
             </StackPanel>
-
         </Grid>
 
-        <Grid
-            Grid.Row="3"
-            ColumnSpacing="8"
-            Visibility="{Binding FooterVisibility}">
+        <Grid Grid.Row="2" ColumnSpacing="8" Visibility="{Binding ListPageVisibility}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-
             <TextBlock
-                Grid.Column="0"
                 VerticalAlignment="Center"
                 FontSize="{Binding SecondaryTextSize}"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Text="{Binding ItemsLeftText}"
                 TextTrimming="CharacterEllipsis"
                 Visibility="{Binding FooterStatsVisibility}" />
-
             <Button
                 x:Name="ClearCompletedButton"
                 Grid.Column="1"
@@ -475,34 +394,245 @@
             </Button>
         </Grid>
 
+        <!-- Detail page fills the entire widget content area. -->
+        <Grid
+            x:Name="DetailPage"
+            Grid.RowSpan="3"
+            Canvas.ZIndex="5"
+            Background="Transparent"
+            DataContext="{Binding SelectedDetailItem}"
+            Visibility="{Binding ElementName=RootGrid, Path=DataContext.DetailPageVisibility}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border
+                Grid.Row="0"
+                Margin="-8,-8,-8,0"
+                Padding="8,5"
+                Background="Transparent"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1">
+                <StackPanel Spacing="3">
+                    <Grid Height="32" ColumnSpacing="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="28" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            Grid.Column="0"
+                            AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DetailBackText}"
+                            Click="DetailBackButton_Click"
+                            Style="{StaticResource TodoDetailHeaderIconButtonStyle}"
+                            ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailBackText}">
+                            <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Glyph="&#xE72B;" />
+                        </Button>
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontSize="{Binding ElementName=RootGrid, Path=DataContext.SecondaryTextSize}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="{Binding CreatedText}"
+                            TextTrimming="CharacterEllipsis" />
+                        <Button
+                            Grid.Column="2"
+                            AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DeleteText}"
+                            Click="DetailDeleteButton_Click"
+                            Style="{StaticResource TodoDetailHeaderIconButtonStyle}"
+                            ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DeleteText}">
+                            <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="&#xE74D;" />
+                        </Button>
+                    </Grid>
+
+                    <Grid ColumnSpacing="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="28" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" AutomationProperties.Name="{Binding CompletionToggleText}" Click="DetailCompletionButton_Click" Style="{StaticResource TodoDetailHeaderIconButtonStyle}" ToolTipService.ToolTip="{Binding CompletionToggleText}">
+                            <Grid Width="{Binding ElementName=RootGrid, Path=DataContext.PrimaryIconSize}" Height="{Binding ElementName=RootGrid, Path=DataContext.PrimaryIconSize}">
+                                <Border x:Name="DetailCompletionBox" BorderBrush="{ThemeResource TextFillColorSecondaryBrush}" BorderThickness="{Binding CompletionBorderThickness}" CornerRadius="10" />
+                                <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Foreground="White" Glyph="{Binding CompletionGlyph}" Opacity="{Binding CompletionGlyphOpacity}" />
+                            </Grid>
+                        </Button>
+                        <Grid Grid.Column="1" RowSpacing="0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="8" />
+                            </Grid.RowDefinitions>
+                            <TextBox
+                                x:Name="DetailTitleTextBox"
+                                Height="64"
+                                MinHeight="36"
+                                MaxHeight="180"
+                                AcceptsReturn="True"
+                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                FontWeight="Normal"
+                                KeyDown="DetailTitleTextBox_KeyDown"
+                                LostFocus="DetailTitleTextBox_LostFocus"
+                                MaxLength="2000"
+                                PlaceholderText="{Binding ElementName=RootGrid, Path=DataContext.AddPlaceholderText}"
+                                Style="{StaticResource TodoDetailTextBoxStyle}"
+                                Text="{Binding EditText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                TextWrapping="Wrap"
+                                ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                            <Border
+                                x:Name="DetailTitleResizeHandle"
+                                Grid.Row="1"
+                                Height="8"
+                                Background="Transparent"
+                                PointerPressed="DetailTitleResizeHandle_PointerPressed"
+                                PointerMoved="DetailTitleResizeHandle_PointerMoved"
+                                PointerReleased="DetailTitleResizeHandle_PointerReleased"
+                                PointerCaptureLost="DetailTitleResizeHandle_PointerCaptureLost">
+                                <Border Width="28" Height="2" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{ThemeResource ControlStrokeColorSecondaryBrush}" CornerRadius="1" />
+                            </Border>
+                        </Grid>
+                        <Button Grid.Column="2" AutomationProperties.Name="{Binding ImportantToggleText}" Click="DetailImportantButton_Click" Style="{StaticResource TodoDetailHeaderIconButtonStyle}" ToolTipService.ToolTip="{Binding ImportantToggleText}">
+                            <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="{Binding ImportantGlyph}" />
+                        </Button>
+                    </Grid>
+
+                </StackPanel>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" Margin="0,6" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="8">
+                    <Border
+                        Padding="0,2"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="0,1">
+                        <Grid ColumnSpacing="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Button
+                                Grid.Column="0"
+                                AutomationProperties.Name="{Binding MetadataDueDateText}"
+                                Click="MetadataDueDate_Click"
+                                Style="{StaticResource TodoDetailToolbarButtonStyle}"
+                                ToolTipService.ToolTip="{Binding MetadataDueDateText}">
+                                <Grid Width="24" Height="24">
+                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE787;" />
+                                    <Ellipse Width="4" Height="4" Margin="0,0,1,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{Binding DueStatusVisibility}" />
+                                </Grid>
+                            </Button>
+
+                            <Button
+                                Grid.Column="1"
+                                AutomationProperties.Name="{Binding MetadataReminderText}"
+                                Click="MetadataReminder_Click"
+                                IsEnabled="{Binding HasDueDate}"
+                                Style="{StaticResource TodoDetailToolbarButtonStyle}"
+                                ToolTipService.ToolTip="{Binding MetadataReminderText}">
+                                <Grid Width="24" Height="24">
+                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xEA8F;" />
+                                    <Ellipse Width="4" Height="4" Margin="0,0,1,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{Binding ReminderSetVisibility}" />
+                                </Grid>
+                            </Button>
+
+                            <Button
+                                Grid.Column="2"
+                                AutomationProperties.Name="{Binding MetadataRecurrenceText}"
+                                Click="MetadataRecurrence_Click"
+                                IsEnabled="{Binding HasDueDate}"
+                                Style="{StaticResource TodoDetailToolbarButtonStyle}"
+                                ToolTipService.ToolTip="{Binding MetadataRecurrenceText}">
+                                <Grid Width="24" Height="24">
+                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE823;" />
+                                    <Ellipse Width="4" Height="4" Margin="0,0,1,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{Binding RecurrenceSetVisibility}" />
+                                </Grid>
+                            </Button>
+
+                            <Button
+                                Grid.Column="3"
+                                AutomationProperties.Name="{Binding MetadataColorText}"
+                                Click="MetadataColor_Click"
+                                Style="{StaticResource TodoDetailToolbarButtonStyle}"
+                                ToolTipService.ToolTip="{Binding MetadataColorText}">
+                                <Grid Width="24" Height="24">
+                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE790;" />
+                                    <Border Width="10" Height="3" Margin="0,0,0,1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Background="{Binding ColorMarkerBrush}" CornerRadius="1" Visibility="{Binding ColorMarkerVisibility}" />
+                                </Grid>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                        <StackPanel>
+                            <Button Click="DetailAddFileButton_Click" Style="{StaticResource TodoDetailRowButtonStyle}">
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Grid.Column="0" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="&#xE723;" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}" Text="{Binding ElementName=RootGrid, Path=DataContext.DetailAddFileText}" />
+                                </Grid>
+                            </Button>
+                            <ItemsControl ItemsSource="{Binding Attachments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid MinHeight="44" Padding="8,3" ColumnSpacing="6" Loaded="TodoAttachmentPreview_Loaded">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="36" /><ColumnDefinition Width="*" /><ColumnDefinition Width="28" /></Grid.ColumnDefinitions>
+                                            <Grid Grid.Column="0" Width="36" Height="36">
+                                                <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="3">
+                                                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" Visibility="{Binding ThumbnailVisibility}" />
+                                                </Border>
+                                                <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="{Binding Glyph}" Visibility="{Binding FileIconVisibility}" />
+                                            </Grid>
+                                            <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="0" Click="DetailOpenAttachmentButton_Click" Style="{StaticResource SubtleButtonStyle}">
+                                                <TextBlock FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}" MaxLines="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                            </Button>
+                                            <Button Grid.Column="2" Width="28" Height="28" MinWidth="28" MinHeight="28" AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DetailRemoveAttachmentText}" Click="DetailRemoveAttachmentButton_Click" Style="{StaticResource WidgetCompactIconButtonStyle}" ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailRemoveAttachmentText}" VerticalAlignment="Center"><FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Glyph="&#xE74D;" /></Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border
+                Grid.Row="2"
+                Visibility="Collapsed"
+                Margin="-8,0,-8,-8"
+                Padding="10,4"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.SecondaryTextSize}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{Binding CreatedText}" TextTrimming="CharacterEllipsis" />
+                    <Button Grid.Column="1" Width="32" Height="32" MinWidth="32" MinHeight="32" Padding="0" AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DeleteText}" Click="DetailDeleteButton_Click" Style="{StaticResource SubtleButtonStyle}" ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DeleteText}">
+                        <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="&#xE74D;" />
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+
         <Border
             x:Name="UndoToast"
-            Grid.RowSpan="4"
+            Grid.RowSpan="3"
             Canvas.ZIndex="10"
             Margin="10,0,10,10"
             Style="{StaticResource WidgetCompactToastStyle}">
-            <StackPanel
-                Orientation="Horizontal"
-                Spacing="10">
-                <TextBlock
-                    x:Name="UndoToastText"
-                    FontSize="{Binding TextSize}"
-                    MaxLines="2"
-                    TextAlignment="Center"
-                    TextTrimming="CharacterEllipsis"
-                    TextWrapping="Wrap"
-                    VerticalAlignment="Center" />
-                <Button
-                    x:Name="UndoToastActionButton"
-                    Click="UndoButton_Click"
-                    Style="{StaticResource WidgetToastActionButtonStyle}"
-                    Visibility="Collapsed" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock x:Name="UndoToastText" FontSize="{Binding TextSize}" MaxLines="2" TextAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <Button x:Name="UndoToastActionButton" Click="UndoButton_Click" Style="{StaticResource WidgetToastActionButtonStyle}" Visibility="Collapsed" />
             </StackPanel>
         </Border>
 
         <controls:WidgetInlineEditor
             x:Name="TodoInlineEditor"
-            Grid.RowSpan="4"
+            Grid.RowSpan="3"
             Canvas.ZIndex="20"
             CancelRequested="TodoEditCancelButton_Click"
             CommandFontSize="{Binding FilterTextSize}"
@@ -514,7 +644,7 @@
 
         <Border
             x:Name="CustomDueDateOverlay"
-            Grid.RowSpan="4"
+            Grid.RowSpan="3"
             Canvas.ZIndex="21"
             Margin="8"
             MaxWidth="300"
@@ -523,86 +653,21 @@
             Style="{StaticResource WidgetInlineEditorOverlayStyle}"
             Visibility="Collapsed">
             <Grid RowSpacing="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <Grid Grid.Row="0" ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock
-                        x:Name="CustomDueDateTitleText"
-                        Grid.Column="0"
-                        FontSize="{Binding TextSize}"
-                        Style="{StaticResource WidgetInlineEditorTitleTextStyle}" />
-
-                    <Button
-                        x:Name="CustomDueDateCloseButton"
-                        Grid.Column="1"
-                        Click="CustomDueDateCancelButton_Click"
-                        Style="{StaticResource WidgetInlineEditorCloseButtonStyle}">
-                        <FontIcon FontSize="10" Glyph="&#xE711;" />
-                    </Button>
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="CustomDueDateTitleText" FontSize="{Binding TextSize}" Style="{StaticResource WidgetInlineEditorTitleTextStyle}" />
+                    <Button x:Name="CustomDueDateCloseButton" Grid.Column="1" Click="CustomDueDateCancelButton_Click" Style="{StaticResource WidgetInlineEditorCloseButtonStyle}"><FontIcon FontSize="10" Glyph="&#xE711;" /></Button>
                 </Grid>
-
-                <CalendarDatePicker
-                    x:Name="CustomDueDatePicker"
-                    Grid.Row="1"
-                    Height="36"
-                    MinHeight="36"
-                    MinWidth="0"
-                    HorizontalAlignment="Stretch" />
-
-                <Button
-                    x:Name="CustomDueTimeButton"
-                    Grid.Row="2"
-                    Click="CustomDueTimeButton_Click"
-                    FontSize="{Binding FilterTextSize}"
-                    HorizontalAlignment="Stretch"
-                    Style="{StaticResource TodoCustomDueTimeButtonStyle}">
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock
-                            x:Name="CustomDueTimeText"
-                            Grid.Column="0"
-                            VerticalAlignment="Center"
-                            FontSize="{Binding FilterTextSize}" />
-
-                        <FontIcon
-                            Grid.Column="1"
-                            FontSize="12"
-                            Glyph="&#xE916;" />
-                    </Grid>
+                <CalendarDatePicker x:Name="CustomDueDatePicker" Grid.Row="1" Height="36" MinHeight="36" MinWidth="0" HorizontalAlignment="Stretch" />
+                <Button x:Name="CustomDueTimeButton" Grid.Row="2" Click="CustomDueTimeButton_Click" FontSize="{Binding FilterTextSize}" HorizontalAlignment="Stretch" Style="{StaticResource DefaultButtonStyle}">
+                    <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock x:Name="CustomDueTimeText" VerticalAlignment="Center" /><FontIcon Grid.Column="1" FontSize="12" Glyph="&#xE916;" /></Grid>
                 </Button>
-
-                <StackPanel
-                    Grid.Row="3"
-                    HorizontalAlignment="Right"
-                    Orientation="Horizontal"
-                    Spacing="8">
-                    <Button
-                        x:Name="CustomDueDateCancelButton"
-                        Click="CustomDueDateCancelButton_Click"
-                        FontSize="{Binding FilterTextSize}"
-                        Style="{StaticResource WidgetEditorCommandButtonStyle}" />
-                    <Button
-                        x:Name="CustomDueDateSaveButton"
-                        Click="CustomDueDateSaveButton_Click"
-                        FontSize="{Binding FilterTextSize}"
-                        Style="{StaticResource WidgetEditorCommandButtonStyle}" />
+                <StackPanel Grid.Row="3" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="CustomDueDateCancelButton" Click="CustomDueDateCancelButton_Click" FontSize="{Binding FilterTextSize}" Style="{StaticResource WidgetEditorCommandButtonStyle}" />
+                    <Button x:Name="CustomDueDateSaveButton" Click="CustomDueDateSaveButton_Click" FontSize="{Binding FilterTextSize}" Style="{StaticResource WidgetEditorCommandButtonStyle}" />
                 </StackPanel>
             </Grid>
         </Border>
-
     </Grid>
 </UserControl>

@@ -49,10 +49,19 @@ public sealed class QuickCaptureService
 
     public async Task<QuickCaptureItem> AddItemAsync(string body)
     {
+        return await AddDetailedItemAsync(null, body, QuickCaptureAppearancePreset.Default);
+    }
+
+    public async Task<QuickCaptureItem> AddDetailedItemAsync(
+        string? title,
+        string body,
+        QuickCaptureAppearancePreset appearancePreset)
+    {
         string normalizedBody = NormalizeBody(body);
-        if (string.IsNullOrWhiteSpace(normalizedBody))
+        string? normalizedTitle = NormalizeOptionalText(title);
+        if (string.IsNullOrWhiteSpace(normalizedTitle) && string.IsNullOrWhiteSpace(normalizedBody))
         {
-            throw new ArgumentException("Quick Capture item body cannot be empty.", nameof(body));
+            throw new ArgumentException("Quick Capture title and body cannot both be empty.", nameof(body));
         }
 
         await _gate.WaitAsync();
@@ -63,8 +72,11 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = normalizedBody,
+                Title = normalizedTitle,
                 Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text,
                 Url = url,
+                AppearancePreset = NormalizeAppearancePreset(appearancePreset),
+                SourceKind = QuickCaptureSourceKind.Manual,
                 IsRecent = false,
                 SortOrder = 0,
                 CreatedAt = now,
@@ -142,6 +154,7 @@ public sealed class QuickCaptureService
                 Body = normalizedBody,
                 Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text,
                 Url = url,
+                SourceKind = QuickCaptureSourceKind.Clipboard,
                 IsRecent = true,
                 SortOrder = 0,
                 CreatedAt = now,
@@ -193,6 +206,7 @@ public sealed class QuickCaptureService
                 Type = QuickCaptureItemType.Image,
                 ImagePath = imagePath,
                 ContentHash = contentHash,
+                SourceKind = QuickCaptureSourceKind.Clipboard,
                 IsRecent = true,
                 SortOrder = 0,
                 CreatedAt = now,
@@ -237,6 +251,7 @@ public sealed class QuickCaptureService
                 Type = QuickCaptureItemType.Image,
                 ImagePath = cachedImagePath,
                 ContentHash = contentHash,
+                SourceKind = QuickCaptureSourceKind.Image,
                 IsRecent = false,
                 SortOrder = 0,
                 CreatedAt = now,
@@ -305,10 +320,12 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = recentItem.Body,
+                Title = recentItem.Title,
                 Type = recentItem.Type,
                 Url = recentItem.Url,
                 ImagePath = recentItem.ImagePath,
                 ContentHash = recentItem.ContentHash,
+                SourceKind = QuickCaptureSourceKind.Clipboard,
                 IsPinned = pin,
                 IsRecent = false,
                 SortOrder = 0,
@@ -373,6 +390,61 @@ public sealed class QuickCaptureService
             item.UpdatedAt = DateTimeOffset.UtcNow;
             await SaveCoreAsync();
             return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<int> SetPinnedAsync(IEnumerable<string> itemIds, bool isPinned)
+    {
+        var selectedIds = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (selectedIds.Count == 0)
+        {
+            return 0;
+        }
+
+        await _gate.WaitAsync();
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            var targets = _data!.Items
+                .Where(item => !item.IsDeleted && selectedIds.Contains(item.Id) && item.IsPinned != isPinned)
+                .OrderBy(item => item.SortOrder)
+                .ToList();
+            if (targets.Count == 0)
+            {
+                return 0;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            foreach (var item in targets)
+            {
+                item.IsPinned = isPinned;
+                item.PinnedSortOrder = isPinned ? 0 : -1;
+                item.UpdatedAt = now;
+            }
+
+            if (isPinned)
+            {
+                var targetIdSet = targets.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+                var pinnedOrder = targets
+                    .Concat(_data.Items
+                        .Where(item => item.IsPinned && !targetIdSet.Contains(item.Id))
+                        .OrderBy(item => item.PinnedSortOrder))
+                    .ToList();
+                for (int index = 0; index < pinnedOrder.Count; index++)
+                {
+                    pinnedOrder[index].PinnedSortOrder = index;
+                }
+            }
+
+            NormalizePinnedSortOrders(_data.Items);
+            await SaveCoreAsync();
+            return targets.Count;
         }
         finally
         {
@@ -448,6 +520,54 @@ public sealed class QuickCaptureService
             NormalizePinnedSortOrders(_data.Items);
             await SaveCoreAsync();
             return new QuickCaptureDeletedItemSnapshot(deletedItem, IsRecent: false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<QuickCaptureDeletedItemSnapshot>> DeleteItemsAsync(
+        IEnumerable<string> itemIds,
+        bool isRecent)
+    {
+        var selectedIds = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (selectedIds.Count == 0)
+        {
+            return [];
+        }
+
+        await _gate.WaitAsync();
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            List<QuickCaptureItem> source = isRecent ? _data!.RecentItems : _data!.Items;
+            var itemsToDelete = source
+                .Where(item => selectedIds.Contains(item.Id))
+                .ToList();
+            if (itemsToDelete.Count == 0)
+            {
+                return [];
+            }
+
+            var snapshots = itemsToDelete
+                .Select(item => new QuickCaptureDeletedItemSnapshot(Clone(item), isRecent))
+                .ToList();
+            foreach (var item in itemsToDelete)
+            {
+                source.Remove(item);
+            }
+
+            NormalizeSortOrders(source);
+            if (!isRecent)
+            {
+                NormalizePinnedSortOrders(_data.Items);
+            }
+
+            await SaveCoreAsync();
+            return snapshots;
         }
         finally
         {
@@ -653,6 +773,221 @@ public sealed class QuickCaptureService
         }
     }
 
+    public async Task<bool> MovePinnedItemToIndexAsync(string itemId, int targetIndex)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return false;
+        }
+
+        await _gate.WaitAsync();
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            NormalizePinnedSortOrders(_data!.Items);
+
+            var pinnedItems = _data.Items
+                .Where(item => !item.IsDeleted && item.IsPinned)
+                .OrderBy(item => item.PinnedSortOrder)
+                .ThenBy(item => item.SortOrder)
+                .ThenByDescending(item => item.UpdatedAt)
+                .ToList();
+            int currentIndex = pinnedItems.FindIndex(item =>
+                string.Equals(item.Id, itemId, StringComparison.Ordinal));
+            if (currentIndex < 0)
+            {
+                return false;
+            }
+
+            QuickCaptureItem movedItem = pinnedItems[currentIndex];
+            pinnedItems.RemoveAt(currentIndex);
+            pinnedItems.Insert(Math.Clamp(targetIndex, 0, pinnedItems.Count), movedItem);
+            for (int index = 0; index < pinnedItems.Count; index++)
+            {
+                pinnedItems[index].PinnedSortOrder = index;
+            }
+
+            await SaveCoreAsync();
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<QuickCaptureItem?> ReplaceItemImageAsync(string itemId, string imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(itemId) ||
+            string.IsNullOrWhiteSpace(imagePath) ||
+            !File.Exists(imagePath) ||
+            !IsImageFile(imagePath))
+        {
+            return null;
+        }
+
+        string cachedImagePath = await SaveImageFileAsync(imagePath);
+        string contentHash = Path.GetFileNameWithoutExtension(cachedImagePath);
+
+        await _gate.WaitAsync();
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            var item = _data!.Items.FirstOrDefault(entry =>
+                string.Equals(entry.Id, itemId, StringComparison.Ordinal) && !entry.IsDeleted);
+            if (item is null)
+            {
+                CleanupUnusedImageCacheCore();
+                return null;
+            }
+
+            item.Type = QuickCaptureItemType.Image;
+            item.ImagePath = cachedImagePath;
+            item.ContentHash = contentHash;
+            item.SourceKind = QuickCaptureSourceKind.Image;
+            item.Url = null;
+            item.UpdatedAt = DateTimeOffset.UtcNow;
+            await SaveCoreAsync();
+            CleanupUnusedImageCacheCore();
+            return Clone(item);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<bool> MoveItemAsync(string itemId, int targetIndex)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return false;
+        }
+
+        await _gate.WaitAsync();
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            var items = _data!.Items
+                .Where(item => !item.IsDeleted)
+                .OrderBy(item => item.SortOrder)
+                .ThenByDescending(item => item.UpdatedAt)
+                .ToList();
+            int currentIndex = items.FindIndex(item => string.Equals(item.Id, itemId, StringComparison.Ordinal));
+            if (currentIndex < 0)
+            {
+                return false;
+            }
+
+            QuickCaptureItem movedItem = items[currentIndex];
+            items.RemoveAt(currentIndex);
+            items.Insert(Math.Clamp(targetIndex, 0, items.Count), movedItem);
+            NormalizeSortOrders(items);
+            NormalizePinnedSortOrders(_data.Items);
+            await SaveCoreAsync();
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<bool> UpdateItemDetailsAsync(
+        string itemId,
+        string? title,
+        string body,
+        QuickCaptureAppearancePreset appearancePreset)
+    {
+        string normalizedBody = NormalizeBody(body);
+        string? normalizedTitle = NormalizeOptionalText(title);
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return false;
+        }
+
+        await _gate.WaitAsync();
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            var item = _data!.Items.FirstOrDefault(entry =>
+                string.Equals(entry.Id, itemId, StringComparison.Ordinal) && !entry.IsDeleted);
+            if (item is null)
+            {
+                return false;
+            }
+
+            if (item.Type != QuickCaptureItemType.Image &&
+                string.IsNullOrWhiteSpace(normalizedTitle) &&
+                string.IsNullOrWhiteSpace(normalizedBody))
+            {
+                return false;
+            }
+
+            item.Title = normalizedTitle;
+            item.Body = normalizedBody;
+            if (item.Type != QuickCaptureItemType.Image)
+            {
+                item.Type = TryDetectUrl(normalizedBody, out string? url)
+                    ? QuickCaptureItemType.Link
+                    : QuickCaptureItemType.Text;
+                item.Url = url;
+            }
+
+            item.AppearancePreset = NormalizeAppearancePreset(appearancePreset);
+            item.UpdatedAt = DateTimeOffset.UtcNow;
+            await SaveCoreAsync();
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<int> SetAppearanceAsync(
+        IEnumerable<string> itemIds,
+        QuickCaptureAppearancePreset appearancePreset)
+    {
+        var selectedIds = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (selectedIds.Count == 0)
+        {
+            return 0;
+        }
+
+        QuickCaptureAppearancePreset normalizedPreset = NormalizeAppearancePreset(appearancePreset);
+        await _gate.WaitAsync();
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            var targets = _data!.Items
+                .Where(item => !item.IsDeleted &&
+                               selectedIds.Contains(item.Id) &&
+                               item.AppearancePreset != normalizedPreset)
+                .ToList();
+            if (targets.Count == 0)
+            {
+                return 0;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            foreach (var item in targets)
+            {
+                item.AppearancePreset = normalizedPreset;
+                item.UpdatedAt = now;
+            }
+
+            await SaveCoreAsync();
+            return targets.Count;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<string?> CreateImageThumbnailAndRemoveTaskAsync(string imagePath)
     {
         try
@@ -710,6 +1045,16 @@ public sealed class QuickCaptureService
         return string.IsNullOrWhiteSpace(body)
             ? string.Empty
             : body.Trim();
+    }
+
+    private static string? NormalizeOptionalText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static QuickCaptureAppearancePreset NormalizeAppearancePreset(QuickCaptureAppearancePreset value)
+    {
+        return Enum.IsDefined(value) ? value : QuickCaptureAppearancePreset.Default;
     }
 
     public void MarkClipboardTextWrittenByDeskBox(string? body)
@@ -875,12 +1220,17 @@ public sealed class QuickCaptureService
             Id = item.Id,
             Type = item.Type,
             Body = item.Body,
+            Title = item.Title,
             Url = item.Url,
             ImagePath = item.ImagePath,
             ContentHash = item.ContentHash,
             IsPinned = item.IsPinned,
             IsRecent = item.IsRecent,
             IsDeleted = item.IsDeleted,
+            AppearancePreset = item.AppearancePreset,
+            SourceKind = item.SourceKind,
+            Tags = item.Tags is null ? [] : [.. item.Tags],
+            ArchivedAt = item.ArchivedAt,
             SortOrder = item.SortOrder,
             PinnedSortOrder = item.PinnedSortOrder,
             CreatedAt = item.CreatedAt,

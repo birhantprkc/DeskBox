@@ -15,24 +15,21 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.2.8
+Current release: 1.2.9
 
-- [DeskBox_Setup_1.2.8_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.8/DeskBox_Setup_1.2.8_x64.exe)
+- [DeskBox_Setup_1.2.9_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.9/DeskBox_Setup_1.2.9_x64.exe)
 
 The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.2.8
+## What's New In 1.2.9
 
-- **Weather widget**: Full weather widget with Mini / Compact / Standard / Detailed layouts, offline city search, auto-location, hourly and weekly forecasts, sunrise/sunset, UV index, precipitation, humidity, wind, pressure, rich skin backgrounds, and configurable refresh interval. Horizontal scrollbar support, week view scrollable on small widgets, and loading animation on refresh.
-- **Resize snap guide**: When resizing a widget, alignment guides highlight edges that match other widgets or the work area boundary, making it easier to align widgets precisely.
-- **Quick Capture fixes**: Data is now properly cleared when resetting the widget. Tab switching no longer shows a blank view on first switch — data appears immediately.
-- **Settings defaults unified**: Default appearance is now Mica material, Medium border, Round corners for both new installs and reset-to-defaults. Global reset now restores `CustomAccentColor` and `FocusClickedWidgetOnRaise`. Todo widget reset restores reminder settings. Weather widget reset clears saved coordinates.
-- **Settings UI expansion**: Added standalone material type selector (Mica / Acrylic / Solid) and border style selector (None / Thin / Medium) to the Appearance settings page.
-- **Widget layer improvement**: Added `SetWindowToDesktopLevel` to prevent widgets from being hidden by Win+D while staying at desktop level.
-- **Code refactoring**: Extracted `WidgetWindowBase.cs` (1027 lines) as shared base for all widget windows. Split `WidgetWindow.xaml.cs` (~5000 lines) into 6 partial classes. Split `WidgetManager.cs` (3532 lines) into 4 partial classes. Log rotation added (5MB threshold with backup). Settings writes are now atomic via temp-file-and-move pattern. `FolderWatcherService` debounce migrated to `DispatcherQueueTimer`.
-- **Memory leak fix**: `TodoWidgetViewModel` and `TodoWidgetContentAdapter` now implement `IDisposable` to prevent leaks on widget disposal.
-- **Title font size**: Content widget titles now dynamically follow the global text size setting instead of using a fixed size.
-- **Localization**: Shortened drag-and-drop diagnostics text for clearer, more concise messaging.
+- **Todo rebuilt around cards and focused editing**: Tasks now open in a dedicated full-widget detail view. The list uses cleaner cards, eight color filters, up to ten text lines, drag sorting, due dates, reminders, recurrence, attachments, and batch actions from the context menu.
+- **Quick Capture upgraded for notes and images**: Notes use a focused body editor with paper styles, image add/replace/preview/copy actions, pinning, created-time visibility, drag sorting in both normal and pinned views, and batch pin, paper, copy, and delete commands.
+- **Responsive Music and Weather layouts**: Widgets now adapt down to 150 x 150. Music uses centered album-art cropping, compact overlay controls, title marquee, and smoother artwork transitions. Playback spectrum code and settings have been removed.
+- **Native-feeling menus and selection**: File, Todo, and Quick Capture menus close immediately after commands. File widgets support multi-selection actions; Todo and Quick Capture distinguish box selection from normal detail navigation.
+- **Window layer and title interaction fixes**: Tray and hotkey activation now raise all widgets consistently and then return Z-order control to Windows. Widget titles support direct rename, double-click editing, and predictable focus behavior.
+- **Settings and reset semantics clarified**: Global reset preserves language, startup, and feature-widget switches while restoring preferences. Feature-widget reset requires confirmation and clears that widget's data and settings. New installs and reset now use Mica, Thin border, Round corners, segmented Todo/Quick Capture tabs, and hidden Todo footer counts.
+- **Performance and reliability**: Reduced cross-widget refreshes, tightened event and cancellation cleanup, improved music-session and settings-window lifetime handling, and expanded regression coverage for Todo, Quick Capture, Weather, and release defaults.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -48,7 +45,7 @@ The project is intentionally built around native Windows behavior. I like the te
 - **Folder mapping**: display an existing folder as a desktop widget without moving its contents.
 - **Todo widget**: keep desktop tasks with quick input, full-screen editing, custom due times, and native-feeling inline controls.
 - **Quick Capture**: keep reusable text, links, screenshots, and recent clipboard content in an optional local-only feature widget.
-- **Music widget**: control playback, switch playback mode, adjust system volume, and show responsive waveform styles with optional album-color ambience.
+- **Music widget**: control playback, switch playback mode, adjust system volume, and use responsive album-art layouts with optional album-color ambience.
 - **Move into managed storage**: dropped files are moved into the managed widget's real storage folder by default.
 - **Tray controls**: create widgets, map folders, show or hide all widgets, temporarily raise widgets, open managed storage, open Settings, toggle startup launch, and exit.
 - **Global hotkey**: enable a keyboard shortcut for quickly showing, hiding, or raising widgets.
@@ -137,7 +134,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.2.8_x64.exe
+Output\DeskBox_Setup_1.2.9_x64.exe
 ```
 
 ## Project Structure

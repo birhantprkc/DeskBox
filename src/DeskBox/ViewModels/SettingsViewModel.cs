@@ -45,6 +45,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localizationService;
     private readonly WidgetContentFactory _widgetContentFactory;
     private readonly IAppUpdateService _appUpdateService;
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private bool _isDisposed;
     private CancellationTokenSource? _updateOperationCts;
     private AppUpdateManifest? _availableUpdateManifest;
     private string? _downloadedUpdateInstallerPath;
@@ -57,7 +59,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedLanguage = SettingsService.LanguageSystem;
     private string _selectedWidgetCornerPreference = CornerRound;
     private string _selectedWidgetMaterialType = MaterialMica;
-    private string _selectedWidgetBorderStyle = BorderMedium;
+    private string _selectedWidgetBorderStyle = BorderThin;
     private string _selectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade;
     private string _selectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
     private string _selectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
@@ -67,12 +69,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedWidgetTitleIconMode = SettingsService.WidgetTitleIconModeColor;
     private string _selectedWidgetLayerMode = SettingsService.WidgetLayerModeDynamic;
     private string _selectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
-    private string _selectedQuickCaptureTabStyle = SettingsService.WidgetTabStylePivot;
+    private string _selectedQuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
     private string _selectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
     private string _selectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
-    private string _selectedTodoTabStyle = SettingsService.WidgetTabStylePivot;
+    private string _selectedTodoTabStyle = SettingsService.WidgetTabStyleButton;
     private int _selectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
-    private string _selectedMusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
 private string _selectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
 private string _selectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
 private string _selectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
@@ -117,7 +118,6 @@ private int _selectedWeatherRefreshInterval = 60;
     private string[]? _cachedTodoDefaultFilterDisplayNames;
     private string[]? _cachedTodoTabStyleDisplayNames;
     private string[]? _cachedTodoReminderOffsetDisplayNames;
-    private string[]? _cachedMusicRhythmStyleDisplayNames;
 private string[]? _cachedWeatherTempUnitDisplayNames;
 private string[]? _cachedWeatherWindUnitDisplayNames;
 private string[]? _cachedWeatherDefaultViewDisplayNames;
@@ -152,12 +152,11 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     [ObservableProperty] private bool _quickCaptureEnabled;
     [ObservableProperty] private bool _todoEnabled;
     [ObservableProperty] private bool _todoShowCompletedTasks = true;
-    [ObservableProperty] private bool _todoShowFooterStats = true;
+    [ObservableProperty] private bool _todoShowFooterStats;
     [ObservableProperty] private bool _todoShowClearCompletedButton = true;
     [ObservableProperty] private bool _todoConfirmBeforeDelete;
     [ObservableProperty] private bool _todoReminderEnabled = true;
     [ObservableProperty] private bool _musicUseArtworkBackdrop = true;
-    [ObservableProperty] private bool _musicShowRhythmBars = true;
     [ObservableProperty] private bool _musicEnableCoverHoverMotion = true;
 
 [ObservableProperty] private bool _weatherAutoLocation = true;
@@ -173,6 +172,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     [ObservableProperty] private bool _quickCaptureClipboardEnabled;
     [ObservableProperty] private bool _quickCaptureImageClipboardEnabled;
     [ObservableProperty] private int _quickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
+    [ObservableProperty] private bool _quickCaptureShowCreatedTime = true;
     [ObservableProperty] private bool _isCheckingForUpdates;
     [ObservableProperty] private bool _isDownloadingUpdate;
     [ObservableProperty] private string _updateStatusText = string.Empty;
@@ -822,30 +822,6 @@ public bool IsOpacitySliderEnabled =>
     public string SelectedTodoReminderOffsetMinutesText => GetTodoReminderOffsetDisplayName(SelectedTodoReminderOffsetMinutes);
     public int SelectedTodoReminderOffsetMinutesIndex => Array.IndexOf(AvailableTodoReminderOffsetMinutes, _selectedTodoReminderOffsetMinutes);
 
-    public string SelectedMusicRhythmStyle
-    {
-        get => _selectedMusicRhythmStyle;
-        set
-        {
-            if (!SetProperty(ref _selectedMusicRhythmStyle, SettingsService.NormalizeMusicRhythmStyle(value)))
-            {
-                return;
-            }
-
-            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
-            {
-                return;
-            }
-
-            _settingsService.Settings.MusicRhythmStyle = _selectedMusicRhythmStyle;
-            _settingsService.SaveDebounced();
-            OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
-        }
-    }
-
-    public string SelectedMusicRhythmStyleText => GetMusicRhythmStyleDisplayName(SelectedMusicRhythmStyle);
-    public int SelectedMusicRhythmStyleIndex => Array.IndexOf(AvailableMusicRhythmStyles, _selectedMusicRhythmStyle);
-
     public string AccentColorHex
     {
         get => _accentColorHex;
@@ -985,7 +961,7 @@ public bool IsOpacitySliderEnabled =>
     public string DefaultHeightInput
     {
         get => FormatNumber(DefaultHeight, 0);
-        set => ApplyNumberInput(value, () => DefaultHeight, next => DefaultHeight = next, SettingsService.DefaultWidgetHeight, 1200d, 0);
+        set => ApplyNumberInput(value, () => DefaultHeight, next => DefaultHeight = next, SettingsService.MinWidgetHeight, 1200d, 0);
     }
 
     public string WidgetOpacityPercentInput
@@ -1213,75 +1189,77 @@ public bool IsOpacitySliderEnabled =>
                     QuickCaptureClipboardEnabled = false;
                     QuickCaptureImageClipboardEnabled = false;
                     QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
+                    QuickCaptureShowCreatedTime = true;
                     SelectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
-                    SelectedQuickCaptureTabStyle = SettingsService.WidgetTabStylePivot;
+                    SelectedQuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
                     _settingsService.Settings.QuickCaptureClipboardEnabled = false;
                     _settingsService.Settings.QuickCaptureImageClipboardEnabled = false;
                     _settingsService.Settings.QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
+                    _settingsService.Settings.QuickCaptureShowCreatedTime = true;
                     _settingsService.Settings.QuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
-                    _settingsService.Settings.QuickCaptureTabStyle = SettingsService.WidgetTabStylePivot;
+                    _settingsService.Settings.QuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
+                    _settingsService.Settings.LastQuickCaptureFileWidgetId = string.Empty;
                     App.Current?.QuickCaptureClipboardService?.Refresh();
                     RefreshQuickCaptureClipboardDiagnostics();
                     break;
                 case WidgetKind.Todo:
                     TodoShowCompletedTasks = true;
-                    TodoShowFooterStats = true;
+                    TodoShowFooterStats = false;
                     TodoShowClearCompletedButton = true;
                     TodoConfirmBeforeDelete = false;
                     TodoReminderEnabled = true;
                     SelectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
                     SelectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
                     SelectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
-                    SelectedTodoTabStyle = SettingsService.WidgetTabStylePivot;
+                    SelectedTodoTabStyle = SettingsService.WidgetTabStyleButton;
                     _settingsService.Settings.TodoShowCompletedTasks = true;
-                    _settingsService.Settings.TodoShowFooterStats = true;
+                    _settingsService.Settings.TodoShowFooterStats = false;
                     _settingsService.Settings.TodoShowClearCompletedButton = true;
                     _settingsService.Settings.TodoConfirmBeforeDelete = false;
                     _settingsService.Settings.TodoReminderEnabled = true;
                     _settingsService.Settings.TodoDefaultReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
                     _settingsService.Settings.TodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
                     _settingsService.Settings.TodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
-                    _settingsService.Settings.TodoTabStyle = SettingsService.WidgetTabStylePivot;
+                    _settingsService.Settings.TodoTabStyle = SettingsService.WidgetTabStyleButton;
                     break;
                 case WidgetKind.Music:
                     MusicUseArtworkBackdrop = true;
-                    MusicShowRhythmBars = true;
-                    SelectedMusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
                     MusicEnableCoverHoverMotion = true;
-WeatherAutoLocation = true;
-WeatherCityName = string.Empty;
-SelectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
-SelectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
-SelectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
-SelectedWeatherSkin = SettingsService.WeatherSkinStandard;
-WeatherShowForecast = true;
-WeatherShowSunrise = true;
-WeatherShowUvIndex = true;
-WeatherShowPrecipitation = true;
-WeatherShowHumidity = true;
-WeatherShowWind = true;
-WeatherShowPressure = false;
-SelectedWeatherRefreshInterval = 60;
                     _settingsService.Settings.MusicUseArtworkBackdrop = true;
-                    _settingsService.Settings.MusicShowRhythmBars = true;
-                    _settingsService.Settings.MusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
                     _settingsService.Settings.MusicEnableCoverHoverMotion = true;
-WeatherAutoLocation = true;
-WeatherCityName = string.Empty;
-_settingsService.Settings.WeatherLatitude = 0;
-_settingsService.Settings.WeatherLongitude = 0;
-SelectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
-SelectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
-SelectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
-SelectedWeatherSkin = SettingsService.WeatherSkinStandard;
-WeatherShowForecast = true;
-WeatherShowSunrise = true;
-WeatherShowUvIndex = true;
-WeatherShowPrecipitation = true;
-WeatherShowHumidity = true;
-WeatherShowWind = true;
-WeatherShowPressure = false;
-SelectedWeatherRefreshInterval = 60;
+                    break;
+                case WidgetKind.Weather:
+                    WeatherAutoLocation = true;
+                    WeatherCityName = string.Empty;
+                    SelectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
+                    SelectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
+                    SelectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
+                    SelectedWeatherSkin = SettingsService.WeatherSkinStandard;
+                    WeatherShowForecast = true;
+                    WeatherShowSunrise = true;
+                    WeatherShowUvIndex = true;
+                    WeatherShowPrecipitation = true;
+                    WeatherShowHumidity = true;
+                    WeatherShowWind = true;
+                    WeatherShowPressure = false;
+                    SelectedWeatherRefreshInterval = 60;
+
+                    _settingsService.Settings.WeatherAutoLocation = true;
+                    _settingsService.Settings.WeatherCityName = string.Empty;
+                    _settingsService.Settings.WeatherLatitude = 0;
+                    _settingsService.Settings.WeatherLongitude = 0;
+                    _settingsService.Settings.WeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
+                    _settingsService.Settings.WeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
+                    _settingsService.Settings.WeatherDefaultView = SettingsService.WeatherDefaultViewToday;
+                    _settingsService.Settings.WeatherSkin = SettingsService.WeatherSkinStandard;
+                    _settingsService.Settings.WeatherShowForecast = true;
+                    _settingsService.Settings.WeatherShowSunrise = true;
+                    _settingsService.Settings.WeatherShowUvIndex = true;
+                    _settingsService.Settings.WeatherShowPrecipitation = true;
+                    _settingsService.Settings.WeatherShowHumidity = true;
+                    _settingsService.Settings.WeatherShowWind = true;
+                    _settingsService.Settings.WeatherShowPressure = false;
+                    _settingsService.Settings.WeatherRefreshIntervalMinutes = 60;
                     break;
             }
         }
@@ -1318,8 +1296,6 @@ SelectedWeatherRefreshInterval = 60;
                 OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
                 break;
             case WidgetKind.Music:
-                OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
-                OnPropertyChanged(nameof(SelectedMusicRhythmStyleIndex));
                 break;
             case WidgetKind.Weather:
                 OnPropertyChanged(nameof(SelectedWeatherDefaultViewIndex));
@@ -1488,17 +1464,6 @@ SelectedWeatherRefreshInterval = 60;
     ];
 
     public string[] AvailableTodoReminderOffsetDisplayNames => _cachedTodoReminderOffsetDisplayNames ??= AvailableTodoReminderOffsetMinutes.Select(GetTodoReminderOffsetDisplayName).ToArray();
-
-    public string[] AvailableMusicRhythmStyles { get; } =
-    [
-        SettingsService.MusicRhythmStyleSoftWave,
-        SettingsService.MusicRhythmStyleGlassSpectrum,
-        SettingsService.MusicRhythmStyleDotPulse,
-        SettingsService.MusicRhythmStyleLineSpectrum,
-        SettingsService.MusicRhythmStyleStackedEqualizer
-    ];
-
-    public string[] AvailableMusicRhythmStyleDisplayNames => _cachedMusicRhythmStyleDisplayNames ??= AvailableMusicRhythmStyles.Select(GetMusicRhythmStyleDisplayName).ToArray();
 
 // ─── Weather Settings Properties ──────────────────────────────
 
@@ -1797,7 +1762,7 @@ public async Task UpdateWeatherCitySuggestionsAsync(string query)
         WeatherCitySuggestions.Clear();
         HasNoCitySearchResults = false;
 
-        await PopulateNearbyPopularCitiesAsync();
+        await PopulateNearbyPopularCitiesAsync(ct);
         return;
     }
 
@@ -1854,8 +1819,9 @@ public async Task UpdateWeatherCitySuggestionsAsync(string query)
 /// Populates the suggestions with nearby popular cities based on user location.
 /// Falls back to global popular cities if location is unavailable.
 /// </summary>
-private async Task PopulateNearbyPopularCitiesAsync()
+private async Task PopulateNearbyPopularCitiesAsync(CancellationToken cancellationToken = default)
 {
+    cancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : _lifetimeCts.Token;
     try
     {
         _citySearchService ??= new CitySearchService();
@@ -1865,6 +1831,7 @@ private async Task PopulateNearbyPopularCitiesAsync()
         if (!_locationInitialized)
         {
             var (lat, lon, _) = await WindowsLocationHelper.GetLocationAsync(_localizationService);
+            cancellationToken.ThrowIfCancellationRequested();
             _cachedLocationLat = lat;
             _cachedLocationLon = lon;
             _locationInitialized = true;
@@ -1872,12 +1839,16 @@ private async Task PopulateNearbyPopularCitiesAsync()
 
         var cities = _citySearchService.GetNearbyPopularCities(
             _cachedLocationLat, _cachedLocationLon, language, maxCount: 8);
+        cancellationToken.ThrowIfCancellationRequested();
 
         WeatherCitySuggestions.Clear();
         foreach (var c in cities)
         {
             WeatherCitySuggestions.Add(c);
         }
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
     }
     catch (Exception ex)
     {
@@ -2482,8 +2453,9 @@ partial void OnWeatherShowPressureChanged(bool value)
         ManagedStorageQuickAccessPinState = ExplorerQuickAccessHelper.GetQuickAccessPinState(ManagedStorageRootPath, out _);
     }
 
-    public async Task RefreshQuickAccessStateAsync(bool showBusy = false)
+    public async Task RefreshQuickAccessStateAsync(bool showBusy = false, CancellationToken cancellationToken = default)
     {
+        cancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : _lifetimeCts.Token;
         string path = ManagedStorageRootPath;
         if (showBusy)
         {
@@ -2492,23 +2464,28 @@ partial void OnWeatherShowPressureChanged(bool value)
 
         try
         {
-            QuickAccessStateResult result = await ExplorerQuickAccessHelper.GetQuickAccessPinStateAsync(path);
-            if (string.Equals(path, ManagedStorageRootPath, StringComparison.OrdinalIgnoreCase))
+            QuickAccessStateResult result = await ExplorerQuickAccessHelper
+                .GetQuickAccessPinStateAsync(path)
+                .WaitAsync(cancellationToken);
+            if (!_isDisposed && string.Equals(path, ManagedStorageRootPath, StringComparison.OrdinalIgnoreCase))
             {
                 ManagedStorageQuickAccessPinState = result.State;
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
         catch (Exception ex)
         {
             App.Log($"[SettingsViewModel] Failed to refresh Quick Access state: {ex}");
-            if (string.Equals(path, ManagedStorageRootPath, StringComparison.OrdinalIgnoreCase))
+            if (!_isDisposed && string.Equals(path, ManagedStorageRootPath, StringComparison.OrdinalIgnoreCase))
             {
                 ManagedStorageQuickAccessPinState = QuickAccessPinState.Unknown;
             }
         }
         finally
         {
-            if (showBusy)
+            if (showBusy && !_isDisposed)
             {
                 IsQuickAccessBusy = false;
             }
@@ -2525,8 +2502,9 @@ partial void OnWeatherShowPressureChanged(bool value)
         ManagedStorageQuickAccessPinState = state;
     }
 
-    public async Task RefreshQuickCaptureImageCacheInfoAsync()
+    public async Task RefreshQuickCaptureImageCacheInfoAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : _lifetimeCts.Token;
         if (App.Current?.QuickCaptureService is not { } quickCaptureService)
         {
             QuickCaptureImageCacheText = _localizationService.T("Settings.QuickCapture.ImageCacheUnavailable");
@@ -2536,7 +2514,8 @@ partial void OnWeatherShowPressureChanged(bool value)
 
         try
         {
-            var info = await quickCaptureService.GetImageCacheInfoAsync();
+            var info = await quickCaptureService.GetImageCacheInfoAsync().WaitAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             if (info.TotalFileCount == 0)
             {
                 QuickCaptureImageCacheText = _localizationService.T("Settings.QuickCapture.ImageCacheEmpty");
@@ -2551,6 +2530,9 @@ partial void OnWeatherShowPressureChanged(bool value)
                 info.UnusedFileCount,
                 FormatBytes(info.UnusedBytes));
             CanClearQuickCaptureImageCache = info.UnusedFileCount > 0;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
@@ -2655,6 +2637,7 @@ partial void OnWeatherShowPressureChanged(bool value)
         _quickCaptureClipboardEnabled = settings.QuickCaptureClipboardEnabled;
         _quickCaptureImageClipboardEnabled = settings.QuickCaptureImageClipboardEnabled;
         _quickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
+        _quickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
         _selectedQuickCaptureDefaultView = NormalizeQuickCaptureDefaultView(settings.QuickCaptureDefaultView);
         _todoEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo);
         _todoShowCompletedTasks = settings.TodoShowCompletedTasks;
@@ -2663,8 +2646,6 @@ partial void OnWeatherShowPressureChanged(bool value)
         _todoConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
         _todoReminderEnabled = settings.TodoReminderEnabled;
         _musicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
-        _musicShowRhythmBars = settings.MusicShowRhythmBars;
-        _selectedMusicRhythmStyle = SettingsService.NormalizeMusicRhythmStyle(settings.MusicRhythmStyle);
         _musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
 _weatherAutoLocation = settings.WeatherAutoLocation;
 _weatherCityName = settings.WeatherCityName;
@@ -2720,7 +2701,11 @@ _ = RefreshQuickAccessStateAsync();
     public void CommitAppearanceChanges()
     {
         _settingsService.NotifyAppearancePreviewNow();
-        _settingsService.SaveDebounced();
+        // The preview notification has already updated every widget with the
+        // final slider value. Persist without broadcasting the same appearance
+        // pass a second time through SettingsChanged.
+        _settingsService.SaveDebounced(notifySubscribers: false);
+        App.ScheduleLightMemoryCleanup();
     }
 
     public void SetCustomAccentColor(Color color)
@@ -2765,7 +2750,7 @@ _ = RefreshQuickAccessStateAsync();
             DefaultHeight = SettingsService.DefaultWidgetHeight;
             SelectedWidgetCornerPreference = CornerRound;
             SelectedWidgetMaterialType = MaterialMica;
-            SelectedWidgetBorderStyle = BorderMedium;
+            SelectedWidgetBorderStyle = BorderThin;
             SelectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectSlideFade;
             SelectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
             SelectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
@@ -2790,17 +2775,16 @@ _ = RefreshQuickAccessStateAsync();
             QuickCaptureClipboardEnabled = false;
             QuickCaptureImageClipboardEnabled = false;
             QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
+            QuickCaptureShowCreatedTime = true;
             SelectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
-            SelectedQuickCaptureTabStyle = SettingsService.WidgetTabStylePivot;
+            SelectedQuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
             TodoShowCompletedTasks = true;
-            TodoShowFooterStats = true;
+            TodoShowFooterStats = false;
             TodoShowClearCompletedButton = true;
             TodoConfirmBeforeDelete = false;
             TodoReminderEnabled = true;
             SelectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
             MusicUseArtworkBackdrop = true;
-            MusicShowRhythmBars = true;
-            SelectedMusicRhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
             MusicEnableCoverHoverMotion = true;
 WeatherAutoLocation = true;
 WeatherCityName = string.Empty;
@@ -2818,13 +2802,17 @@ WeatherShowPressure = false;
 SelectedWeatherRefreshInterval = 60;
             SelectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
             SelectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
-            SelectedTodoTabStyle = SettingsService.WidgetTabStylePivot;
+            SelectedTodoTabStyle = SettingsService.WidgetTabStyleButton;
             DoubleClickToOpen = true;
             ResizeSnapEnabled = true;
             GlobalHotkeyEnabled = SettingsService.DefaultGlobalHotkeyEnabled;
             HideShortcutArrowOverlay = true;
             ShowListItemDetails = false;
             ShowFileItemPathTooltips = true;
+
+            ResetWidgetChromeOverrides(_settingsService.Settings, _widgetContentFactory, WidgetChromeCategory.Display);
+            ResetWidgetChromeOverrides(_settingsService.Settings, _widgetContentFactory, WidgetChromeCategory.Interactive);
+            App.Current?.ResizeGuideOverlay.IsSnapEnabled = true;
 
             RefreshAccentPreview();
             RefreshNumberInputs();
@@ -3052,18 +3040,6 @@ SelectedWeatherRefreshInterval = 60;
         };
     }
 
-    public string GetMusicRhythmStyleDisplayName(string style)
-    {
-        return SettingsService.NormalizeMusicRhythmStyle(style) switch
-        {
-            SettingsService.MusicRhythmStyleGlassSpectrum => _localizationService.T("Settings.Music.RhythmStyle.GlassSpectrum"),
-            SettingsService.MusicRhythmStyleDotPulse => _localizationService.T("Settings.Music.RhythmStyle.DotPulse"),
-            SettingsService.MusicRhythmStyleLineSpectrum => _localizationService.T("Settings.Music.RhythmStyle.LineSpectrum"),
-        SettingsService.MusicRhythmStyleStackedEqualizer => _localizationService.T("Settings.Music.RhythmStyle.StackedEqualizer"),
-        _ => _localizationService.T("Settings.Music.RhythmStyle.SoftWave")
-        };
-    }
-
     public string GetLanguageDisplayName(string language)
     {
         return _localizationService.GetLanguageDisplayName(language);
@@ -3092,6 +3068,7 @@ SelectedWeatherRefreshInterval = 60;
         bool quickCaptureClipboardEnabled = settings.QuickCaptureClipboardEnabled;
         bool quickCaptureImageClipboardEnabled = settings.QuickCaptureImageClipboardEnabled;
         int quickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
+        bool quickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
         string quickCaptureDefaultView = NormalizeQuickCaptureDefaultView(settings.QuickCaptureDefaultView);
         string quickCaptureTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.QuickCaptureTabStyle);
         bool todoEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo);
@@ -3101,8 +3078,6 @@ SelectedWeatherRefreshInterval = 60;
         bool todoConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
         bool todoReminderEnabled = settings.TodoReminderEnabled;
         bool musicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
-        bool musicShowRhythmBars = settings.MusicShowRhythmBars;
-        string musicRhythmStyle = SettingsService.NormalizeMusicRhythmStyle(settings.MusicRhythmStyle);
         bool musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
         bool showImageFilesAsIcons = settings.ShowImageFilesAsIcons;
         bool showFileItemPathTooltips = settings.ShowFileItemPathTooltips;
@@ -3148,6 +3123,11 @@ SelectedWeatherRefreshInterval = 60;
                 QuickCaptureRecentLimit = quickCaptureRecentLimit;
             }
 
+            if (QuickCaptureShowCreatedTime != quickCaptureShowCreatedTime)
+            {
+                QuickCaptureShowCreatedTime = quickCaptureShowCreatedTime;
+            }
+
             if (!string.Equals(SelectedQuickCaptureDefaultView, quickCaptureDefaultView, StringComparison.Ordinal))
             {
                 SelectedQuickCaptureDefaultView = quickCaptureDefaultView;
@@ -3191,16 +3171,6 @@ SelectedWeatherRefreshInterval = 60;
             if (MusicUseArtworkBackdrop != musicUseArtworkBackdrop)
             {
                 MusicUseArtworkBackdrop = musicUseArtworkBackdrop;
-            }
-
-            if (MusicShowRhythmBars != musicShowRhythmBars)
-            {
-                MusicShowRhythmBars = musicShowRhythmBars;
-            }
-
-            if (!string.Equals(SelectedMusicRhythmStyle, musicRhythmStyle, StringComparison.Ordinal))
-            {
-                SelectedMusicRhythmStyle = musicRhythmStyle;
             }
 
             if (MusicEnableCoverHoverMotion != musicEnableCoverHoverMotion)
@@ -3287,8 +3257,6 @@ SelectedWeatherRefreshInterval = 60;
         OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesIndex));
-        OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
-        OnPropertyChanged(nameof(SelectedMusicRhythmStyleIndex));
         OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeText));
         OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeIndex));
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeText));
@@ -3371,7 +3339,6 @@ RefreshWeatherCityPopularCities();
         _cachedTodoDefaultFilterDisplayNames = null;
         _cachedTodoTabStyleDisplayNames = null;
         _cachedTodoReminderOffsetDisplayNames = null;
-        _cachedMusicRhythmStyleDisplayNames = null;
         _cachedWeatherTempUnitDisplayNames = null;
         _cachedWeatherWindUnitDisplayNames = null;
         _cachedWeatherDefaultViewDisplayNames = null;
@@ -3398,7 +3365,6 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(AvailableTodoDefaultFilterDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoTabStyleDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoReminderOffsetDisplayNames));
-        OnPropertyChanged(nameof(AvailableMusicRhythmStyleDisplayNames));
         OnPropertyChanged(nameof(SelectedThemeText));
         OnPropertyChanged(nameof(SelectedThemeIndex));
         OnPropertyChanged(nameof(SelectedTrayIconStyleText));
@@ -3444,8 +3410,6 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesIndex));
-        OnPropertyChanged(nameof(SelectedMusicRhythmStyleText));
-        OnPropertyChanged(nameof(SelectedMusicRhythmStyleIndex));
         OnPropertyChanged(nameof(AvailableWeatherTemperatureUnitDisplayNames));
         OnPropertyChanged(nameof(SelectedWeatherTemperatureUnitIndex));
         OnPropertyChanged(nameof(AvailableWeatherWindSpeedUnitDisplayNames));
@@ -3906,7 +3870,7 @@ RefreshWeatherCityPopularCities();
 
         double normalizedValue = Math.Clamp(
             Math.Round(value / 10d, MidpointRounding.AwayFromZero) * 10d,
-            SettingsService.DefaultWidgetHeight,
+            SettingsService.MinWidgetHeight,
             1200d);
 
         if (Math.Abs(normalizedValue - value) > 0.0001)
@@ -4153,17 +4117,6 @@ RefreshWeatherCityPopularCities();
         _settingsService.SaveDebounced();
     }
 
-    partial void OnMusicShowRhythmBarsChanged(bool value)
-    {
-        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
-        {
-            return;
-        }
-
-        _settingsService.Settings.MusicShowRhythmBars = value;
-        _settingsService.SaveDebounced();
-    }
-
     partial void OnMusicEnableCoverHoverMotionChanged(bool value)
     {
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
@@ -4328,6 +4281,17 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(QuickCaptureRecentLimitInput));
     }
 
+    partial void OnQuickCaptureShowCreatedTimeChanged(bool value)
+    {
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.QuickCaptureShowCreatedTime = value;
+        _settingsService.SaveDebounced();
+    }
+
     partial void OnWidgetOpacityChanged(double value)
     {
         if (_isRestoringDefaults)
@@ -4454,7 +4418,6 @@ RefreshWeatherCityPopularCities();
         }
 
         _settingsService.Settings.LayoutDensityScale = normalizedValue;
-        _settingsService.Settings.LayoutDensity = normalizedValue <= 0.78 ? "Compact" : "Comfortable";
         SaveAppearanceChange();
         OnPropertyChanged(nameof(LayoutDensityValueText));
         OnPropertyChanged(nameof(LayoutDensityPercent));
@@ -4529,6 +4492,13 @@ RefreshWeatherCityPopularCities();
 
     public void Dispose()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        _lifetimeCts.Cancel();
         _updateOperationCts?.Cancel();
         _updateOperationCts?.Dispose();
         if (App.Current?.QuickCaptureClipboardService is { } clipboardService)
@@ -4542,6 +4512,7 @@ RefreshWeatherCityPopularCities();
         _citySearchCts?.Cancel();
         _citySearchCts?.Dispose();
         _citySearchService?.Dispose();
+        _lifetimeCts.Dispose();
     }
 
     private void OnQuickCaptureClipboardDiagnosticsChanged()

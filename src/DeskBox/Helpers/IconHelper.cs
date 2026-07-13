@@ -103,7 +103,7 @@ public static class IconHelper
 
     private static bool IsImageFile(string path)
     {
-        string ext = Path.GetExtension(path);
+        string ext = Path.GetExtension(path).ToLowerInvariant();
         return ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif" or ".heic" or ".heif";
     }
 

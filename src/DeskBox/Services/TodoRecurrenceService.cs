@@ -65,6 +65,27 @@ public static class TodoRecurrenceService
             ColorMarker = sourceItem.ColorMarker,
             DueDate = nextDueDate,
             Recurrence = sourceItem.Recurrence?.Clone(),
+            Steps = sourceItem.Steps
+                .OrderBy(step => step.SortOrder)
+                .Select(step => new TodoStep
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Text = step.Text,
+                    IsCompleted = false,
+                    SortOrder = step.SortOrder
+                })
+                .ToList(),
+            Notes = sourceItem.Notes,
+            Attachments = sourceItem.Attachments
+                .Select(attachment => new TodoAttachment
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    FilePath = attachment.FilePath,
+                    DisplayName = attachment.DisplayName,
+                    Type = attachment.Type,
+                    AddedAt = completedAt
+                })
+                .ToList(),
             CompletedAt = null,
             ReminderLastNotifiedAt = null,
             ReminderDismissedForDueDate = null,

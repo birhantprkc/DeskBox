@@ -6,6 +6,8 @@ namespace DeskBox.Services;
 
 public sealed class QuickCaptureStore
 {
+    private const int CurrentVersion = 2;
+
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
         WriteIndented = true,
@@ -80,7 +82,7 @@ public sealed class QuickCaptureStore
     private static QuickCaptureStoreData Normalize(QuickCaptureStoreData? data)
     {
         data ??= new QuickCaptureStoreData();
-        data.Version = Math.Max(1, data.Version);
+        data.Version = CurrentVersion;
         data.Items ??= [];
         data.RecentItems ??= [];
 
@@ -121,10 +123,21 @@ public sealed class QuickCaptureStore
             }
 
             item.Body = item.Body?.Trim() ?? string.Empty;
+            item.Title = string.IsNullOrWhiteSpace(item.Title) ? null : item.Title.Trim();
             item.Url = string.IsNullOrWhiteSpace(item.Url) ? null : item.Url.Trim();
             item.ImagePath = string.IsNullOrWhiteSpace(item.ImagePath) ? null : item.ImagePath.Trim();
             item.ContentHash = string.IsNullOrWhiteSpace(item.ContentHash) ? null : item.ContentHash.Trim();
             item.IsRecent = isRecent;
+            item.Tags = (item.Tags ?? [])
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Select(tag => tag.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            if (isRecent)
+            {
+                item.AppearancePreset = QuickCaptureAppearancePreset.Default;
+                item.SourceKind = QuickCaptureSourceKind.Clipboard;
+            }
             if (item.CreatedAt == default)
             {
                 item.CreatedAt = DateTimeOffset.UtcNow;
@@ -152,7 +165,8 @@ public sealed class QuickCaptureStore
     private static bool IsValidItem(QuickCaptureItem? item)
     {
         return item is not null &&
-               (!string.IsNullOrWhiteSpace(item.Body) ||
+               (!string.IsNullOrWhiteSpace(item.Title) ||
+                !string.IsNullOrWhiteSpace(item.Body) ||
                 (item.Type == QuickCaptureItemType.Image && !string.IsNullOrWhiteSpace(item.ImagePath)));
     }
 

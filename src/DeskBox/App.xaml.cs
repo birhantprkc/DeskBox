@@ -906,7 +906,7 @@ public partial class App : Application
     /// Starts a background loop that periodically triggers GC to release
     /// native Composition/COM resources that the WinUI framework holds via
     /// finalizable wrappers.  Without this, high-frequency UI updates (e.g.
-    /// the music visualizer) accumulate native memory that the GC only
+    /// media artwork) accumulate native memory that the GC only
     /// reclaims during gen2 collection, which may not happen for a long time.
     /// </summary>
     private void SchedulePeriodicMemoryCleanup()
@@ -928,6 +928,7 @@ public partial class App : Application
                     GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
                     GC.WaitForPendingFinalizers();
                     GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+                    Win32Helper.TrimCurrentProcessWorkingSet();
 
                     if (PerformanceLogger.IsEnabled)
                     {
@@ -2172,19 +2173,19 @@ public partial class App : Application
     private void OpenSettings()
     {
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
-        settingsWindow.Activate();
+        settingsWindow.ShowWindow();
     }
 
     private void OpenSettingsFromTray()
     {
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
-        settingsWindow.Activate();
+        settingsWindow.ShowWindow();
     }
 
     private void OpenAboutSettingsFromTray()
     {
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
-        settingsWindow.Activate();
+        settingsWindow.ShowWindow();
         settingsWindow.ShowSection("About");
     }
 
@@ -2225,7 +2226,7 @@ public partial class App : Application
     public void ShowSettings(string sectionTag)
     {
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
-        settingsWindow.Activate();
+        settingsWindow.ShowWindow();
         settingsWindow.ShowSection(sectionTag);
     }
 
@@ -2250,13 +2251,22 @@ public partial class App : Application
         }
     }
 
-    private static void ScheduleLightMemoryCleanup()
+    private static int s_lightMemoryCleanupGeneration;
+
+    internal static void ScheduleLightMemoryCleanup()
     {
+        int generation = Interlocked.Increment(ref s_lightMemoryCleanupGeneration);
         App.UiDispatcherQueue?.TryEnqueue(async () =>
         {
             await Task.Delay(2000);
+            if (generation != Volatile.Read(ref s_lightMemoryCleanupGeneration))
+            {
+                return;
+            }
+
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
             Localized.PruneDeadTargets();
+            Win32Helper.TrimCurrentProcessWorkingSet();
         });
     }
 
@@ -2308,7 +2318,7 @@ public partial class App : Application
 
         _singleInstanceMutex?.Dispose();
         _singleInstanceMutex = null;
-        _settingsWindow?.Close();
+        _settingsWindow?.CloseForShutdown();
         _settingsWindow = null;
         _onboardingWindow?.Close();
         _onboardingWindow = null;

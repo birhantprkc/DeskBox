@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -20,8 +21,9 @@ public sealed partial class TodoItemViewModel : ObservableObject
     private DateTimeOffset? _completedAt;
     private int? _reminderOffsetMinutes;
     private DateTimeOffset? _snoozedUntil;
-    private bool _isEditing;
+        private bool _isEditing;
     private bool _isCopySelected;
+    private bool _isExpanded;
     private string _editText = string.Empty;
     private bool _isRecurringHistoryLead;
     private bool _isRecurringHistoryExpanded;
@@ -43,6 +45,17 @@ public sealed partial class TodoItemViewModel : ObservableObject
         _reminderOffsetMinutes = TodoReminderOptions.NormalizeOffsetMinutes(item.ReminderOffsetMinutes);
         item.ReminderOffsetMinutes = _reminderOffsetMinutes;
         _snoozedUntil = item.SnoozedUntil;
+        item.Steps ??= [];
+        item.Attachments ??= [];
+        foreach (TodoStep step in item.Steps.OrderBy(step => step.SortOrder))
+        {
+            Steps.Add(new TodoStepViewModel(step));
+        }
+
+        foreach (TodoAttachment attachment in item.Attachments)
+        {
+            Attachments.Add(new TodoAttachmentViewModel(attachment));
+        }
     }
 
     public TodoItem Item => _item;
@@ -63,6 +76,28 @@ public sealed partial class TodoItemViewModel : ObservableObject
     }
 
     public DateTimeOffset CreatedAt => _item.CreatedAt;
+
+    public ObservableCollection<TodoStepViewModel> Steps { get; } = [];
+
+    public ObservableCollection<TodoAttachmentViewModel> Attachments { get; } = [];
+
+    public string Notes => _item.Notes ?? string.Empty;
+
+    public int CompletedStepCount => Steps.Count(step => step.IsCompleted);
+
+    public string StepProgressText => Steps.Count == 0 ? string.Empty : $"{CompletedStepCount}/{Steps.Count}";
+
+    public Visibility StepProgressVisibility => Steps.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility AttachmentSummaryVisibility => Attachments.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
+    public string AttachmentSummaryText => Attachments.Count == 0 ? string.Empty : $"{Attachments.Count}";
+
+    public Visibility NotesPlaceholderVisibility => string.IsNullOrWhiteSpace(Notes)
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public string CreatedText => Format("Todo.Detail.Created", CreatedAt.ToLocalTime().ToString("yyyy/M/d HH:mm"));
 
     public DateTimeOffset UpdatedAt
     {
@@ -99,13 +134,16 @@ public sealed partial class TodoItemViewModel : ObservableObject
                 _item.IsCompleted = value;
                 OnPropertyChanged(nameof(CompletionGlyph));
                 OnPropertyChanged(nameof(CompletionGlyphOpacity));
+                OnPropertyChanged(nameof(CompletionBorderThickness));
+                OnPropertyChanged(nameof(CompletionToggleText));
                 OnPropertyChanged(nameof(DueStatusText));
                 OnPropertyChanged(nameof(IsOverdue));
                 OnPropertyChanged(nameof(DueStatusNormalVisibility));
                 OnPropertyChanged(nameof(DueStatusOverdueVisibility));
-                OnPropertyChanged(nameof(ContentOpacity));
+                                OnPropertyChanged(nameof(ContentOpacity));
                 OnPropertyChanged(nameof(TextDecorations));
                 OnPropertyChanged(nameof(HasActiveSnooze));
+                OnPropertyChanged(nameof(ReminderMetadataVisibility));
             }
         }
     }
@@ -125,6 +163,7 @@ public sealed partial class TodoItemViewModel : ObservableObject
             {
                 _item.IsImportant = value;
                 OnPropertyChanged(nameof(ImportantGlyph));
+                OnPropertyChanged(nameof(ImportantToggleText));
             }
         }
     }
@@ -143,6 +182,7 @@ public sealed partial class TodoItemViewModel : ObservableObject
                 OnPropertyChanged(nameof(ColorMarkerVisibility));
                 OnPropertyChanged(nameof(ColorMarkerBrush));
                 OnPropertyChanged(nameof(MarkerGlyph));
+                OnPropertyChanged(nameof(MetadataColorText));
             }
         }
     }
@@ -156,11 +196,16 @@ public sealed partial class TodoItemViewModel : ObservableObject
             {
                 _item.DueDate = value;
                 OnPropertyChanged(nameof(DueStatusText));
-                OnPropertyChanged(nameof(DueStatusVisibility));
+                OnPropertyChanged(nameof(HasDueDate));
+                                OnPropertyChanged(nameof(DueStatusVisibility));
                 OnPropertyChanged(nameof(IsOverdue));
                 OnPropertyChanged(nameof(DueStatusNormalVisibility));
                 OnPropertyChanged(nameof(DueStatusOverdueVisibility));
                 OnPropertyChanged(nameof(HasActiveSnooze));
+                OnPropertyChanged(nameof(MetadataDueDateText));
+                OnPropertyChanged(nameof(ReminderMetadataVisibility));
+                OnPropertyChanged(nameof(RecurrenceMetadataVisibility));
+                OnPropertyChanged(nameof(ReminderSetVisibility));
             }
         }
     }
@@ -179,10 +224,13 @@ public sealed partial class TodoItemViewModel : ObservableObject
             _recurrence = normalizedValue;
             _item.Recurrence = normalizedValue?.Clone();
             OnPropertyChanged();
-            OnPropertyChanged(nameof(HasRecurrence));
+                        OnPropertyChanged(nameof(HasRecurrence));
             OnPropertyChanged(nameof(RecurrenceMode));
             OnPropertyChanged(nameof(RecurrenceSummaryText));
             OnPropertyChanged(nameof(DueStatusText));
+            OnPropertyChanged(nameof(MetadataRecurrenceText));
+            OnPropertyChanged(nameof(RecurrenceMetadataVisibility));
+            OnPropertyChanged(nameof(RecurrenceSetVisibility));
         }
     }
 
@@ -207,6 +255,8 @@ public sealed partial class TodoItemViewModel : ObservableObject
             if (SetProperty(ref _reminderOffsetMinutes, normalizedValue))
             {
                 _item.ReminderOffsetMinutes = normalizedValue;
+                OnPropertyChanged(nameof(MetadataReminderText));
+                OnPropertyChanged(nameof(ReminderSetVisibility));
             }
         }
     }
@@ -234,6 +284,18 @@ public sealed partial class TodoItemViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(TextVisibility));
                 OnPropertyChanged(nameof(EditVisibility));
+            }
+        }
+    }
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        internal set
+        {
+            if (SetProperty(ref _isExpanded, value))
+            {
+                OnPropertyChanged(nameof(ExpandedVisibility));
             }
         }
     }
@@ -272,6 +334,18 @@ public sealed partial class TodoItemViewModel : ObservableObject
 
     public double CompletionGlyphOpacity => IsCompleted ? 1d : 0d;
 
+    public Thickness CompletionBorderThickness => IsCompleted
+        ? new Thickness(0)
+        : new Thickness(1.4);
+
+    public string CompletionToggleText => LocalizedText(IsCompleted
+        ? "Todo.Menu.MarkActive"
+        : "Todo.Menu.MarkCompleted");
+
+    public string ImportantToggleText => LocalizedText(IsImportant
+        ? "Todo.Menu.UnmarkImportant"
+        : "Todo.Menu.MarkImportant");
+
     public double ContentOpacity => IsCompleted ? 0.62d : 1d;
 
     public Windows.UI.Text.TextDecorations TextDecorations => IsCompleted
@@ -284,6 +358,8 @@ public sealed partial class TodoItemViewModel : ObservableObject
 
     public bool HasRecurrence => Recurrence is not null &&
                                  !string.Equals(RecurrenceMode, TodoRecurrenceMode.None, StringComparison.Ordinal);
+
+    public bool HasDueDate => DueDate is not null;
 
     public bool HasActiveSnooze => SnoozedUntil is not null && DueDate is not null && !IsCompleted;
 
@@ -350,9 +426,88 @@ public sealed partial class TodoItemViewModel : ObservableObject
 
     public Visibility CopySelectionVisibility => IsCopySelected ? Visibility.Visible : Visibility.Collapsed;
 
-    public Visibility TextVisibility => IsEditing ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility TextVisibility => IsEditing ? Visibility.Collapsed : Visibility.Visible;
 
     public Visibility EditVisibility => IsEditing ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility ExpandedVisibility => IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+
+    public string MetadataDueDateText
+    {
+        get
+        {
+            if (DueDate is not { } dueDate)
+            {
+                return LocalizedText("Todo.Menu.DueDate");
+            }
+
+            DateTimeOffset local = dueDate.ToLocalTime();
+            var today = DateTimeOffset.Now.Date;
+            var due = local.Date;
+
+            if (due == today)
+            {
+                return LocalizedText("Todo.Due.Today");
+            }
+
+            if (due == today.AddDays(1))
+            {
+                return LocalizedText("Todo.Due.Tomorrow");
+            }
+
+            bool isEndOfDay = local.Hour == 23 && local.Minute == 59;
+            return isEndOfDay
+                ? $"{local.Month}/{local.Day}"
+                : $"{local.Month}/{local.Day} {local.Hour:00}:{local.Minute:00}";
+        }
+    }
+
+    public string MetadataReminderText
+    {
+        get
+        {
+            if (ReminderOffsetMinutes is null)
+            {
+                return LocalizedText("Todo.Menu.Reminder");
+            }
+
+            if (TodoReminderOptions.IsReminderOff(ReminderOffsetMinutes))
+            {
+                return LocalizedText("Todo.Reminder.Off");
+            }
+
+            return ReminderOffsetMinutes switch
+            {
+                0 => LocalizedText("Todo.Reminder.AtDueTime"),
+                60 => LocalizedText("Todo.Reminder.OneHourBefore"),
+                1440 => LocalizedText("Todo.Reminder.OneDayBefore"),
+                _ => Format("Todo.Reminder.MinutesBefore", ReminderOffsetMinutes.Value)
+            };
+        }
+    }
+
+    public string MetadataRecurrenceText => HasRecurrence
+        ? RecurrenceSummaryText
+        : LocalizedText("Todo.Menu.Recurrence");
+
+    public string MetadataColorText => LocalizedText(TodoItem.GetColorMarkerLocalizationKey(ColorMarker));
+
+    public Visibility ReminderMetadataVisibility => DueDate is not null && !IsCompleted
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility RecurrenceMetadataVisibility => DueDate is not null && !IsCompleted
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility ReminderSetVisibility => DueDate is not null &&
+                                               !TodoReminderOptions.IsReminderOff(ReminderOffsetMinutes)
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility RecurrenceSetVisibility => HasRecurrence
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public bool IsRecurringHistoryLead => _isRecurringHistoryLead;
 
@@ -386,11 +541,29 @@ public sealed partial class TodoItemViewModel : ObservableObject
 
     internal void RefreshLocalizedText()
     {
-        OnPropertyChanged(nameof(RecurrenceSummaryText));
+                OnPropertyChanged(nameof(RecurrenceSummaryText));
         OnPropertyChanged(nameof(DueStatusText));
         OnPropertyChanged(nameof(DueStatusNormalVisibility));
         OnPropertyChanged(nameof(DueStatusOverdueVisibility));
         OnPropertyChanged(nameof(RecurringHistoryToggleText));
+        OnPropertyChanged(nameof(MetadataDueDateText));
+        OnPropertyChanged(nameof(MetadataReminderText));
+        OnPropertyChanged(nameof(MetadataRecurrenceText));
+        OnPropertyChanged(nameof(MetadataColorText));
+        OnPropertyChanged(nameof(CreatedText));
+        OnPropertyChanged(nameof(CompletionToggleText));
+        OnPropertyChanged(nameof(ImportantToggleText));
+    }
+
+    internal void RefreshDetailProperties()
+    {
+        OnPropertyChanged(nameof(Notes));
+        OnPropertyChanged(nameof(NotesPlaceholderVisibility));
+        OnPropertyChanged(nameof(CompletedStepCount));
+        OnPropertyChanged(nameof(StepProgressText));
+        OnPropertyChanged(nameof(StepProgressVisibility));
+        OnPropertyChanged(nameof(AttachmentSummaryText));
+        OnPropertyChanged(nameof(AttachmentSummaryVisibility));
     }
 
     internal void UpdateRecurringHistoryState(bool isLead, bool isExpanded, int itemCount)

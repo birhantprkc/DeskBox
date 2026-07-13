@@ -5,11 +5,12 @@ using DeskBox.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 namespace DeskBox.Controls.WidgetContents;
 
-public sealed partial class MusicWidgetContent : UserControl
+public sealed partial class MusicWidgetContent : UserControl, IDisposable
 {
     private const float AlbumArtHoverScale = 1.018f;
     private const double AlbumArtHoverOffset = 3.0;
@@ -18,14 +19,17 @@ public sealed partial class MusicWidgetContent : UserControl
     private const double TitleMarqueeSpeedPixelsPerSecond = 50.0;
     private const double TitleMarqueeOverflowTolerance = 4.0;
     private const int TitleMarqueeDeferredMeasureMs = 300;
-    private const double MinimumResponsiveWidth = 200.0;
+    private const int ArtworkTransitionDurationMs = 420;
+    private const double MinimumResponsiveWidth = 180.0;
     private const double WideResponsiveWidth = 320.0;
+    private const double MinimumResponsiveHeight = 180.0;
+    private const double WideResponsiveHeight = 240.0;
     private const double WideAlbumArtSize = 82.0;
-    private const double MinimumAlbumArtSize = 68.0;
+    private const double MinimumAlbumArtSize = 60.0;
     private const double WideIconButtonSize = 30.0;
-    private const double CompactIconButtonSize = 26.0;
+    private const double CompactIconButtonSize = 30.0;
     private const double WidePrimaryButtonSize = 42.0;
-    private const double CompactPrimaryButtonSize = 38.0;
+    private const double CompactPrimaryButtonSize = 30.0;
     private bool _isProgressDragging;
     private bool _isProgressHovering;
     private bool _isInlineVolumeRefreshing;
@@ -33,24 +37,21 @@ public sealed partial class MusicWidgetContent : UserControl
     private DateTimeOffset _titleMarqueeStartedAt;
     private double _titleMarqueeDistance;
     private int _titleMarqueeMeasureVersion;
+    private int _artworkTransitionVersion;
+    private bool _isDisposed;
+    private bool _isMinimalLayout;
 
     public MusicWidgetContent()
     {
         InitializeComponent();
         Loaded += MusicWidgetContent_Loaded;
         Unloaded += MusicWidgetContent_Unloaded;
-        SizeChanged += (_, _) =>
-        {
-            ApplyResponsiveLayout();
-            UpdateProgressVisuals();
-        };
-        RhythmBackdrop.SizeChanged += (_, _) => UpdateVisualizerWidthFromLayout();
+        SizeChanged += MusicWidgetContent_SizeChanged;
     }
 
     public MusicWidgetContent(MusicWidgetViewModel viewModel)
         : this()
     {
-        // ViewModel setter calls ApplyRhythmStyle automatically.
         ViewModel = viewModel;
     }
 
@@ -69,7 +70,6 @@ public sealed partial class MusicWidgetContent : UserControl
             if (value is not null)
             {
                 value.PropertyChanged += ViewModel_PropertyChanged;
-                ApplyRhythmStyle(value.RhythmStyle);
             }
             else
             {
@@ -177,6 +177,35 @@ public sealed partial class MusicWidgetContent : UserControl
         StopTitleMarquee();
     }
 
+    private void MusicWidgetContent_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyResponsiveLayout();
+        UpdateProgressVisuals();
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        ++_titleMarqueeMeasureVersion;
+        ++_artworkTransitionVersion;
+        Loaded -= MusicWidgetContent_Loaded;
+        Unloaded -= MusicWidgetContent_Unloaded;
+        SizeChanged -= MusicWidgetContent_SizeChanged;
+        if (_titleMarqueeTimer is not null)
+        {
+            _titleMarqueeTimer.Stop();
+            _titleMarqueeTimer.Tick -= TitleMarqueeTimer_Tick;
+            _titleMarqueeTimer = null;
+        }
+
+        ViewModel = null;
+    }
+
     public void OnWindowVisibilityChanged(bool visible)
     {
         if (visible)
@@ -191,7 +220,10 @@ public sealed partial class MusicWidgetContent : UserControl
 
     private void TitleMarqueeHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        TitleMarqueeClip.Rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, e.NewSize.Width), Math.Max(0, e.NewSize.Height));
+        var clip = ReferenceEquals(sender, MinimalTitleMarqueeHost)
+            ? MinimalTitleMarqueeClip
+            : TitleMarqueeClip;
+        clip.Rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, e.NewSize.Width), Math.Max(0, e.NewSize.Height));
         QueueTitleMarqueeUpdate();
     }
 
@@ -297,56 +329,81 @@ public sealed partial class MusicWidgetContent : UserControl
     private void ApplyResponsiveLayout()
     {
         double width = ActualWidth > 0 ? ActualWidth : RootGrid.ActualWidth;
-        if (width <= 0)
+        double height = ActualHeight > 0 ? ActualHeight : RootGrid.ActualHeight;
+        if (width <= 0 || height <= 0)
         {
             return;
         }
 
-        double compactRatio = width >= WideResponsiveWidth
-            ? 1.0
-            : Math.Clamp((width - MinimumResponsiveWidth) / (WideResponsiveWidth - MinimumResponsiveWidth), 0.0, 1.0);
+        bool useMinimalLayout = ShouldUseMinimalLayout(width, height);
+        if (_isMinimalLayout != useMinimalLayout)
+        {
+            _isMinimalLayout = useMinimalLayout;
+            MinimalLayout.Visibility = useMinimalLayout ? Visibility.Visible : Visibility.Collapsed;
+            ContentGrid.Visibility = useMinimalLayout ? Visibility.Collapsed : Visibility.Visible;
+            InlineVolumePanel.Visibility = Visibility.Collapsed;
+            ResetAlbumArtMotion();
+            StopTitleMarquee();
+        }
 
-        double albumSize = Math.Round(Lerp(MinimumAlbumArtSize, WideAlbumArtSize, compactRatio));
-        double iconButtonSize = Math.Round(Lerp(CompactIconButtonSize, WideIconButtonSize, compactRatio));
-        double primaryButtonSize = Math.Round(Lerp(CompactPrimaryButtonSize, WidePrimaryButtonSize, compactRatio));
-        double contentPadding = Math.Round(Lerp(10, 12, compactRatio));
-        double columnSpacing = Math.Round(Lerp(8, 12, compactRatio));
-        double rowSpacing = Math.Round(Lerp(6, 8, compactRatio));
-        double controlsSpacing = Math.Round(Lerp(5, 10, compactRatio));
-        double timelineColumnWidth = Math.Round(Lerp(28, 34, compactRatio));
-        double progressTopMargin = Math.Round(Lerp(3, 5, compactRatio));
-        double controlsTopMargin = Math.Round(Lerp(5, 8, compactRatio));
+        if (useMinimalLayout)
+        {
+            QueueTitleMarqueeUpdate();
+            return;
+        }
 
-        ContentGrid.Padding = new Thickness(contentPadding, contentPadding, contentPadding, 11);
+        double widthRatio = Math.Clamp(
+            (width - MinimumResponsiveWidth) / (WideResponsiveWidth - MinimumResponsiveWidth),
+            0.0,
+            1.0);
+        double heightRatio = Math.Clamp(
+            (height - MinimumResponsiveHeight) / (WideResponsiveHeight - MinimumResponsiveHeight),
+            0.0,
+            1.0);
+        double densityRatio = Math.Min(widthRatio, heightRatio);
+
+        double albumSize = Math.Round(Lerp(MinimumAlbumArtSize, WideAlbumArtSize, densityRatio));
+        double iconButtonSize = Math.Round(Lerp(CompactIconButtonSize, WideIconButtonSize, widthRatio));
+        double primaryButtonSize = Math.Round(Lerp(CompactPrimaryButtonSize, WidePrimaryButtonSize, widthRatio));
+        double contentPadding = Math.Round(Lerp(8, 12, densityRatio));
+        double columnSpacing = Math.Round(Lerp(8, 12, widthRatio));
+        double rowSpacing = Math.Round(Lerp(4, 8, heightRatio));
+        double controlsSpacing = Math.Round(Lerp(3, 10, widthRatio));
+        double timelineColumnWidth = Math.Round(Lerp(28, 34, widthRatio));
+        double progressTopMargin = Math.Round(Lerp(0, 3, heightRatio));
+        double controlsTopMargin = Math.Round(Lerp(2, 5, heightRatio));
+
+        ContentGrid.Padding = new Thickness(contentPadding);
         ContentGrid.ColumnSpacing = columnSpacing;
         ContentGrid.RowSpacing = rowSpacing;
         AlbumColumn.Width = new GridLength(albumSize);
         TopRow.Height = new GridLength(albumSize);
         SetAlbumArtSize(albumSize);
         ProgressRow.Margin = new Thickness(0, progressTopMargin, 0, 0);
-        ProgressRow.ColumnSpacing = Math.Round(Lerp(5, 8, compactRatio));
+        ProgressRow.ColumnSpacing = Math.Round(Lerp(5, 8, widthRatio));
         PositionColumn.Width = new GridLength(timelineColumnWidth);
         DurationColumn.Width = new GridLength(timelineColumnWidth);
+        TrackInfoGrid.RowSpacing = Math.Round(Lerp(2, 4, heightRatio));
         ControlsPanel.Margin = new Thickness(0, controlsTopMargin, 0, 0);
         ControlsPanel.Spacing = controlsSpacing;
         SetButtonSize(PlaybackModeButton, iconButtonSize);
-        SetButtonSize(PreviousButton, iconButtonSize);
-        SetButtonSize(NextButton, iconButtonSize);
+        SetButtonSize(PreviousButton, primaryButtonSize);
+        SetButtonSize(NextButton, primaryButtonSize);
         SetButtonSize(VolumeButton, iconButtonSize);
         SetButtonSize(PlayPauseButton, primaryButtonSize);
-        PlaybackModeButton.CornerRadius = new CornerRadius(iconButtonSize / 2);
-        PreviousButton.CornerRadius = new CornerRadius(iconButtonSize / 2);
-        NextButton.CornerRadius = new CornerRadius(iconButtonSize / 2);
-        VolumeButton.CornerRadius = new CornerRadius(iconButtonSize / 2);
-        PlayPauseButton.CornerRadius = new CornerRadius(primaryButtonSize / 2);
+        PlaybackModeButton.CornerRadius = new CornerRadius(5);
+        PreviousButton.CornerRadius = new CornerRadius(5);
+        NextButton.CornerRadius = new CornerRadius(5);
+        VolumeButton.CornerRadius = new CornerRadius(5);
+        PlayPauseButton.CornerRadius = new CornerRadius(5);
+        InlineVolumePanel.Width = Math.Clamp(width - 12, 156, 238);
         PositionInlineVolumePanel();
-        UpdateVisualizerWidthFromLayout();
         QueueTitleMarqueeUpdate();
     }
 
-    private void UpdateVisualizerWidthFromLayout()
+    internal static bool ShouldUseMinimalLayout(double width, double height)
     {
-        ViewModel?.UpdateVisualizerWidth(Math.Max(0, RhythmBackdrop.ActualWidth - 4));
+        return width < MinimumResponsiveWidth || height < MinimumResponsiveHeight;
     }
 
     private void SetAlbumArtSize(double size)
@@ -355,8 +412,8 @@ public sealed partial class MusicWidgetContent : UserControl
         AlbumArtShadow.Height = size;
         AlbumArtSurface.Width = size;
         AlbumArtSurface.Height = size;
-        AlbumArtShadow.CornerRadius = new CornerRadius(Math.Max(10, size * 0.14));
-        AlbumArtSurface.CornerRadius = new CornerRadius(Math.Max(10, size * 0.14));
+        AlbumArtShadow.CornerRadius = new CornerRadius(Math.Max(8, size * 0.12));
+        AlbumArtSurface.CornerRadius = new CornerRadius(Math.Max(8, size * 0.12));
     }
 
     private static void SetButtonSize(Button button, double size)
@@ -465,49 +522,93 @@ public sealed partial class MusicWidgetContent : UserControl
         }
 
         if (e.PropertyName is nameof(MusicWidgetViewModel.Title) or
-            nameof(MusicWidgetViewModel.TitleTextSize))
+            nameof(MusicWidgetViewModel.TitleTextSize) or
+            nameof(MusicWidgetViewModel.MinimalTitleTextSize))
         {
             QueueTitleMarqueeUpdate();
         }
 
-        if (e.PropertyName == nameof(MusicWidgetViewModel.RhythmStyle))
+        if (e.PropertyName == nameof(MusicWidgetViewModel.ThumbnailImage))
         {
-            ApplyRhythmStyle(ViewModel?.RhythmStyle ?? SettingsService.MusicRhythmStyleSoftWave);
+            QueueArtworkTransition();
         }
+
     }
 
-    /// <summary>
-    /// Swaps the ItemTemplate of the single RhythmItemsControl based on the
-    /// current rhythm style.  Setting ItemTemplate causes WinUI to regenerate
-    /// all containers with the new template and release the old ones, which
-    /// avoids the 5x container overhead of having parallel collapsed
-    /// ItemsControls.
-    /// </summary>
-    private void ApplyRhythmStyle(string rhythmStyle)
+    private void QueueArtworkTransition()
     {
-        string templateKey = SettingsService.NormalizeMusicRhythmStyle(rhythmStyle) switch
+        if (!DispatcherQueue.HasThreadAccess)
         {
-            SettingsService.MusicRhythmStyleGlassSpectrum => "RhythmGlassSpectrumTemplate",
-            SettingsService.MusicRhythmStyleDotPulse => "RhythmDotPulseTemplate",
-            SettingsService.MusicRhythmStyleLineSpectrum => "RhythmLineSpectrumTemplate",
-            SettingsService.MusicRhythmStyleStackedEqualizer => "RhythmStackedEqualizerTemplate",
-            _ => "RhythmSoftWaveTemplate"
-        };
-
-        if (Resources[templateKey] is DataTemplate template)
-        {
-            RhythmItemsControl.ItemTemplate = template;
+            _ = DispatcherQueue.TryEnqueue(QueueArtworkTransition);
+            return;
         }
 
-        // Each skin has slightly different bottom margins for visual alignment.
-        double bottomMargin = SettingsService.NormalizeMusicRhythmStyle(rhythmStyle) switch
+        int version = ++_artworkTransitionVersion;
+        if (ViewModel?.ThumbnailImage is null)
         {
-            SettingsService.MusicRhythmStyleDotPulse => 9,
-            SettingsService.MusicRhythmStyleLineSpectrum => 5,
-            SettingsService.MusicRhythmStyleStackedEqualizer => 5,
-            _ => 7
-        };
-        RhythmItemsControl.Margin = new Thickness(12, 0, 12, bottomMargin);
+            ResetArtworkVisual(MinimalArtworkImage);
+            ResetArtworkVisual(AlbumArtworkImage);
+            return;
+        }
+
+        PrepareArtworkVisual(MinimalArtworkImage);
+        PrepareArtworkVisual(AlbumArtworkImage);
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_isDisposed || version != _artworkTransitionVersion || ViewModel?.ThumbnailImage is null)
+            {
+                return;
+            }
+
+            StartArtworkTransition(MinimalArtworkImage);
+            StartArtworkTransition(AlbumArtworkImage);
+        });
+    }
+
+    private static void PrepareArtworkVisual(FrameworkElement image)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(image);
+        visual.StopAnimation("Opacity");
+        visual.StopAnimation("Scale");
+        visual.CenterPoint = new Vector3(
+            (float)(image.ActualWidth / 2),
+            (float)(image.ActualHeight / 2),
+            0);
+        visual.Opacity = 0;
+        visual.Scale = new Vector3(0.975f, 0.975f, 1);
+    }
+
+    private static void StartArtworkTransition(FrameworkElement image)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(image);
+        var compositor = visual.Compositor;
+        var easing = compositor.CreateCubicBezierEasingFunction(
+            new Vector2(0.2f, 0),
+            new Vector2(0, 1));
+
+        var opacityAnimation = compositor.CreateScalarKeyFrameAnimation();
+        opacityAnimation.Duration = TimeSpan.FromMilliseconds(ArtworkTransitionDurationMs);
+        opacityAnimation.InsertKeyFrame(0, 0);
+        opacityAnimation.InsertKeyFrame(1, 1, easing);
+
+        var scaleAnimation = compositor.CreateVector3KeyFrameAnimation();
+        scaleAnimation.Duration = TimeSpan.FromMilliseconds(ArtworkTransitionDurationMs);
+        scaleAnimation.InsertKeyFrame(0, new Vector3(0.975f, 0.975f, 1));
+        scaleAnimation.InsertKeyFrame(1, Vector3.One, easing);
+
+        visual.Opacity = 1;
+        visual.Scale = Vector3.One;
+        visual.StartAnimation("Opacity", opacityAnimation);
+        visual.StartAnimation("Scale", scaleAnimation);
+    }
+
+    private static void ResetArtworkVisual(FrameworkElement image)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(image);
+        visual.StopAnimation("Opacity");
+        visual.StopAnimation("Scale");
+        visual.Opacity = 1;
+        visual.Scale = Vector3.One;
     }
 
     private void EnsureTitleMarqueeTimer()
@@ -553,7 +654,8 @@ public sealed partial class MusicWidgetContent : UserControl
             return;
         }
 
-        double viewportWidth = TitleMarqueeHost.ActualWidth;
+        var elements = GetActiveTitleMarqueeElements();
+        double viewportWidth = elements.Host.ActualWidth;
         if (!IsLoaded || viewportWidth <= 0)
         {
             StopTitleMarquee();
@@ -574,15 +676,15 @@ public sealed partial class MusicWidgetContent : UserControl
             return;
         }
 
-        TitleTextPrimary.Width = titleWidth;
-        TitleTextClone.Width = titleWidth;
-        TitleStaticText.Opacity = 0;
-        TitleMarqueeCanvas.Visibility = Visibility.Visible;
-        Canvas.SetLeft(TitleTextPrimary, 0);
-        Canvas.SetLeft(TitleTextClone, titleWidth + TitleMarqueeGap);
+        elements.Primary.Width = titleWidth;
+        elements.Clone.Width = titleWidth;
+        elements.Static.Opacity = 0;
+        elements.Canvas.Visibility = Visibility.Visible;
+        Canvas.SetLeft(elements.Primary, 0);
+        Canvas.SetLeft(elements.Clone, titleWidth + TitleMarqueeGap);
         _titleMarqueeDistance = titleWidth + TitleMarqueeGap;
         _titleMarqueeStartedAt = DateTimeOffset.UtcNow;
-        TitleMarqueeCanvas.Translation = Vector3.Zero;
+        elements.Canvas.Translation = Vector3.Zero;
         EnsureTitleMarqueeTimer();
         _titleMarqueeTimer?.Start();
     }
@@ -591,19 +693,21 @@ public sealed partial class MusicWidgetContent : UserControl
     {
         _titleMarqueeTimer?.Stop();
         _titleMarqueeDistance = 0;
-        TitleTextPrimary.ClearValue(WidthProperty);
-        TitleTextClone.ClearValue(WidthProperty);
-        TitleStaticText.Opacity = 1;
-        TitleMarqueeCanvas.Visibility = Visibility.Collapsed;
-        TitleMarqueeCanvas.Translation = Vector3.Zero;
+        ResetTitleMarqueeElements(TitleStaticText, TitleMarqueeCanvas, TitleTextPrimary, TitleTextClone);
+        ResetTitleMarqueeElements(
+            MinimalTitleStaticText,
+            MinimalTitleMarqueeCanvas,
+            MinimalTitleTextPrimary,
+            MinimalTitleTextClone);
     }
 
     private void TitleMarqueeTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
+        var elements = GetActiveTitleMarqueeElements();
         double titleWidth = MeasureTitleWidth();
         if (_titleMarqueeDistance <= 0 ||
-            TitleMarqueeHost.ActualWidth <= 0 ||
-            titleWidth <= TitleMarqueeHost.ActualWidth + TitleMarqueeOverflowTolerance)
+            elements.Host.ActualWidth <= 0 ||
+            titleWidth <= elements.Host.ActualWidth + TitleMarqueeOverflowTolerance)
         {
             StopTitleMarquee();
             return;
@@ -619,7 +723,7 @@ public sealed partial class MusicWidgetContent : UserControl
             offset = 0;
         }
 
-        TitleMarqueeCanvas.Translation = new Vector3((float)-offset, 0, 0);
+        elements.Canvas.Translation = new Vector3((float)-offset, 0, 0);
     }
 
     private double MeasureTitleWidth()
@@ -631,17 +735,40 @@ public sealed partial class MusicWidgetContent : UserControl
             return 0;
         }
 
-        // Ensure the measure text block has the latest text
-        TitleMeasureText.Text = title;
-        TitleMeasureText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        double desiredWidth = TitleMeasureText.DesiredSize.Width;
+        var elements = GetActiveTitleMarqueeElements();
+        elements.Measure.Text = title;
+        elements.Measure.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        double desiredWidth = elements.Measure.DesiredSize.Width;
         if (double.IsFinite(desiredWidth) && desiredWidth > 0)
         {
             return Math.Ceiling(desiredWidth);
         }
 
-        double actualWidth = TitleTextPrimary.ActualWidth;
+        double actualWidth = elements.Primary.ActualWidth;
         return double.IsFinite(actualWidth) ? Math.Ceiling(actualWidth) : 0;
+    }
+
+    private (Grid Host, TextBlock Static, Canvas Canvas, TextBlock Primary, TextBlock Clone, TextBlock Measure)
+        GetActiveTitleMarqueeElements()
+    {
+        return _isMinimalLayout
+            ? (MinimalTitleMarqueeHost, MinimalTitleStaticText, MinimalTitleMarqueeCanvas,
+                MinimalTitleTextPrimary, MinimalTitleTextClone, MinimalTitleMeasureText)
+            : (TitleMarqueeHost, TitleStaticText, TitleMarqueeCanvas,
+                TitleTextPrimary, TitleTextClone, TitleMeasureText);
+    }
+
+    private static void ResetTitleMarqueeElements(
+        TextBlock staticText,
+        Canvas canvas,
+        TextBlock primary,
+        TextBlock clone)
+    {
+        primary.ClearValue(WidthProperty);
+        clone.ClearValue(WidthProperty);
+        staticText.Opacity = 1;
+        canvas.Visibility = Visibility.Collapsed;
+        canvas.Translation = Vector3.Zero;
     }
 
     private void UpdateSeekFromPointer(PointerRoutedEventArgs e)

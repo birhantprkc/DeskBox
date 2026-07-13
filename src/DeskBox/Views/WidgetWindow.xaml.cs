@@ -70,7 +70,6 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
     private bool _deletePending;
     private string[] _cutClipboardPaths = [];
     private readonly HashSet<Border> _interactiveSurfaces = [];
-    private Windows.Foundation.Point _lastRightTapPoint;
     private DateTime _lastTitleBarClickTimeUtc;
     private Win32Helper.POINT _lastTitleBarClickPoint;
     private bool _hasPendingTitleBarClick;
@@ -474,6 +473,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
         HoldTemporaryTopMost();
         base.Activate();
+        Win32Helper.SetForegroundWindow(_hWnd);
         RootGrid.Focus(FocusState.Programmatic);
     }
 
@@ -838,7 +838,6 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
         _lastElevateForInteractionUtc = DateTime.UtcNow;
         HoldTemporaryTopMost();
-        App.Current.WidgetManager?.BringAllVisibleWidgetsToFront(_hWnd);
         RootGrid.Focus(FocusState.Programmatic);
     }
 
@@ -864,6 +863,12 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
     private void StartTopMostSafetyTimer()
     {
+        if (!Win32Helper.IsWindowTopMost(_hWnd))
+        {
+            _topMostSafetyTimer?.Stop();
+            return;
+        }
+
         if (_topMostSafetyTimer is null)
         {
             _topMostSafetyTimer = DispatcherQueue.CreateTimer();
@@ -872,9 +877,16 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             _topMostSafetyTimer.Tick += (_, _) =>
             {
                 _topMostSafetyTimer?.Stop();
-                if (!_isAtDesktopLayer && !_isDragging && !_isResizing &&
+                if (!_isAtDesktopLayer &&
                     App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
                 {
+                    if (ShouldDeferDesktopLayerRestore())
+                    {
+                        App.LogVerbose($"[ZOrder] Widget safety timer: defer restore hwnd=0x{_hWnd.ToInt64():X}");
+                        _topMostSafetyTimer?.Start();
+                        return;
+                    }
+
                     App.Log($"[ZOrder] Widget safety timer: force restore hwnd=0x{_hWnd.ToInt64():X}");
                     RestoreDesktopLayer(force: true);
                 }
@@ -921,7 +933,6 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         _keepRaisedUntilDeactivate = true;
         _restoreDesktopLayerWhenIdle = false;
         PlayTrayRaiseAnimation();
-        App.Current.WidgetManager?.BringAllVisibleWidgetsToFront(_hWnd);
         StartTopMostSafetyTimer();
     }
 
@@ -1146,8 +1157,8 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             else if (materialType is SettingsService.WidgetMaterialTypeSolid)
             {
                 // Solid: no system backdrop, no accent blur
-                DisposeAcrylicController();
-                DisposeMicaController();
+                DetachAcrylicControllerTarget();
+                DetachMicaControllerTarget();
                 backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
                 Win32Helper.DisableAccentPolicy(_hWnd);
@@ -1157,8 +1168,8 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
                 // Fallback to Win32 accent blur
                 backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
                 Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
-                DisposeAcrylicController();
-                DisposeMicaController();
+                DetachAcrylicControllerTarget();
+                DetachMicaControllerTarget();
                 Win32Helper.ApplyAccentBlur(_hWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
             }
 
@@ -1167,6 +1178,8 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
                 $"opacity={surfaceOpacity:F3} tint=#{tintColor.A:X2}{tintColor.R:X2}{tintColor.G:X2}{tintColor.B:X2} " +
                 $"dwmBackdropType={backdropType} " +
                 $"acrylicController={_acrylicController is not null} micaController={_micaController is not null}");
+
+            ScheduleInactiveBackdropControllerCleanup(materialType);
         }
         catch (Exception ex)
         {
@@ -1219,23 +1232,23 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
         if (_micaController is null)
         {
-            // Dispose acrylic FIRST before adding mica to avoid backdrop conflicts
-            DisposeAcrylicController();
+            DetachAcrylicControllerTarget();
             _micaController = new MicaController { Kind = MicaKind.Base };
+        }
 
+        DetachAcrylicControllerTarget();
+        if (!MicaControllerAttached)
+        {
             if (!_micaController.AddSystemBackdropTarget(_backdropTarget))
             {
                 DisposeMicaController();
                 return false;
             }
-        }
-        else
-        {
-            // Already have a mica controller — just make sure acrylic is gone
-            DisposeAcrylicController();
+
+            MicaControllerAttached = true;
+            _micaController.SetSystemBackdropConfiguration(_backdropConfiguration);
         }
 
-        _micaController.SetSystemBackdropConfiguration(_backdropConfiguration);
         _micaController.Kind = MicaKind.Base;
         _micaController.TintColor = tintColor;
         _micaController.FallbackColor = isDark
@@ -1263,6 +1276,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         finally
         {
             _micaController = null;
+            MicaControllerAttached = false;
         }
     }
 
@@ -1290,26 +1304,26 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
         if (_acrylicController is null || _acrylicController.IsClosed)
         {
-            // Dispose mica FIRST before adding acrylic to avoid backdrop conflicts
-            DisposeMicaController();
+            DetachMicaControllerTarget();
             _acrylicController = new DesktopAcrylicController
             {
                 Kind = DesktopAcrylicKind.Thin
             };
+        }
 
+        DetachMicaControllerTarget();
+        if (!AcrylicControllerAttached)
+        {
             if (!_acrylicController.AddSystemBackdropTarget(_backdropTarget))
             {
                 DisposeAcrylicController();
                 return false;
             }
-        }
-        else
-        {
-            // Already have an acrylic controller — just make sure mica is gone
-            DisposeMicaController();
+
+            AcrylicControllerAttached = true;
+            _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
         }
 
-        _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
         _acrylicController.Kind = DesktopAcrylicKind.Thin;
         _acrylicController.TintColor = tintColor;
         _acrylicController.FallbackColor = tintColor;
@@ -1344,14 +1358,21 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
                 Kind = DesktopAcrylicKind.Thin
             };
 
+        }
+
+        DetachMicaControllerTarget();
+        if (!AcrylicControllerAttached)
+        {
             if (!_acrylicController.AddSystemBackdropTarget(_backdropTarget))
             {
                 DisposeAcrylicController();
                 return false;
             }
+
+            AcrylicControllerAttached = true;
+            _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
         }
 
-        _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
         _acrylicController.Kind = DesktopAcrylicKind.Thin;
         // Near-zero tint and luminosity for a glass-like see-through effect.
         _acrylicController.TintColor = isDark
@@ -1363,7 +1384,6 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         _acrylicController.TintOpacity = 0.0f;
         _acrylicController.LuminosityOpacity = 0.0f;
 
-        DisposeMicaController();
         return true;
     }
 
@@ -1385,6 +1405,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         finally
         {
             _acrylicController = null;
+            AcrylicControllerAttached = false;
         }
     }
 
@@ -1925,8 +1946,6 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             return;
         }
 
-        _lastRightTapPoint = e.GetPosition(element);
-
         var listView = GetActiveItemsView();
         if (listView is not null)
         {
@@ -1944,108 +1963,95 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
         if (isMultiSelection)
         {
-            var multiFlyout = new MenuFlyout();
-            AddMultiSelectionItems(multiFlyout, selectedItems.Count);
+            var multiFlyout = CreateMultiSelectionFlyout();
             ShowFlyoutWithElevation(multiFlyout, element, e.GetPosition(element));
             e.Handled = true;
             return;
         }
 
-        // ─── Win11-style MenuFlyout (custom) with "Show more options" ───
-        // We always show our WinUI 3 MenuFlyout first (which IS Win11-styled:
-        // rounded corners, acrylic background). At the bottom, we add a
-        // "Show more options" item that invokes the full classic native shell
-        // context menu — mirroring exactly what Windows 11 File Explorer does.
         var flyout = new MenuFlyout();
 
-        var openItem = new MenuFlyoutItem
+        var cutItem = CreateFileContextCommand("Common.Cut", "\uE8C6");
+        cutItem.Click += async (_, _) =>
         {
-            Text = _localizationService.T("Widget.Open"),
-            Icon = new SymbolIcon(Symbol.OpenFile)
+            flyout.Hide();
+            await CopySelectionToClipboardAsync(cut: true);
         };
-        openItem.Click += (_, _) => OpenItem(item);
-        flyout.Items.Add(openItem);
+        flyout.Items.Add(cutItem);
 
+        var copyItem = CreateFileContextCommand("Common.Copy", "\uE8C8");
+        copyItem.Click += async (_, _) =>
+        {
+            flyout.Hide();
+            await CopySelectionToClipboardAsync(cut: false);
+        };
+        flyout.Items.Add(copyItem);
+
+        var renameItem = CreateFileContextCommand("Common.Rename", "\uE8AC");
+        renameItem.Click += async (_, _) =>
+        {
+            flyout.Hide();
+            await StartItemRenameAsync(item);
+        };
+        flyout.Items.Add(renameItem);
+
+        var deleteItem = CreateFileContextCommand("Common.Delete", "\uE74D");
+        deleteItem.Click += async (_, _) =>
+        {
+            flyout.Hide();
+            await DeleteSelectedItemsAsync();
+        };
         flyout.Items.Add(new MenuFlyoutSeparator());
 
-        var copyItem = new MenuFlyoutItem
+        var openItem = CreateFileContextCommand("Widget.Open", "\uE8E5");
+        openItem.Click += (_, _) =>
         {
-            Text = _localizationService.T("Common.Copy"),
-            Icon = new FontIcon { Glyph = "\uE8C8" }
+            flyout.Hide();
+            OpenItem(item);
         };
-        copyItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: false);
-        flyout.Items.Add(copyItem);
+        flyout.Items.Add(openItem);
 
         if (CanCopyImageText(item))
         {
-            var copyImageTextItem = new MenuFlyoutItem
+            var copyImageTextItem = CreateFileContextCommand("Widget.CopyImageText", "\uE8C8");
+            copyImageTextItem.Click += async (_, _) =>
             {
-                Text = _localizationService.T("Widget.CopyImageText"),
-                Icon = new FontIcon { Glyph = "\uE8C8" }
+                flyout.Hide();
+                await CopyImageTextAsync(item);
             };
-            copyImageTextItem.Click += async (_, _) => await CopyImageTextAsync(item);
             flyout.Items.Add(copyImageTextItem);
         }
 
-        var copyPathItem = new MenuFlyoutItem
+        var copyPathItem = CreateFileContextCommand("Widget.CopyPath", "\uE8C8");
+        copyPathItem.Click += (_, _) =>
         {
-            Text = _localizationService.T("Widget.CopyPath"),
-            Icon = new FontIcon { Glyph = "\uE8C8" }
+            flyout.Hide();
+            CopySelectedPathsToClipboard();
         };
-        copyPathItem.Click += (_, _) => CopySelectedPathsToClipboard();
         flyout.Items.Add(copyPathItem);
 
-        var cutItem = new MenuFlyoutItem
+        var showItem = CreateFileContextCommand("Widget.ShowInExplorer", "\uE838");
+        showItem.Click += (_, _) =>
         {
-            Text = _localizationService.T("Common.Cut"),
-            Icon = new FontIcon { Glyph = "\uE8C6" }
+            flyout.Hide();
+            ViewModel.ShowInExplorerCommand.Execute(item);
         };
-        cutItem.Click += async (_, _) => await CopySelectionToClipboardAsync(cut: true);
-        flyout.Items.Add(cutItem);
-
-        var showItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("Widget.ShowInExplorer"),
-            Icon = new FontIcon { Glyph = "\uE838" }
-        };
-        showItem.Click += (_, _) => ViewModel.ShowInExplorerCommand.Execute(item);
         flyout.Items.Add(showItem);
 
-        var renameItem = new MenuFlyoutItem
+        var propItem = CreateFileContextCommand("Common.Properties", "\uE946");
+        propItem.Click += (_, _) =>
         {
-            Text = _localizationService.T("Common.Rename"),
-            Icon = new FontIcon { Glyph = "\uE8AC" }
+            flyout.Hide();
+            ShellContextMenuHelper.ShowProperties(_hWnd, item.Path);
         };
-        renameItem.Click += async (_, _) => await StartItemRenameAsync(item);
-        flyout.Items.Add(renameItem);
-
-        var deleteItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("Common.Delete"),
-            Icon = new FontIcon { Glyph = "\uE74D" }
-        };
-        deleteItem.Click += async (_, _) => await DeleteSelectedItemsAsync();
-        flyout.Items.Add(deleteItem);
-
-        var propItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("Common.Properties"),
-            Icon = new FontIcon { Glyph = "\uE946" }
-        };
-        propItem.Click += (_, _) => ShellContextMenuHelper.ShowProperties(_hWnd, item.Path);
         flyout.Items.Add(propItem);
 
         if (CanMoveItemsBackToDesktop())
         {
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            var moveBackToDesktopItem = new MenuFlyoutItem
-            {
-                Text = _localizationService.T("Widget.MoveBackToDesktop"),
-                Icon = new FontIcon { Glyph = "\uE74A" }
-            };
+            var moveBackToDesktopItem = CreateFileContextCommand("Widget.MoveBackToDesktop", "\uE74A");
             moveBackToDesktopItem.Click += async (_, _) =>
             {
+                flyout.Hide();
                 try
                 {
                     int movedCount = await ViewModel.MoveItemsBackToDesktopAsync([item], useShellProgress: true);
@@ -2061,29 +2067,20 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             flyout.Items.Add(moveBackToDesktopItem);
         }
 
-        // ─── "Show more options" — launches the full classic native shell menu ───
-        bool pathExists = !string.IsNullOrEmpty(item.Path) && (System.IO.File.Exists(item.Path) || System.IO.Directory.Exists(item.Path));
-        if (pathExists)
-        {
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            var showMoreItem = new MenuFlyoutItem
-            {
-                Text = _localizationService.T("Widget.ShowMoreOptions"),
-                Icon = new FontIcon { Glyph = "\uE712" }
-            };
-            showMoreItem.Click += (_, _) =>
-            {
-                _ = DispatcherQueue.TryEnqueue(() =>
-                {
-                    TryShowNativeContextMenu(item, element, _lastRightTapPoint);
-                });
-            };
-            flyout.Items.Add(showMoreItem);
-        }
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(deleteItem);
 
         ShowFlyoutWithElevation(flyout, element, e.GetPosition(element));
         e.Handled = true;
+    }
+
+    private MenuFlyoutItem CreateFileContextCommand(string localizationKey, string glyph)
+    {
+        return new MenuFlyoutItem
+        {
+            Text = _localizationService.T(localizationKey),
+            Icon = new FontIcon { Glyph = glyph }
+        };
     }
 
     private async void ItemsView_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -2417,6 +2414,11 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
     private void TitleText_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        if (!CanStartRenameFromTitleArea(e.OriginalSource))
+        {
+            return;
+        }
+
         e.Handled = true;
         DispatcherQueue.TryEnqueue(() =>
         {
@@ -2448,11 +2450,6 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             return;
         }
 
-        if (ViewModel.IsPositionLocked)
-        {
-            return;
-        }
-
         if (!ShouldStartTitleDrag(e.OriginalSource))
         {
             return;
@@ -2460,6 +2457,20 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
         var properties = e.GetCurrentPoint(TitleBarGrid).Properties;
         if (!properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        if (TitleEditBox.Visibility == Visibility.Visible &&
+            ShouldOpenTitleBarFlyout(e.OriginalSource))
+        {
+            _ = CommitRenameAsync();
+            e.Handled = true;
+            return;
+        }
+
+        App.Current.WidgetManager?.ActivateAllVisibleWidgetsFromTitle(_hWnd);
+        if (ViewModel.IsPositionLocked)
         {
             return;
         }
@@ -3130,7 +3141,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             return false;
         }
 
-        return IsWithin(source, TitleText) || IsWithin(source, FileTitleIcon);
+        return ShouldOpenTitleBarFlyout(source) && IsWithin(source, TitleBarGrid);
     }
 
     private bool IsTitleBarDoubleClick(Win32Helper.POINT currentPoint)

@@ -354,11 +354,23 @@ public sealed class SettingsServiceTests : IDisposable
         {
             WidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade,
             WidgetTitleIconMode = SettingsService.WidgetTitleIconModeHidden,
-            QuickCaptureTabStyle = SettingsService.WidgetTabStyleButton,
-            TodoTabStyle = SettingsService.WidgetTabStyleButton,
+            WidgetBorderStyle = SettingsService.WidgetBorderStyleThick,
+            LayoutDensity = "Compact",
+            Language = SettingsService.LanguageChinese,
+            AutoStart = false,
+            QuickCaptureEnabled = true,
+            TodoEnabled = true,
+            FeatureWidgetEnabledStates = new Dictionary<string, bool>
+            {
+                [WidgetKind.Music.ToString()] = true
+            },
+            QuickCaptureShowCreatedTime = false,
+            ResizeSnapEnabled = false,
+            QuickCaptureTabStyle = SettingsService.WidgetTabStylePivot,
+            TodoTabStyle = SettingsService.WidgetTabStylePivot,
+            TodoShowFooterStats = true,
             TodoReminderEnabled = false,
             TodoDefaultReminderOffsetMinutes = 999,
-            MusicRhythmStyle = SettingsService.MusicRhythmStyleStackedEqualizer,
             ManagedDropAction = SettingsService.ManagedDropActionCopy,
             GlobalHotkeyEnabled = false,
             GlobalHotkeyModifiers = (int)HotkeyModifierKeys.Control,
@@ -373,6 +385,8 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.WidgetAnimationEffect, restoredDefaults.WidgetAnimationEffect);
         Assert.Equal(SettingsService.WidgetTitleIconModeColor, newUserDefaults.WidgetTitleIconMode);
         Assert.Equal(newUserDefaults.WidgetTitleIconMode, restoredDefaults.WidgetTitleIconMode);
+        Assert.Equal(SettingsService.WidgetBorderStyleThin, newUserDefaults.WidgetBorderStyle);
+        Assert.Equal(newUserDefaults.WidgetBorderStyle, restoredDefaults.WidgetBorderStyle);
         Assert.True(newUserDefaults.AutoCheckForUpdates);
         Assert.Equal(newUserDefaults.AutoCheckForUpdates, restoredDefaults.AutoCheckForUpdates);
         Assert.False(newUserDefaults.QuickCaptureClipboardEnabled);
@@ -385,7 +399,17 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.TodoDefaultReminderOffsetMinutes, restoredDefaults.TodoDefaultReminderOffsetMinutes);
         Assert.Equal(newUserDefaults.QuickCaptureTabStyle, restoredDefaults.QuickCaptureTabStyle);
         Assert.Equal(newUserDefaults.TodoTabStyle, restoredDefaults.TodoTabStyle);
-        Assert.Equal(newUserDefaults.MusicRhythmStyle, restoredDefaults.MusicRhythmStyle);
+        Assert.Equal(SettingsService.WidgetTabStyleButton, restoredDefaults.QuickCaptureTabStyle);
+        Assert.Equal(SettingsService.WidgetTabStyleButton, restoredDefaults.TodoTabStyle);
+        Assert.Equal("Comfortable", restoredDefaults.LayoutDensity);
+        Assert.True(restoredDefaults.QuickCaptureShowCreatedTime);
+        Assert.True(restoredDefaults.ResizeSnapEnabled);
+        Assert.False(restoredDefaults.TodoShowFooterStats);
+        Assert.Equal(SettingsService.LanguageChinese, restoredDefaults.Language);
+        Assert.False(restoredDefaults.AutoStart);
+        Assert.True(restoredDefaults.QuickCaptureEnabled);
+        Assert.True(restoredDefaults.TodoEnabled);
+        Assert.True(restoredDefaults.FeatureWidgetEnabledStates[WidgetKind.Music.ToString()]);
         Assert.Equal(newUserDefaults.ManagedDropAction, restoredDefaults.ManagedDropAction);
         Assert.Equal(newUserDefaults.GlobalHotkeyEnabled, restoredDefaults.GlobalHotkeyEnabled);
         Assert.Equal(newUserDefaults.GlobalHotkeyModifiers, restoredDefaults.GlobalHotkeyModifiers);

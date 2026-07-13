@@ -8,6 +8,8 @@ public sealed class QuickCaptureItem
 
     public string Body { get; set; } = string.Empty;
 
+    public string? Title { get; set; }
+
     public string? Url { get; set; }
 
     public string? ImagePath { get; set; }
@@ -19,6 +21,14 @@ public sealed class QuickCaptureItem
     public bool IsRecent { get; set; }
 
     public bool IsDeleted { get; set; }
+
+    public QuickCaptureAppearancePreset AppearancePreset { get; set; } = QuickCaptureAppearancePreset.Default;
+
+    public QuickCaptureSourceKind SourceKind { get; set; } = QuickCaptureSourceKind.Manual;
+
+    public List<string> Tags { get; set; } = [];
+
+    public DateTimeOffset? ArchivedAt { get; set; }
 
     public int SortOrder { get; set; }
 
@@ -35,4 +45,22 @@ public enum QuickCaptureItemType
     Link,
     Image,
     Todo
+}
+
+public enum QuickCaptureAppearancePreset
+{
+    Default,
+    Paper,
+    StickyYellow,
+    Rose,
+    Mint,
+    MistBlue
+}
+
+public enum QuickCaptureSourceKind
+{
+    Manual,
+    Clipboard,
+    Image,
+    DragDrop
 }

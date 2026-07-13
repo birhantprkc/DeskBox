@@ -8,6 +8,8 @@ public sealed class TodoItem
     public const string GreenColorMarker = "green";
     public const string BlueColorMarker = "blue";
     public const string PurpleColorMarker = "purple";
+    public const string TealColorMarker = "teal";
+    public const string PinkColorMarker = "pink";
 
     public static readonly string[] SupportedColorMarkers =
     [
@@ -16,7 +18,9 @@ public sealed class TodoItem
         YellowColorMarker,
         GreenColorMarker,
         BlueColorMarker,
-        PurpleColorMarker
+        PurpleColorMarker,
+        TealColorMarker,
+        PinkColorMarker
     ];
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -32,6 +36,12 @@ public sealed class TodoItem
     public DateTimeOffset? DueDate { get; set; }
 
     public TodoRecurrence? Recurrence { get; set; }
+
+    public List<TodoStep> Steps { get; set; } = [];
+
+    public string? Notes { get; set; }
+
+    public List<TodoAttachment> Attachments { get; set; } = [];
 
     public DateTimeOffset? CompletedAt { get; set; }
 
@@ -78,6 +88,8 @@ public sealed class TodoItem
             GreenColorMarker => "#4CAF6D",
             BlueColorMarker => "#4D8FE3",
             PurpleColorMarker => "#9B6BE8",
+            TealColorMarker => "#2DB7A3",
+            PinkColorMarker => "#E66AA2",
             _ => "#8A8F98"
         };
     }
@@ -92,6 +104,8 @@ public sealed class TodoItem
             GreenColorMarker => "Todo.Color.Green",
             BlueColorMarker => "Todo.Color.Blue",
             PurpleColorMarker => "Todo.Color.Purple",
+            TealColorMarker => "Todo.Color.Teal",
+            PinkColorMarker => "Todo.Color.Pink",
             _ => "Todo.Color.None"
         };
     }

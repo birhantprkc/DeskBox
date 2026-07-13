@@ -83,8 +83,8 @@ public sealed class SettingsService
     public const bool DefaultGlobalHotkeyEnabled = true;
     public const int DefaultGlobalHotkeyModifiers = (int)Models.HotkeyModifierKeys.None;
     public const int DefaultGlobalHotkeyKey = (int)Windows.System.VirtualKey.F7;
-    public const double MinWidgetWidth = 200;
-    public const double MinWidgetHeight = 200;
+    public const double MinWidgetWidth = 150;
+    public const double MinWidgetHeight = 150;
     public const double DefaultIconSize = 30;
     public const double MinIconSize = 24;
     public const double MaxIconSize = 56;
@@ -114,12 +114,6 @@ public sealed class SettingsService
     public const string QuickCaptureDefaultViewRecent = "Recent";
     public const string WidgetTabStylePivot = "Pivot";
     public const string WidgetTabStyleButton = "Button";
-    public const string MusicRhythmStyleSoftWave = "SoftWave";
-    public const string MusicRhythmStyleGlassSpectrum = "GlassSpectrum";
-    public const string MusicRhythmStyleDotPulse = "DotPulse";
-    public const string MusicRhythmStyleLineSpectrum = "LineSpectrum";
-    public const string MusicRhythmStyleStackedEqualizer = "StackedEqualizer";
-
 public const string WeatherTemperatureUnitCelsius = "Celsius";
 public const string WeatherTemperatureUnitFahrenheit = "Fahrenheit";
 public const string WeatherWindSpeedUnitKmh = "kmh";
@@ -166,7 +160,7 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.DefaultWidgetHeight = DefaultWidgetHeight;
         settings.WidgetCornerPreference = WidgetCornerPreferenceRound;
         settings.WidgetMaterialType = WidgetMaterialTypeMica;
-        settings.WidgetBorderStyle = WidgetBorderStyleMedium;
+        settings.WidgetBorderStyle = WidgetBorderStyleThin;
         settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
         settings.WidgetAnimationSpeed = WidgetAnimationSpeedStandard;
         settings.WidgetAnimationSlideDirection = WidgetAnimationSlideDirectionRight;
@@ -179,7 +173,7 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.IconSize = DefaultIconSize;
         settings.TextSize = DefaultTextSize;
         settings.LayoutDensityScale = DefaultLayoutDensityScale;
-        settings.LayoutDensity = DefaultLayoutDensityScale <= 0.78 ? "Compact" : "Comfortable";
+        settings.LayoutDensity = "Comfortable";
         settings.HorizontalSpacingScale = DefaultHorizontalSpacingScale;
         settings.VerticalSpacingScale = DefaultVerticalSpacingScale;
         settings.FileNameWidthScale = DefaultFileNameWidthScale;
@@ -192,17 +186,16 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.QuickCaptureClipboardEnabled = false;
         settings.QuickCaptureImageClipboardEnabled = false;
         settings.QuickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
+        settings.QuickCaptureShowCreatedTime = true;
         settings.QuickCaptureDefaultView = QuickCaptureDefaultViewRecords;
-        settings.QuickCaptureTabStyle = WidgetTabStylePivot;
+        settings.QuickCaptureTabStyle = WidgetTabStyleButton;
         settings.TodoShowCompletedTasks = true;
-        settings.TodoShowFooterStats = true;
+        settings.TodoShowFooterStats = false;
         settings.TodoShowClearCompletedButton = true;
         settings.TodoConfirmBeforeDelete = false;
         settings.TodoReminderEnabled = true;
         settings.TodoDefaultReminderOffsetMinutes = DefaultTodoReminderOffsetMinutes;
         settings.MusicUseArtworkBackdrop = true;
-        settings.MusicShowRhythmBars = true;
-        settings.MusicRhythmStyle = MusicRhythmStyleSoftWave;
         settings.MusicEnableCoverHoverMotion = true;
 settings.WeatherAutoLocation = true;
 settings.WeatherCityName = string.Empty;
@@ -222,13 +215,14 @@ settings.WeatherShowPressure = false;
 settings.WeatherRefreshIntervalMinutes = 60;
         settings.TodoNewTaskPosition = TodoNewTaskPositionTop;
         settings.TodoDefaultFilter = TodoDefaultFilterAll;
-        settings.TodoTabStyle = WidgetTabStylePivot;
+        settings.TodoTabStyle = WidgetTabStyleButton;
         settings.ManagedDropAction = ManagedDropActionMove;
         settings.GlobalHotkeyEnabled = DefaultGlobalHotkeyEnabled;
         settings.GlobalHotkeyModifiers = DefaultGlobalHotkeyModifiers;
         settings.GlobalHotkeyKey = DefaultGlobalHotkeyKey;
         settings.DoubleClickToOpen = true;
         settings.HideShortcutArrowOverlay = true;
+        settings.ResizeSnapEnabled = true;
 settings.ShowListItemDetails = false;
 settings.ShowFileItemPathTooltips = true;
 settings.CustomAccentColor = "#0078D4";
@@ -285,7 +279,6 @@ settings.FocusClickedWidgetOnRaise = false;
                 changed |= NormalizeHotkeySettings(_settings);
                 changed |= NormalizeQuickCaptureSettings(_settings);
                 changed |= NormalizeTodoSettings(_settings);
-changed |= NormalizeMusicSettings(_settings);
 changed |= NormalizeWeatherSettings(_settings);
 changed |= NormalizeDeletionSettings(_settings);
             }
@@ -329,10 +322,13 @@ changed |= NormalizeDeletionSettings(_settings);
     /// <summary>
     /// Save settings to disk immediately.
     /// </summary>
-    public async Task SaveAsync()
+    public async Task SaveAsync(bool notifySubscribers = true)
     {
         await SaveToFileOnlyAsync();
-        SettingsChanged?.Invoke();
+        if (notifySubscribers)
+        {
+            SettingsChanged?.Invoke();
+        }
     }
 
     private async Task SaveToFileOnlyAsync()
@@ -351,7 +347,6 @@ changed |= NormalizeDeletionSettings(_settings);
                 NormalizeHotkeySettings(_settings);
                 NormalizeQuickCaptureSettings(_settings);
                 NormalizeTodoSettings(_settings);
-                NormalizeMusicSettings(_settings);
                 NormalizeWeatherSettings(_settings);
                 json = JsonSerializer.Serialize(_settings, s_jsonOptions);
             }
@@ -698,15 +693,6 @@ changed |= NormalizeDeletionSettings(_settings);
             settings.LayoutDensity = "Comfortable";
             changed = true;
         }
-        else
-        {
-            string normalizedLegacyDensity = settings.LayoutDensityScale <= 0.78 ? "Compact" : "Comfortable";
-            if (!string.Equals(settings.LayoutDensity, normalizedLegacyDensity, StringComparison.Ordinal))
-            {
-                settings.LayoutDensity = normalizedLegacyDensity;
-                changed = true;
-            }
-        }
 
         double normalizedWidgetWidth = double.IsFinite(settings.DefaultWidgetWidth)
             ? Math.Clamp(settings.DefaultWidgetWidth, MinWidgetWidth, 1200)
@@ -718,7 +704,7 @@ changed |= NormalizeDeletionSettings(_settings);
         }
 
         double normalizedWidgetHeight = double.IsFinite(settings.DefaultWidgetHeight)
-            ? Math.Clamp(settings.DefaultWidgetHeight, DefaultWidgetHeight, 1200)
+            ? Math.Clamp(settings.DefaultWidgetHeight, MinWidgetHeight, 1200)
             : DefaultWidgetHeight;
         if (Math.Abs(settings.DefaultWidgetHeight - normalizedWidgetHeight) > 0.0001)
         {
@@ -811,16 +797,6 @@ changed |= NormalizeDeletionSettings(_settings);
         return string.Equals(value, WidgetLayerModeDesktopPinned, StringComparison.Ordinal)
             ? WidgetLayerModeDesktopPinned
             : WidgetLayerModeDynamic;
-    }
-
-    public static string NormalizeMusicRhythmStyle(string? value)
-    {
-        return value is MusicRhythmStyleGlassSpectrum or
-            MusicRhythmStyleDotPulse or
-            MusicRhythmStyleLineSpectrum or
-            MusicRhythmStyleStackedEqualizer
-                ? value
-                : MusicRhythmStyleSoftWave;
     }
 
     private static bool NormalizeAppearanceSettings(AppSettings settings)
@@ -1140,9 +1116,9 @@ changed |= NormalizeDeletionSettings(_settings);
 
     public static string NormalizeWidgetTabStyle(string? style)
     {
-        return style == WidgetTabStyleButton
-            ? WidgetTabStyleButton
-            : WidgetTabStylePivot;
+        return style == WidgetTabStylePivot
+            ? WidgetTabStylePivot
+            : WidgetTabStyleButton;
     }
 
     public static int NormalizeTodoReminderOffsetMinutes(int minutes)
@@ -1150,18 +1126,6 @@ changed |= NormalizeDeletionSettings(_settings);
         return minutes is 0 or 5 or 10 or 15 or 30 or 60 or 1440
             ? minutes
             : DefaultTodoReminderOffsetMinutes;
-    }
-
-    internal static bool NormalizeMusicSettings(AppSettings settings)
-    {
-        string normalizedRhythmStyle = NormalizeMusicRhythmStyle(settings.MusicRhythmStyle);
-        if (string.Equals(settings.MusicRhythmStyle, normalizedRhythmStyle, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        settings.MusicRhythmStyle = normalizedRhythmStyle;
-        return true;
     }
 
     internal static bool NormalizeWeatherSettings(AppSettings settings)

@@ -49,11 +49,11 @@ public sealed partial class WidgetWindow
         if (materialType is SettingsService.WidgetMaterialTypeSolid)
         {
             var solidColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
-            BackgroundPlate.Background = new SolidColorBrush(solidColor);
+            BackgroundPlate.Background = GetOrUpdateSolidColorBrush(BackgroundPlate.Background, solidColor);
         }
         else
         {
-            BackgroundPlate.Background = new SolidColorBrush(Colors.Transparent);
+            BackgroundPlate.Background = GetOrUpdateSolidColorBrush(BackgroundPlate.Background, Colors.Transparent);
         }
 
         // XAML border based on user setting
@@ -97,24 +97,29 @@ public sealed partial class WidgetWindow
             : ColorHelper.FromArgb(0xD0, 0x62, 0x65, 0x6A);
 
         BackgroundPlate.BorderThickness = new Thickness(borderThickness);
-        BackgroundPlate.BorderBrush = new SolidColorBrush(borderColor);
+        BackgroundPlate.BorderBrush = GetOrUpdateSolidColorBrush(BackgroundPlate.BorderBrush, borderColor);
         BackgroundPlate.CornerRadius = new CornerRadius(GetCornerRadiusFromPreference());
-        HeaderDivider.Background = new SolidColorBrush(dividerColor);
+        HeaderDivider.Background = GetOrUpdateSolidColorBrush(HeaderDivider.Background, dividerColor);
         FileTitleIcon.AccentColor = iconForeground;
         FileTitleIcon.Mode = _settingsService.Settings.WidgetTitleIconMode;
         FileWidgetShell.TitleIconAccentColor = iconForeground;
         FileWidgetShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;
-        TitleEditBox.Background = new SolidColorBrush(editorBackground);
-        TitleEditBox.BorderBrush = new SolidColorBrush(editorBorder);
-        TitleEditBox.Foreground = new SolidColorBrush(isDark ? Colors.White : Colors.Black);
-        EmptyStateTitleText.Foreground = new SolidColorBrush(isDark ? Colors.White : ColorHelper.FromArgb(0xFF, 0x1A, 0x1A, 0x1A));
-        EmptyStateDescriptionText.Foreground = new SolidColorBrush(secondaryText);
-        EmptyStateIcon.Foreground = new SolidColorBrush(secondaryText);
-        SelectionRectangle.Background = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x2D : (byte)0x24));
-        SelectionRectangle.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0xD8 : (byte)0xCC));
-        StatusToastText.Foreground = new SolidColorBrush(isDark ? Colors.White : Colors.Black);
+        TitleEditBox.Background = GetOrUpdateSolidColorBrush(TitleEditBox.Background, editorBackground);
+        TitleEditBox.BorderBrush = GetOrUpdateSolidColorBrush(TitleEditBox.BorderBrush, editorBorder);
+        TitleEditBox.Foreground = GetOrUpdateSolidColorBrush(TitleEditBox.Foreground, isDark ? Colors.White : Colors.Black);
+        EmptyStateTitleText.Foreground = GetOrUpdateSolidColorBrush(
+            EmptyStateTitleText.Foreground,
+            isDark ? Colors.White : ColorHelper.FromArgb(0xFF, 0x1A, 0x1A, 0x1A));
+        EmptyStateDescriptionText.Foreground = GetOrUpdateSolidColorBrush(EmptyStateDescriptionText.Foreground, secondaryText);
+        EmptyStateIcon.Foreground = GetOrUpdateSolidColorBrush(EmptyStateIcon.Foreground, secondaryText);
+        SelectionRectangle.Background = GetOrUpdateSolidColorBrush(
+            SelectionRectangle.Background,
+            WithAlpha(accentColor, isDark ? (byte)0x2D : (byte)0x24));
+        SelectionRectangle.BorderBrush = GetOrUpdateSolidColorBrush(
+            SelectionRectangle.BorderBrush,
+            WithAlpha(accentColor, isDark ? (byte)0xD8 : (byte)0xCC));
+        StatusToastText.Foreground = GetOrUpdateSolidColorBrush(StatusToastText.Foreground, isDark ? Colors.White : Colors.Black);
 
-        ResetItemSurfaceBrushCache();
         UpdateInteractiveSurfaces();
 
         // Keep the drag highlight border's corner radius in sync with the window's
@@ -257,14 +262,16 @@ public sealed partial class WidgetWindow
                 overlayMix: isDark ? 0.06 : 0.04),
             isDark ? (byte)0x92 : (byte)0x9C);
 
-        _normalItemSurfaceBrush = new SolidColorBrush(defaultBackground);
-        _selectedItemSurfaceBrush = new SolidColorBrush(selectedBackground);
-        _hoverItemSurfaceBrush = new SolidColorBrush(hoverBackground);
-        _pressedItemSurfaceBrush = new SolidColorBrush(pressedBackground);
-        _selectedHoverItemSurfaceBrush = new SolidColorBrush(selectedHoverBackground);
-        _dropTargetItemSurfaceBrush = new SolidColorBrush(dropTargetBackground);
-        _normalItemBorderBrush = new SolidColorBrush(Colors.Transparent);
-        _dropTargetItemBorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0xF0 : (byte)0xD8));
+        _normalItemSurfaceBrush = GetOrUpdateSolidColorBrush(_normalItemSurfaceBrush, defaultBackground);
+        _selectedItemSurfaceBrush = GetOrUpdateSolidColorBrush(_selectedItemSurfaceBrush, selectedBackground);
+        _hoverItemSurfaceBrush = GetOrUpdateSolidColorBrush(_hoverItemSurfaceBrush, hoverBackground);
+        _pressedItemSurfaceBrush = GetOrUpdateSolidColorBrush(_pressedItemSurfaceBrush, pressedBackground);
+        _selectedHoverItemSurfaceBrush = GetOrUpdateSolidColorBrush(_selectedHoverItemSurfaceBrush, selectedHoverBackground);
+        _dropTargetItemSurfaceBrush = GetOrUpdateSolidColorBrush(_dropTargetItemSurfaceBrush, dropTargetBackground);
+        _normalItemBorderBrush = GetOrUpdateSolidColorBrush(_normalItemBorderBrush, Colors.Transparent);
+        _dropTargetItemBorderBrush = GetOrUpdateSolidColorBrush(
+            _dropTargetItemBorderBrush,
+            WithAlpha(accentColor, isDark ? (byte)0xF0 : (byte)0xD8));
     }
 
     private void WidgetItemSurface_Loaded(object sender, RoutedEventArgs e)

@@ -106,7 +106,7 @@ public sealed partial class WidgetManager
             PlayPreparedTrayShowAnimations(windowsToAnimate);
             SetWidgetsRaisedFromTray(shownWindows.Count > 0);
             QueueTrayRaiseTopMostConfirmation(shownWindows);
-            StartTrayLayerRestoreMonitor(shownWindows.Count > 0);
+            ActivateLastRaisedWindow(shownWindows);
             SaveBatchVisibilityState();
             App.LogVerbose($"[TrayBatch] Raise completed raised={_widgetsRaisedFromTray} prepared={windowsToRaise.Count} shown={shownWindows.Count}");
             return _widgetsRaisedFromTray;
@@ -369,8 +369,6 @@ public sealed partial class WidgetManager
 
         long generation = ++_trayRaiseBatchGeneration;
         ConfirmTrayRaiseTopMost(windows, generation);
-        QueueTrayRaiseTopMostConfirmation(windows, generation, TimeSpan.FromMilliseconds(120));
-        QueueTrayRaiseTopMostConfirmation(windows, generation, TimeSpan.FromMilliseconds(400));
     }
 
     private void ConfirmTrayRaiseTopMost(IReadOnlyList<IDesktopWidgetWindow> windows, long generation)
@@ -380,17 +378,11 @@ public sealed partial class WidgetManager
             return;
         }
 
-        foreach (var window in windows)
-        {
-            try
-            {
-                window.EnsureRaisedFromTrayTopMost();
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[WidgetManager] Failed to confirm raised widget topmost {FormatHostWindow(window)}: {ex}");
-            }
-        }
+        var visibleWindows = windows.Where(window => window.Visible).ToList();
+        IntPtr activeHandle = visibleWindows.LastOrDefault()?.WindowHandle ?? IntPtr.Zero;
+        WidgetLayerService.BringGroupTemporarilyToFront(
+            visibleWindows.Select(window => window.WindowHandle).ToList(),
+            activeHandle);
     }
 
     private void SaveBatchVisibilityState()

@@ -17,7 +17,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="15" />
+            <Setter Property="CornerRadius" Value="5" />
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
             <Setter Property="UseSystemFocusVisuals" Value="False" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -172,115 +172,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Rhythm visualizer DataTemplates — only one is active at a time.
-             Extracted from inline ItemsControl.ItemTemplate to avoid 5x
-             container generation (WinUI generates containers for collapsed
-             ItemsControls too). -->
-        <DataTemplate x:Key="RhythmSoftWaveTemplate">
-            <Border
-                Width="4"
-                Height="{Binding Height}"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                CornerRadius="2"
-                Opacity="{Binding Opacity}">
-                <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="{Binding AccentColor}" />
-                        <GradientStop Offset="1" Color="{Binding GlassEndColor}" />
-                    </LinearGradientBrush>
-                </Border.Background>
-            </Border>
-        </DataTemplate>
-
-        <DataTemplate x:Key="RhythmGlassSpectrumTemplate">
-            <Border
-                Width="3"
-                Height="{Binding Height}"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                BorderThickness="1"
-                CornerRadius="2.5"
-                Opacity="{Binding Opacity}">
-                <Border.BorderBrush>
-                    <SolidColorBrush Color="{Binding GlassStrokeColor}" />
-                </Border.BorderBrush>
-                <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="{Binding GlassStartColor}" />
-                        <GradientStop Offset="0.42" Color="{Binding GlassMidColor}" />
-                        <GradientStop Offset="1" Color="{Binding GlassEndColor}" />
-                    </LinearGradientBrush>
-                </Border.Background>
-            </Border>
-        </DataTemplate>
-
-        <DataTemplate x:Key="RhythmDotPulseTemplate">
-            <Ellipse
-                Width="{Binding DotSize}"
-                Height="{Binding DotSize}"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                Opacity="{Binding Opacity}"
-                Stroke="{Binding GlassStrokeColor}"
-                StrokeThickness="0.5">
-                <Ellipse.Fill>
-                    <SolidColorBrush Color="{Binding AccentColor}" />
-                </Ellipse.Fill>
-            </Ellipse>
-        </DataTemplate>
-
-        <DataTemplate x:Key="RhythmLineSpectrumTemplate">
-            <Border
-                Width="2"
-                Height="{Binding Height}"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                CornerRadius="1"
-                Opacity="{Binding Opacity}">
-                <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="{Binding AccentColor}" />
-                        <GradientStop Offset="1" Color="{Binding GlassMidColor}" />
-                    </LinearGradientBrush>
-                </Border.Background>
-            </Border>
-        </DataTemplate>
-
-        <DataTemplate x:Key="RhythmStackedEqualizerTemplate">
-            <Grid
-                Width="5"
-                Height="43"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom">
-                <ItemsControl
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Bottom"
-                    ItemsSource="{Binding EqualizerSegments}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel
-                                Orientation="Vertical"
-                                Spacing="1.2"
-                                VerticalAlignment="Bottom" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border
-                                Width="5"
-                                Height="3"
-                                CornerRadius="1"
-                                Opacity="{Binding Opacity}">
-                                <Border.Background>
-                                    <SolidColorBrush Color="{Binding Color}" />
-                                </Border.Background>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </Grid>
-        </DataTemplate>
     </UserControl.Resources>
 
     <Grid
@@ -304,32 +195,174 @@
         </Border>
 
         <Grid
-            x:Name="RhythmBackdrop"
-            Margin="0"
-            Height="48"
-            VerticalAlignment="Bottom"
-            IsHitTestVisible="False"
-            Opacity="{Binding RhythmBarsOpacity}"
-            Visibility="{Binding RhythmBarsVisibility}">
-            <!-- Single ItemsControl — ItemTemplate is swapped from code-behind
-                 when RhythmStyle changes, so old containers are properly
-                 released instead of staying alive in collapsed controls. -->
-            <ItemsControl
-                x:Name="RhythmItemsControl"
-                Margin="12,0,12,7"
+            x:Name="MinimalLayout"
+            Visibility="Collapsed">
+            <Border
+                x:Name="MinimalArtworkSurface"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <Grid>
+                    <Rectangle
+                        x:Name="MinimalArtworkImage"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Visibility="{Binding ThumbnailVisibility}">
+                        <Rectangle.Fill>
+                            <ImageBrush
+                                AlignmentX="Center"
+                                AlignmentY="Center"
+                                ImageSource="{Binding ThumbnailImage}"
+                                Stretch="UniformToFill" />
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Grid Visibility="{Binding ThumbnailPlaceholderVisibility}">
+                        <Rectangle Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+                        <FontIcon
+                            FontSize="44"
+                            Glyph="&#xEC4F;"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border
+                x:Name="MinimalControlPanel"
+                Margin="8"
+                Padding="8,5"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
-                ItemsSource="{Binding VisualizerBars}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel
-                            HorizontalAlignment="Center"
-                            Orientation="Horizontal"
-                            Spacing="2"
-                            VerticalAlignment="Bottom" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-            </ItemsControl>
+                Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="6">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" MinWidth="0" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel
+                        Grid.Column="0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="3">
+                        <Button
+                            x:Name="MinimalPlayPauseButton"
+                            Width="28"
+                            Height="28"
+                            MinWidth="28"
+                            MinHeight="28"
+                            Click="PlayPauseButton_Click"
+                            CornerRadius="5"
+                            IsEnabled="{Binding CanPlayPause}"
+                            Style="{StaticResource MusicIconButtonStyle}"
+                            ToolTipService.ToolTip="{Binding PlayPauseTooltip}">
+                            <Grid Width="18" Height="18">
+                                <Viewbox Width="18" Height="18" Visibility="{Binding PlayIconVisibility}">
+                                    <Canvas Width="20" Height="20">
+                                        <Path
+                                            Data="M 4,2.5 C 3.4,2.13 2.9,2.55 2.9,3.3 L 2.9,16.7 C 2.9,17.45 3.4,17.87 4,17.5 L 17,10.75 C 17.75,10.32 17.75,9.68 17,9.25 Z"
+                                            Fill="{ThemeResource TextFillColorPrimaryBrush}" />
+                                    </Canvas>
+                                </Viewbox>
+                                <Viewbox Width="18" Height="18" Visibility="{Binding PauseIconVisibility}">
+                                    <Canvas Width="20" Height="20">
+                                        <Border Canvas.Left="3.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
+                                        <Border Canvas.Left="12.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
+                                    </Canvas>
+                                </Viewbox>
+                            </Grid>
+                        </Button>
+                        <Button
+                            x:Name="MinimalNextButton"
+                            Width="28"
+                            Height="28"
+                            MinWidth="28"
+                            MinHeight="28"
+                            Click="NextButton_Click"
+                            CornerRadius="5"
+                            IsEnabled="{Binding CanGoNext}"
+                            Style="{StaticResource MusicIconButtonStyle}"
+                            ToolTipService.ToolTip="{Binding NextTooltip}">
+                            <Viewbox Width="18" Height="18">
+                                <Canvas Width="20" Height="20">
+                                    <Path
+                                        Data="M 3.5,2.8 C 2.95,2.46 2.55,2.84 2.55,3.52 L 2.55,16.48 C 2.55,17.16 2.95,17.54 3.5,17.2 L 13.2,10.7 C 13.9,10.28 13.9,9.72 13.2,9.3 Z"
+                                        Fill="{ThemeResource TextFillColorPrimaryBrush}" />
+                                    <Border
+                                        Canvas.Left="16.2"
+                                        Canvas.Top="2.5"
+                                        Width="2.4"
+                                        Height="15"
+                                        Background="{ThemeResource TextFillColorPrimaryBrush}"
+                                        CornerRadius="1.2" />
+                                </Canvas>
+                            </Viewbox>
+                        </Button>
+                    </StackPanel>
+                    <Grid
+                        x:Name="MinimalTitleMarqueeHost"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        MinWidth="0"
+                        SizeChanged="TitleMarqueeHost_SizeChanged"
+                        ToolTipService.ToolTip="{Binding Title}">
+                        <Grid.Clip>
+                            <RectangleGeometry x:Name="MinimalTitleMarqueeClip" />
+                        </Grid.Clip>
+                        <TextBlock
+                            x:Name="MinimalTitleStaticText"
+                            VerticalAlignment="Center"
+                            FontSize="{Binding MinimalTitleTextSize}"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                            MaxLines="1"
+                            MinWidth="0"
+                            Text="{Binding Title}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="NoWrap" />
+                        <Canvas
+                            x:Name="MinimalTitleMarqueeCanvas"
+                            Height="{Binding ActualHeight, ElementName=MinimalTitleStaticText}"
+                            IsHitTestVisible="False"
+                            Visibility="Collapsed">
+                            <TextBlock
+                                x:Name="MinimalTitleTextPrimary"
+                                FontSize="{Binding MinimalTitleTextSize}"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                MaxLines="1"
+                                Text="{Binding Title}"
+                                TextTrimming="Clip"
+                                TextWrapping="NoWrap" />
+                            <TextBlock
+                                x:Name="MinimalTitleTextClone"
+                                FontSize="{Binding MinimalTitleTextSize}"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                MaxLines="1"
+                                Text="{Binding Title}"
+                                TextTrimming="Clip"
+                                TextWrapping="NoWrap" />
+                        </Canvas>
+                        <Canvas
+                            Width="0"
+                            Height="0"
+                            IsHitTestVisible="False"
+                            Opacity="0">
+                            <TextBlock
+                                x:Name="MinimalTitleMeasureText"
+                                FontSize="{Binding MinimalTitleTextSize}"
+                                FontWeight="SemiBold"
+                                MaxLines="1"
+                                Text="{Binding Title}"
+                                TextTrimming="Clip"
+                                TextWrapping="NoWrap" />
+                        </Canvas>
+                    </Grid>
+                </Grid>
+            </Border>
         </Grid>
 
         <Grid
@@ -337,7 +370,7 @@
             Padding="12,12,12,11"
             ColumnSpacing="12"
             RowSpacing="8"
-            VerticalAlignment="Top">
+            VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="AlbumColumn" Width="82" />
                 <ColumnDefinition Width="*" MinWidth="0" />
@@ -358,8 +391,8 @@
                 VerticalAlignment="Center"
                 Background="#66000000"
                 CornerRadius="12"
-                Opacity="0.28"
-                Translation="0,4,0" />
+                Opacity="0.18"
+                Translation="0,2,0" />
 
             <Border
                 x:Name="AlbumArtSurface"
@@ -379,6 +412,7 @@
                 SizeChanged="AlbumArtSurface_SizeChanged">
                 <Grid>
                     <Image
+                        x:Name="AlbumArtworkImage"
                         Source="{Binding ThumbnailImage}"
                         Stretch="UniformToFill"
                         Visibility="{Binding ThumbnailVisibility}" />
@@ -588,57 +622,32 @@
                     IsEnabled="{Binding CanGoPrevious}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding PreviousTooltip}">
-                    <FontIcon FontSize="15" Glyph="&#xE100;" />
+                    <Viewbox Width="20" Height="20">
+                        <Canvas Width="20" Height="20">
+                            <Border Canvas.Left="1.4" Canvas.Top="2.5" Width="2.4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="1.2" />
+                            <Path Data="M 16.5,2.8 C 17.05,2.46 17.45,2.84 17.45,3.52 L 17.45,16.48 C 17.45,17.16 17.05,17.54 16.5,17.2 L 6.8,10.7 C 6.1,10.28 6.1,9.72 6.8,9.3 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
+                        </Canvas>
+                    </Viewbox>
                 </Button>
 
                 <Button
                     x:Name="PlayPauseButton"
-                    Background="{Binding PlayPauseButtonBackgroundBrush}"
                     Click="PlayPauseButton_Click"
                     IsEnabled="{Binding CanPlayPause}"
-                    Style="{StaticResource MusicPrimaryButtonStyle}"
+                    Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding PlayPauseTooltip}">
                     <Grid Width="20" Height="20">
-                        <Viewbox
-                            Width="17"
-                            Height="17"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Translation="1,0,0"
-                            Visibility="{Binding PlayIconVisibility}">
-                            <Path
-                                Data="M 7.2,3.8 C 7.2,2.9 8.2,2.4 9.0,2.9 L 18.1,8.6 C 19.2,9.3 19.2,10.9 18.1,11.6 L 9.0,17.3 C 8.2,17.8 7.2,17.3 7.2,16.4 Z"
-                                Fill="#FFFFFFFF"
-                                Stretch="Uniform" />
+                        <Viewbox Width="20" Height="20" Visibility="{Binding PlayIconVisibility}">
+                            <Canvas Width="20" Height="20">
+                                <Path Data="M 4,2.5 C 3.4,2.13 2.9,2.55 2.9,3.3 L 2.9,16.7 C 2.9,17.45 3.4,17.87 4,17.5 L 17,10.75 C 17.75,10.32 17.75,9.68 17,9.25 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
+                            </Canvas>
                         </Viewbox>
-                        <Grid
-                            Width="16"
-                            Height="18"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Visibility="{Binding PauseIconVisibility}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="4" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border
-                                Grid.Column="0"
-                                Width="5"
-                                Height="16"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center"
-                                Background="#FFFFFFFF"
-                                CornerRadius="2.5" />
-                            <Border
-                                Grid.Column="2"
-                                Width="5"
-                                Height="16"
-                                HorizontalAlignment="Left"
-                                VerticalAlignment="Center"
-                                Background="#FFFFFFFF"
-                                CornerRadius="2.5" />
-                        </Grid>
+                        <Viewbox Width="20" Height="20" Visibility="{Binding PauseIconVisibility}">
+                            <Canvas Width="20" Height="20">
+                                <Border Canvas.Left="3.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
+                                <Border Canvas.Left="12.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
+                            </Canvas>
+                        </Viewbox>
                     </Grid>
                 </Button>
 
@@ -648,7 +657,12 @@
                     IsEnabled="{Binding CanGoNext}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding NextTooltip}">
-                    <FontIcon FontSize="15" Glyph="&#xE101;" />
+                    <Viewbox Width="20" Height="20">
+                        <Canvas Width="20" Height="20">
+                            <Path Data="M 3.5,2.8 C 2.95,2.46 2.55,2.84 2.55,3.52 L 2.55,16.48 C 2.55,17.16 2.95,17.54 3.5,17.2 L 13.2,10.7 C 13.9,10.28 13.9,9.72 13.2,9.3 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <Border Canvas.Left="16.2" Canvas.Top="2.5" Width="2.4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="1.2" />
+                        </Canvas>
+                    </Viewbox>
                 </Button>
 
                 <Button

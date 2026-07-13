@@ -21,6 +21,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.System;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.Media.Ocr;
 using Windows.Graphics.Imaging;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -122,11 +123,19 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
     private bool _isNativeBackdropSuppressedForTrayReveal;
     private QuickCaptureItemViewModel? _editingItem;
     private bool _isExpandingInput;
+    private QuickCaptureItemViewModel? _detailItem;
+    private bool _isCreatingDetail;
+    private bool _detailIsPinned;
+    private QuickCaptureAppearancePreset _detailAppearance = QuickCaptureAppearancePreset.Default;
+    private string? _pendingDetailImagePath;
     private long _statusToastGeneration;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;
     private MenuFlyout? _pendingDeleteConfirmFlyout;
     private string? _copySelectionAnchorId;
+    private string? _draggedQuickCaptureItemId;
+    private bool _isInternalQuickCaptureDrag;
+    private QuickCaptureViewMode? _internalQuickCaptureDragView;
     private bool _selectionPointerPressed;
     private bool _isBoxSelecting;
     private Windows.Foundation.Point _selectionStartPoint;
@@ -336,6 +345,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
         HoldTemporaryTopMost();
         base.Activate();
+        Win32Helper.SetForegroundWindow(_hWnd);
         RootGrid.Focus(FocusState.Programmatic);
     }
 
@@ -427,7 +437,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         {
             _autoRestoreTimer?.Stop();
             _autoRestoreTimer = null;
-            if (!_isDragging && !_isResizing)
+            if (!_isDragging && !_isResizing && !ShouldDeferDesktopLayerRestore())
             {
                 RestoreDesktopLayer(force: true);
             }
@@ -672,8 +682,14 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
     private async void AddButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.AddInputAsync();
-        InputTextBox.Focus(FocusState.Programmatic);
+        if (ViewModel.CanAddInput)
+        {
+            await ViewModel.AddInputAsync();
+            InputTextBox.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        OpenNewDetail();
     }
 
     private void PositionLockButton_Click(object sender, RoutedEventArgs e)
@@ -688,12 +704,13 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
     private void ExpandInputButton_Click(object sender, RoutedEventArgs e)
     {
-        _isExpandingInput = true;
-        _editingItem = null;
-        QuickCaptureInlineEditor.Text = InputTextBox.Text;
-        QuickCaptureInlineEditor.Title = _localizationService.T("QuickCapture.InputPlaceholder");
-        QuickCaptureInlineEditor.Visibility = Visibility.Visible;
-        QuickCaptureInlineEditor.FocusEditor(moveCaretToEnd: true);
+        OpenNewDetail(InputTextBox.Text);
+        InputTextBox.Text = string.Empty;
+    }
+
+    private void AddNoteCardButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenNewDetail();
     }
 
     private async void InputTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -707,6 +724,433 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
         e.Handled = true;
         await ViewModel.AddInputAsync();
+    }
+
+    private void OpenNewDetail(string? initialBody = null)
+    {
+        _detailItem = null;
+        _isCreatingDetail = true;
+        _detailIsPinned = false;
+        _detailAppearance = QuickCaptureAppearancePreset.Default;
+        _pendingDetailImagePath = null;
+        DetailTitleTextBox.Text = string.Empty;
+        DetailBodyTextBox.Text = initialBody ?? string.Empty;
+        DetailImagePreview.Source = null;
+        DetailImagePreview.Tag = null;
+        DetailImagePreview.DataContext = null;
+        DetailImagePreviewBorder.Visibility = Visibility.Collapsed;
+        DetailAddImageButton.Visibility = Visibility.Visible;
+        DetailTimestampText.Text = _localizationService.Format(
+            "QuickCapture.Detail.Created",
+            DateTimeOffset.Now.ToString("yyyy/M/d HH:mm"));
+        ShowDetailPage();
+    }
+
+    private async void OpenDetail(QuickCaptureItemViewModel item)
+    {
+        if (item.IsRecent)
+        {
+            return;
+        }
+
+        _detailItem = item;
+        _isCreatingDetail = false;
+        _detailIsPinned = item.IsPinned;
+        _detailAppearance = item.AppearancePreset;
+        _pendingDetailImagePath = null;
+        DetailTitleTextBox.Text = string.Empty;
+        DetailBodyTextBox.Text = item.Type == QuickCaptureItemType.Image &&
+                                 string.Equals(item.Body, "Image", StringComparison.Ordinal)
+            ? string.Empty
+            : BuildBodyText(item);
+        DetailTimestampText.Text = BuildDetailTimestampText(item);
+        DetailImagePreview.Source = null;
+        DetailImagePreview.Tag = null;
+        DetailImagePreview.DataContext = item;
+        DetailImagePreviewBorder.Visibility = item.Type == QuickCaptureItemType.Image
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DetailAddImageButton.Visibility = item.Type == QuickCaptureItemType.Image
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        ShowDetailPage();
+
+        if (item.Type == QuickCaptureItemType.Image)
+        {
+            await LoadImagePreviewFromPathAsync(DetailImagePreview, item.ImagePath!);
+        }
+    }
+
+    private void ShowDetailPage()
+    {
+        ClearQuickCaptureCopySelection();
+        ClearQuickCaptureListContainerSelection();
+        CloseInlineEdit(restoreInputFocus: false);
+        ListPage.Visibility = Visibility.Collapsed;
+        DetailPage.Visibility = Visibility.Visible;
+        UpdateDetailPinVisual();
+        ApplyDetailMaterialSurface();
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            DetailBodyTextBox.Focus(FocusState.Programmatic);
+            DetailBodyTextBox.Select(DetailBodyTextBox.Text.Length, 0);
+        });
+    }
+
+    private static string BuildBodyText(QuickCaptureItemViewModel item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Title))
+        {
+            return item.Body;
+        }
+
+        return string.IsNullOrWhiteSpace(item.Body)
+            ? item.Title
+            : $"{item.Title}{Environment.NewLine}{item.Body}";
+    }
+
+    private async void DetailBackButton_Click(object sender, RoutedEventArgs e)
+    {
+        await SaveAndCloseDetailAsync();
+    }
+
+    private async Task<bool> SaveAndCloseDetailAsync()
+    {
+        string body = DetailBodyTextBox.Text;
+        if (_isCreatingDetail)
+        {
+            if (!string.IsNullOrWhiteSpace(_pendingDetailImagePath))
+            {
+                QuickCaptureItemViewModel? created = await ViewModel.AddImageFileAsync(_pendingDetailImagePath);
+                if (created is null)
+                {
+                    ShowStatusToast(_localizationService.T("QuickCapture.OpenImageFailed"));
+                    return false;
+                }
+
+                await ViewModel.EditItemDetailsAsync(created, null, body, _detailAppearance);
+                if (_detailIsPinned)
+                {
+                    await ViewModel.SetPinnedAsync(created.Id, true);
+                }
+
+                await ViewModel.RefreshItemsAsync();
+            }
+            else if (!string.IsNullOrWhiteSpace(body))
+            {
+                QuickCaptureItem? created = await ViewModel.AddDetailedItemAsync(null, body, _detailAppearance);
+                if (created is not null && _detailIsPinned)
+                {
+                    await ViewModel.SetPinnedAsync(created.Id, true);
+                }
+            }
+
+            CloseDetailPage();
+            return true;
+        }
+
+        if (_detailItem is not { } item)
+        {
+            CloseDetailPage();
+            return true;
+        }
+
+        if (item.Type != QuickCaptureItemType.Image &&
+            string.IsNullOrWhiteSpace(body))
+        {
+            ShowStatusToast(_localizationService.T("QuickCapture.EmptyEdit"));
+            return false;
+        }
+
+        bool saved = await ViewModel.EditItemDetailsAsync(item, null, body, _detailAppearance);
+        if (!saved)
+        {
+            return false;
+        }
+
+        if (_detailIsPinned != item.IsPinned)
+        {
+            await ViewModel.SetPinnedAsync(item.Id, _detailIsPinned);
+        }
+
+        await ViewModel.RefreshItemsAsync();
+
+        CloseDetailPage();
+        return true;
+    }
+
+    private void CloseDetailPage()
+    {
+        _detailItem = null;
+        _isCreatingDetail = false;
+        _detailIsPinned = false;
+        _detailAppearance = QuickCaptureAppearancePreset.Default;
+        _pendingDetailImagePath = null;
+        DetailImagePreview.Source = null;
+        DetailImagePreview.Tag = null;
+        DetailImagePreview.DataContext = null;
+        DetailPage.Visibility = Visibility.Collapsed;
+        ListPage.Visibility = Visibility.Visible;
+        ClearQuickCaptureListContainerSelection();
+        RefreshItemMaterialSurfaces();
+        QueueVisibleImagePreviewRefresh();
+        RootGrid.Focus(FocusState.Programmatic);
+    }
+
+    private void ClearQuickCaptureListContainerSelection()
+    {
+        ItemsListView.SelectedItem = null;
+        foreach (object visibleItem in ItemsListView.Items)
+        {
+            if (ItemsListView.ContainerFromItem(visibleItem) is ListViewItem container)
+            {
+                container.IsSelected = false;
+            }
+        }
+    }
+
+    private async void DetailPinButton_Click(object sender, RoutedEventArgs e)
+    {
+        bool wasPinned = _detailIsPinned;
+        bool isPinned = !wasPinned;
+        _detailIsPinned = isPinned;
+        UpdateDetailPinVisual();
+
+        if (_detailItem is not null && !await ViewModel.SetPinnedAsync(_detailItem.Id, isPinned))
+        {
+            _detailIsPinned = wasPinned;
+            UpdateDetailPinVisual();
+            return;
+        }
+
+        if (isPinned)
+        {
+            ShowStatusToast(_localizationService.T("QuickCapture.PinnedSuccess"));
+        }
+    }
+
+    private void UpdateDetailPinVisual()
+    {
+        DetailPinIcon.Glyph = _detailIsPinned ? "\uE840" : "\uE718";
+        DetailUnpinSlash.Visibility = _detailIsPinned ? Visibility.Visible : Visibility.Collapsed;
+        DetailPinButton.Background = _detailIsPinned
+            ? GetBrushResourceOrFallback(
+                "SubtleFillColorSecondaryBrush",
+                DetailPinButton.ActualTheme == ElementTheme.Dark
+                    ? ColorHelper.FromArgb(0x2E, 0xFF, 0xFF, 0xFF)
+                    : ColorHelper.FromArgb(0x18, 0x00, 0x00, 0x00))
+            : new SolidColorBrush(Colors.Transparent);
+        string tooltip = _localizationService.T(_detailIsPinned ? "QuickCapture.Unpin" : "QuickCapture.Pin");
+        ToolTipService.SetToolTip(DetailPinButton, tooltip);
+        AutomationProperties.SetName(DetailPinButton, tooltip);
+    }
+
+    private async void DetailCopyButton_Click(object sender, RoutedEventArgs e)
+    {
+        string text = string.IsNullOrWhiteSpace(DetailBodyTextBox.Text)
+            ? DetailTitleTextBox.Text.Trim()
+            : DetailBodyTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var dataPackage = new DataPackage();
+        dataPackage.SetText(text);
+        Clipboard.SetContent(dataPackage);
+        Clipboard.Flush();
+        App.Current.QuickCaptureService?.MarkClipboardTextWrittenByDeskBox(text);
+        ShowCopyToast();
+    }
+
+    private async void DetailImageCopyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_detailItem is { Type: QuickCaptureItemType.Image } item)
+        {
+            await CopyImageWithFeedbackAsync(item);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_pendingDetailImagePath))
+        {
+            await CopyImagePathWithFeedbackAsync(_pendingDetailImagePath);
+        }
+    }
+
+    private async void DetailAddImageButton_Click(object sender, RoutedEventArgs e)
+    {
+        await SelectDetailImageAsync();
+    }
+
+    private async void DetailReplaceImageButton_Click(object sender, RoutedEventArgs e)
+    {
+        await SelectDetailImageAsync();
+    }
+
+    private async Task SelectDetailImageAsync()
+    {
+        StorageFile? file = await PickQuickCaptureImageAsync();
+        if (file is null)
+        {
+            return;
+        }
+
+        if (_isCreatingDetail || _detailItem is null)
+        {
+            _pendingDetailImagePath = file.Path;
+            DetailImagePreview.Source = null;
+            DetailImagePreview.Tag = null;
+            DetailImagePreview.DataContext = null;
+            DetailImagePreviewBorder.Visibility = Visibility.Visible;
+            DetailAddImageButton.Visibility = Visibility.Collapsed;
+            await LoadImagePreviewFromPathAsync(DetailImagePreview, file.Path);
+            return;
+        }
+
+        QuickCaptureItemViewModel item = _detailItem;
+        QuickCaptureItemViewModel? updated = await ViewModel.ReplaceItemImageAsync(item, file.Path);
+        if (updated is null)
+        {
+            ShowStatusToast(_localizationService.T("QuickCapture.OpenImageFailed"));
+            return;
+        }
+
+        _detailItem = updated;
+        _pendingDetailImagePath = null;
+        DetailImagePreview.Source = null;
+        DetailImagePreview.Tag = null;
+        DetailImagePreview.DataContext = updated;
+        DetailImagePreviewBorder.Visibility = Visibility.Visible;
+        DetailAddImageButton.Visibility = Visibility.Collapsed;
+        await LoadImagePreviewFromPathAsync(DetailImagePreview, updated.ImagePath!);
+    }
+
+    private async Task CopyImagePathWithFeedbackAsync(string imagePath)
+    {
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(imagePath);
+            var dataPackage = new DataPackage();
+            dataPackage.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromFile(file));
+            DeskBoxClipboardWriteScope.MarkWrite(hasImage: true, paths: [imagePath]);
+            Clipboard.SetContent(dataPackage);
+            Clipboard.Flush();
+            ShowCopyToast();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCapture] Failed to copy pending detail image: {ex}");
+            ShowStatusToast(_localizationService.T("QuickCapture.CopyFailed"));
+        }
+    }
+
+    private static async Task LoadImagePreviewFromPathAsync(Image image, string imagePath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                image.Source = null;
+                return;
+            }
+
+            var file = await StorageFile.GetFileFromPathAsync(imagePath);
+            using var stream = await file.OpenAsync(FileAccessMode.Read);
+            var bitmap = new BitmapImage { DecodePixelWidth = 640 };
+            await bitmap.SetSourceAsync(stream);
+            image.Source = bitmap;
+        }
+        catch
+        {
+            image.Source = null;
+        }
+    }
+
+    private async Task<StorageFile?> PickQuickCaptureImageAsync()
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary
+        };
+        picker.FileTypeFilter.Add(".png");
+        picker.FileTypeFilter.Add(".jpg");
+        picker.FileTypeFilter.Add(".jpeg");
+        picker.FileTypeFilter.Add(".bmp");
+        picker.FileTypeFilter.Add(".gif");
+        picker.FileTypeFilter.Add(".webp");
+        InitializeWithWindow.Initialize(picker, _hWnd);
+
+        StorageFile? file = await picker.PickSingleFileAsync();
+        return file is not null &&
+               !string.IsNullOrWhiteSpace(file.Path) &&
+               IsFileWithinSizeLimit(file.Path, MaxDroppedImageFileBytes)
+            ? file
+            : null;
+    }
+
+    private void MaterialButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } &&
+            Enum.TryParse(tag, ignoreCase: false, out QuickCaptureAppearancePreset preset))
+        {
+            _detailAppearance = preset;
+            ApplyDetailMaterialSurface();
+        }
+    }
+
+    private void ApplyDetailMaterialSurface()
+    {
+        bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
+        DetailMaterialSurface.Background = GetMaterialBrush(_detailAppearance, isDark);
+        DetailMaterialSurface.BorderBrush = GetMaterialBorderBrush(_detailAppearance, isDark);
+        foreach (Button button in GetMaterialButtons())
+        {
+            bool isSelected = string.Equals(button.Tag as string, _detailAppearance.ToString(), StringComparison.Ordinal);
+            button.BorderBrush = isSelected
+                ? GetBrushResourceOrFallback(
+                    "AccentFillColorDefaultBrush",
+                    isDark ? ColorHelper.FromArgb(0xFF, 0x60, 0xCD, 0xFF) : ColorHelper.FromArgb(0xFF, 0x00, 0x5F, 0xB8))
+                : new SolidColorBrush(Colors.Transparent);
+            button.BorderThickness = new Thickness(isSelected ? 1.5 : 1);
+        }
+    }
+
+    private IEnumerable<Button> GetMaterialButtons()
+    {
+        yield return DefaultMaterialButton;
+        yield return PaperMaterialButton;
+        yield return YellowMaterialButton;
+        yield return RoseMaterialButton;
+        yield return MintMaterialButton;
+        yield return BlueMaterialButton;
+    }
+
+    private void DetailDeleteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isCreatingDetail || _detailItem is not { } item || sender is not FrameworkElement anchor)
+        {
+            CloseDetailPage();
+            return;
+        }
+
+        ShowConfirmMenu(
+            anchor,
+            _localizationService.T("QuickCapture.DeleteConfirm.Title"),
+            _localizationService.T("Common.Delete"),
+            async () =>
+            {
+                await DeleteItemWithUndoAsync(item);
+                CloseDetailPage();
+            });
+    }
+
+    private string BuildDetailTimestampText(QuickCaptureItemViewModel item)
+    {
+        QuickCaptureItem model = item.ToModel();
+        string created = _localizationService.Format(
+            "QuickCapture.Detail.Created",
+            model.CreatedAt.ToLocalTime().ToString("yyyy/M/d HH:mm"));
+        return created;
     }
 
     private void SearchTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -1046,7 +1490,14 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         if (e.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space)
         {
             e.Handled = true;
-            await CopyItemWithFeedbackAsync(item);
+            if (item.IsRecent)
+            {
+                await CopyItemWithFeedbackAsync(item);
+            }
+            else
+            {
+                OpenDetail(item);
+            }
         }
     }
 
@@ -1079,8 +1530,11 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         }
 
         var anchor = (FrameworkElement)sender;
-        var flyout = CreateItemFlyout(item, anchor);
-        flyout.ShowAt(anchor, e.GetPosition(anchor));
+        var selectedItems = GetSelectedQuickCaptureItemsInVisibleOrder();
+        var flyout = selectedItems.Count > 1 && item.IsCopySelected
+            ? CreateMultiItemFlyout(selectedItems, anchor)
+            : CreateItemFlyout(item, anchor);
+        ShowFlyoutWithElevation(flyout, anchor, e.GetPosition(anchor));
         e.Handled = true;
     }
 
@@ -1117,7 +1571,43 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         }
 
         e.Handled = true;
-        await CopyItemWithFeedbackAsync(item);
+        if (item.IsRecent)
+        {
+            await CopyItemWithFeedbackAsync(item);
+        }
+        else
+        {
+            OpenDetail(item);
+        }
+    }
+
+    private async void CopyItemButton_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
+        {
+            if (item.Type == QuickCaptureItemType.Image)
+            {
+                await CopyImageWithFeedbackAsync(item);
+            }
+            else
+            {
+                await CopyItemWithFeedbackAsync(item);
+            }
+        }
+    }
+
+    private async Task CopyImageWithFeedbackAsync(QuickCaptureItemViewModel item)
+    {
+        try
+        {
+            await ViewModel.CopyImageAsync(item);
+            ShowCopyToast();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCapture] Failed to copy image {item.Id}: {ex}");
+            ShowStatusToast(_localizationService.T("QuickCapture.CopyFailed"));
+        }
     }
 
     private async Task CopyItemWithFeedbackAsync(QuickCaptureItemViewModel item)
@@ -1175,36 +1665,6 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         }
     }
 
-    private async void QuickCaptureItem_DragStarting(UIElement sender, DragStartingEventArgs args)
-    {
-        if (sender is not FrameworkElement element || element.DataContext is not QuickCaptureItemViewModel item)
-        {
-            args.Cancel = true;
-            return;
-        }
-
-        var deferral = args.GetDeferral();
-        try
-        {
-            if (!await TryPrepareQuickCaptureDragPackageAsync(args.Data, item))
-            {
-                args.Cancel = true;
-                return;
-            }
-
-            args.AllowedOperations = DataPackageOperation.Copy;
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[QuickCaptureWidget] Failed to start drag: {ex}");
-            args.Cancel = true;
-        }
-        finally
-        {
-            deferral.Complete();
-        }
-    }
-
     private void QuickCaptureItem_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
         if (sender.DataContext is not QuickCaptureItemViewModel item)
@@ -1214,6 +1674,14 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
         SetItemActionButtonsVisible(sender, false);
         ApplyItemSearchHighlight(sender, item);
+        ApplyItemMaterialSurface(sender, item);
+
+        if (FindVisualChild<Button>(sender, "CopyItemButton") is { } copyButton)
+        {
+            string copyText = _localizationService.T("Common.Copy");
+            ToolTipService.SetToolTip(copyButton, copyText);
+            AutomationProperties.SetName(copyButton, copyText);
+        }
 
         if (FindVisualChild<Button>(sender, "SaveRecentItemButton") is { } saveButton)
         {
@@ -1279,7 +1747,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         }
 
         string targetKey = $"{item.Id}|{item.ImagePath}";
-        if (string.Equals(image.Tag as string, targetKey, StringComparison.Ordinal))
+        if (string.Equals(image.Tag as string, targetKey, StringComparison.Ordinal) && image.Source is not null)
         {
             return;
         }
@@ -1310,7 +1778,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             return;
         }
 
-        Uri? previewUri = TryCreateImageUri(previewPath);
+        Uri? previewUri = TryCreateImageUri(previewPath) ?? TryCreateImageUri(item.ImagePath);
         image.Source = previewUri is { } uri
             ? new BitmapImage
             {
@@ -1372,6 +1840,177 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         }
 
         return new SolidColorBrush(fallbackColor);
+    }
+
+    private void ItemsListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        QuickCaptureItemViewModel? item = e.Items.OfType<QuickCaptureItemViewModel>().FirstOrDefault();
+        if (item is null)
+        {
+            _draggedQuickCaptureItemId = null;
+            _isInternalQuickCaptureDrag = false;
+            _internalQuickCaptureDragView = null;
+            e.Cancel = true;
+            return;
+        }
+
+        bool canReorder = !item.IsRecent &&
+                          ViewModel.SelectedView is QuickCaptureViewMode.Records or QuickCaptureViewMode.Pinned &&
+                          !ViewModel.HasSearchText;
+        _draggedQuickCaptureItemId = canReorder ? item.Id : null;
+        _isInternalQuickCaptureDrag = canReorder;
+        _internalQuickCaptureDragView = canReorder ? ViewModel.SelectedView : null;
+        ItemsListView.CanReorderItems = canReorder;
+
+        try
+        {
+            if (!TryPrepareQuickCaptureDragPackage(e.Data, item))
+            {
+                _draggedQuickCaptureItemId = null;
+                _isInternalQuickCaptureDrag = false;
+                _internalQuickCaptureDragView = null;
+                e.Cancel = true;
+                return;
+            }
+
+            e.Data.RequestedOperation = canReorder
+                ? DataPackageOperation.Copy | DataPackageOperation.Move
+                : DataPackageOperation.Copy;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCaptureWidget] Failed to start drag: {ex}");
+            _draggedQuickCaptureItemId = null;
+            _isInternalQuickCaptureDrag = false;
+            _internalQuickCaptureDragView = null;
+            e.Cancel = true;
+        }
+    }
+
+    private async void ItemsListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    {
+        string? itemId = _draggedQuickCaptureItemId;
+        QuickCaptureViewMode? dragView = _internalQuickCaptureDragView;
+        _draggedQuickCaptureItemId = null;
+        _internalQuickCaptureDragView = null;
+        ItemsListView.CanReorderItems = true;
+        DispatcherQueue.TryEnqueue(() => _isInternalQuickCaptureDrag = false);
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return;
+        }
+
+        QuickCaptureItemViewModel? item = ViewModel.Items.FirstOrDefault(entry =>
+            string.Equals(entry.Id, itemId, StringComparison.Ordinal));
+        if (item is not null)
+        {
+            int targetIndex = ViewModel.Items.IndexOf(item);
+            if (dragView == QuickCaptureViewMode.Pinned)
+            {
+                await ViewModel.MovePinnedItemToIndexAsync(item, targetIndex);
+            }
+            else
+            {
+                await ViewModel.MoveItemAsync(item, targetIndex);
+            }
+        }
+    }
+
+    private static void ApplyItemMaterialSurface(DependencyObject itemRoot, QuickCaptureItemViewModel item)
+    {
+        if (FindVisualChild<Border>(itemRoot, "ItemMaterialBackground") is not { } surface)
+        {
+            return;
+        }
+
+        bool isDark = (itemRoot as FrameworkElement)?.ActualTheme == ElementTheme.Dark;
+        QuickCaptureAppearancePreset preset = item.IsRecent
+            ? QuickCaptureAppearancePreset.Default
+            : item.AppearancePreset;
+        surface.Background = GetOrUpdateSolidColorBrush(surface.Background, GetMaterialColor(preset, isDark));
+        surface.BorderBrush = preset == QuickCaptureAppearancePreset.Default
+            ? GetMaterialBorderBrush(preset, isDark)
+            : GetOrUpdateSolidColorBrush(
+                surface.BorderBrush,
+                isDark
+                    ? ColorHelper.FromArgb(0x18, 0xFF, 0xFF, 0xFF)
+                    : ColorHelper.FromArgb(0x16, 0x00, 0x00, 0x00));
+    }
+
+    private static Brush GetMaterialBrush(QuickCaptureAppearancePreset preset, bool isDark)
+    {
+        return new SolidColorBrush(GetMaterialColor(preset, isDark));
+    }
+
+    private static Windows.UI.Color GetMaterialColor(QuickCaptureAppearancePreset preset, bool isDark)
+    {
+        return (preset, isDark) switch
+        {
+            (QuickCaptureAppearancePreset.Paper, true) => ColorHelper.FromArgb(0xB8, 0x3A, 0x36, 0x30),
+            (QuickCaptureAppearancePreset.Paper, false) => ColorHelper.FromArgb(0xEC, 0xFA, 0xF5, 0xEA),
+            (QuickCaptureAppearancePreset.StickyYellow, true) => ColorHelper.FromArgb(0xB8, 0x4A, 0x40, 0x25),
+            (QuickCaptureAppearancePreset.StickyYellow, false) => ColorHelper.FromArgb(0xEC, 0xFF, 0xF0, 0xB3),
+            (QuickCaptureAppearancePreset.Rose, true) => ColorHelper.FromArgb(0xB8, 0x47, 0x2E, 0x38),
+            (QuickCaptureAppearancePreset.Rose, false) => ColorHelper.FromArgb(0xEC, 0xFC, 0xE3, 0xEA),
+            (QuickCaptureAppearancePreset.Mint, true) => ColorHelper.FromArgb(0xB8, 0x28, 0x42, 0x35),
+            (QuickCaptureAppearancePreset.Mint, false) => ColorHelper.FromArgb(0xEC, 0xDD, 0xF3, 0xE3),
+            (QuickCaptureAppearancePreset.MistBlue, true) => ColorHelper.FromArgb(0xB8, 0x2B, 0x3D, 0x53),
+            (QuickCaptureAppearancePreset.MistBlue, false) => ColorHelper.FromArgb(0xEC, 0xDF, 0xEC, 0xF8),
+            _ => Colors.Transparent
+        };
+    }
+
+    private static Brush GetMaterialBorderBrush(QuickCaptureAppearancePreset preset, bool isDark)
+    {
+        if (preset == QuickCaptureAppearancePreset.Default)
+        {
+            return GetBrushResourceOrFallback(
+                "CardStrokeColorDefaultBrush",
+                isDark
+                    ? ColorHelper.FromArgb(0x24, 0xFF, 0xFF, 0xFF)
+                    : ColorHelper.FromArgb(0x1F, 0x00, 0x00, 0x00));
+        }
+
+        return new SolidColorBrush(isDark
+            ? ColorHelper.FromArgb(0x18, 0xFF, 0xFF, 0xFF)
+            : ColorHelper.FromArgb(0x16, 0x00, 0x00, 0x00));
+    }
+
+    private void RefreshItemMaterialSurfaces()
+    {
+        foreach (QuickCaptureItemViewModel item in ViewModel.Items)
+        {
+            if (ItemsListView.ContainerFromItem(item) is DependencyObject container)
+            {
+                ApplyItemMaterialSurface(container, item);
+            }
+        }
+
+        if (DetailPage.Visibility == Visibility.Visible)
+        {
+            ApplyDetailMaterialSurface();
+        }
+    }
+
+    private void QueueVisibleImagePreviewRefresh()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ItemsListView.UpdateLayout();
+            foreach (QuickCaptureItemViewModel item in ViewModel.Items)
+            {
+                if (ItemsListView.ContainerFromItem(item) is not DependencyObject container ||
+                    FindVisualChild<Image>(container, "ImagePreview") is not { } imagePreview ||
+                    !imagePreview.IsLoaded)
+                {
+                    continue;
+                }
+
+                imagePreview.Tag = null;
+                imagePreview.Source = null;
+                _ = LoadImagePreviewAsync(imagePreview, item);
+            }
+        });
     }
 
     private void QuickCaptureItem_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -1577,6 +2216,31 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             async () => await DeleteItemWithUndoAsync(item));
     }
 
+    private void ShowQuickCaptureDeleteSelectedConfirmFlyout(
+        IReadOnlyList<string> selectedIds,
+        bool isRecent,
+        FrameworkElement anchor)
+    {
+        if (selectedIds.Count == 0)
+        {
+            return;
+        }
+
+        ShowConfirmMenu(
+            anchor,
+            _localizationService.Format("QuickCapture.DeleteSelectedConfirm.Title", selectedIds.Count),
+            _localizationService.T("Common.Delete"),
+            async () =>
+            {
+                ClearQuickCaptureCopySelection();
+                var deletedItems = await ViewModel.DeleteItemsAsync(selectedIds, isRecent);
+                if (deletedItems.Count > 0)
+                {
+                    ShowStatusToast(_localizationService.Format("QuickCapture.DeletedCount", deletedItems.Count));
+                }
+            });
+    }
+
     private string GetDeleteConfirmPreviewText(QuickCaptureItemViewModel item)
     {
         string text = item.Type == QuickCaptureItemType.Image
@@ -1591,7 +2255,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         return text.Length <= 34 ? text : $"{text[..34].Trim()}...";
     }
 
-    private async Task<bool> TryPrepareQuickCaptureDragPackageAsync(DataPackage dataPackage, QuickCaptureItemViewModel item)
+    private bool TryPrepareQuickCaptureDragPackage(DataPackage dataPackage, QuickCaptureItemViewModel item)
     {
         dataPackage.RequestedOperation = DataPackageOperation.Copy;
         var selectedItems = GetSelectedQuickCaptureItemsInVisibleOrder();
@@ -1612,27 +2276,38 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             !string.IsNullOrWhiteSpace(item.ImagePath) &&
             File.Exists(item.ImagePath))
         {
-            try
+            string imagePath = item.ImagePath;
+            Uri? imageUri = TryCreateImageUri(imagePath);
+            if (imageUri is not null)
             {
-                string? exportPath = await ViewModel.CreateImageExportFileAsync(
-                    item,
-                    _localizationService.T("QuickCapture.ImageExportFileNamePrefix"));
-                if (string.IsNullOrWhiteSpace(exportPath))
-                {
-                    return false;
-                }
+                dataPackage.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromUri(imageUri));
+            }
 
-                var file = await StorageFile.GetFileFromPathAsync(exportPath);
-                dataPackage.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromFile(file));
-                dataPackage.SetStorageItems([file]);
-                dataPackage.Properties.Title = Path.GetFileName(exportPath);
-                return true;
-            }
-            catch (Exception ex)
+            dataPackage.SetDataProvider(StandardDataFormats.StorageItems, async request =>
             {
-                App.Log($"[QuickCaptureWidget] Failed to prepare image drag package: {ex}");
-                return false;
+                var deferral = request.GetDeferral();
+                try
+                {
+                    StorageFile file = await StorageFile.GetFileFromPathAsync(imagePath);
+                    request.SetData(new List<IStorageItem> { file });
+                }
+                catch (Exception ex)
+                {
+                    App.Log($"[QuickCaptureWidget] Failed to provide dragged image: {ex}");
+                }
+                finally
+                {
+                    deferral.Complete();
+                }
+            });
+            if (!string.IsNullOrWhiteSpace(item.Body) &&
+                !string.Equals(item.Body, "Image", StringComparison.Ordinal))
+            {
+                DeskBoxDragData.SetText(dataPackage, item.Body, DeskBoxDragData.SourceQuickCapture);
             }
+
+            dataPackage.Properties.Title = Path.GetFileName(imagePath);
+            return true;
         }
 
         if (item.Type == QuickCaptureItemType.Link &&
@@ -1711,7 +2386,15 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             Text = _localizationService.T("Common.Rename"),
             Icon = new FontIcon { Glyph = "\uE8AC" }
         };
-        renameItem.Click += (_, _) => DispatcherQueue.TryEnqueue(StartTitleRename);
+        bool startRenameWhenClosed = false;
+        renameItem.Click += (_, _) => startRenameWhenClosed = true;
+        flyout.Closed += (_, _) =>
+        {
+            if (startRenameWhenClosed)
+            {
+                DispatcherQueue.TryEnqueue(StartTitleRename);
+            }
+        };
         flyout.Items.Add(renameItem);
 
         var settingsItem = new MenuFlyoutItem
@@ -1743,25 +2426,21 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         };
         flyout.Items.Add(clearItem);
 
-        // Add delete widget option
+        // Turning off a feature widget preserves its content, configuration, and position.
         flyout.Items.Add(new MenuFlyoutSeparator());
-        var deleteWidget = new MenuFlyoutItem
+        var disableWidget = new MenuFlyoutItem
         {
-            Text = _localizationService.T("Widget.Tooltip.DeleteWidget"),
-            Icon = new FontIcon
-            {
-                Glyph = "\uE74D",
-                Foreground = new SolidColorBrush(Colors.Red)
-            }
+            Text = _localizationService.T("Widget.FeatureWidget.Disable"),
+            Icon = new FontIcon { Glyph = "\uE7E8" }
         };
-        deleteWidget.Click += async (_, _) =>
+        disableWidget.Click += async (_, _) =>
         {
             if (App.Current.WidgetManager is { } widgetManager)
             {
-                await widgetManager.RemoveWidgetAsync(ViewModel.Config.Id);
+                await widgetManager.SetFeatureWidgetEnabledAsync(WidgetKind.QuickCapture, enabled: false, reveal: false);
             }
         };
-        flyout.Items.Add(deleteWidget);
+        flyout.Items.Add(disableWidget);
 
         return flyout;
     }
@@ -1788,138 +2467,230 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
     private MenuFlyout CreateItemFlyout(QuickCaptureItemViewModel item, FrameworkElement anchor)
     {
         var flyout = new MenuFlyout();
-        var selectedItems = GetSelectedQuickCaptureItemsInVisibleOrder();
-
-        if (selectedItems.Count > 1 && item.IsCopySelected)
-        {
-            var copySelectedItem = new MenuFlyoutItem
-            {
-                Text = _localizationService.Format("QuickCapture.CopySelected", selectedItems.Count),
-                Icon = new FontIcon { Glyph = "\uE8C8" }
-            };
-            copySelectedItem.Click += async (_, _) => await CopySelectedQuickCaptureItemsAsync(selectedItems);
-            flyout.Items.Add(copySelectedItem);
-            flyout.Items.Add(new MenuFlyoutSeparator());
-        }
-
-        var copyItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("Common.Copy"),
-            Icon = new FontIcon { Glyph = "\uE8C8" }
-        };
+        var copyItem = CreateQuickCaptureContextCommand("Common.Copy", "\uE8C8");
         copyItem.Click += async (_, _) =>
         {
+            flyout.Hide();
             await CopyItemWithFeedbackAsync(item);
         };
         flyout.Items.Add(copyItem);
 
-        if (item.Type == QuickCaptureItemType.Image &&
-            !string.IsNullOrWhiteSpace(item.ImagePath) &&
-            File.Exists(item.ImagePath))
-        {
-            var copyTextItem = new MenuFlyoutItem
-            {
-                Text = _localizationService.T("QuickCapture.CopyText"),
-                Icon = new FontIcon { Glyph = "\uE8C8" }
-            };
-            copyTextItem.Click += async (_, _) => await CopyImageTextAsync(item);
-            flyout.Items.Add(copyTextItem);
-        }
-
-        if (CreateSaveToLastFileWidgetItem(item) is { } saveToLastItem)
-        {
-            flyout.Items.Add(saveToLastItem);
-        }
-
-        flyout.Items.Add(CreateSaveToFileWidgetSubItem(item));
-
         if (item.IsRecent)
         {
-            var saveItem = new MenuFlyoutItem
+            var saveItem = CreateQuickCaptureContextCommand("QuickCapture.SaveToRecords", "\uE74E");
+            saveItem.Click += async (_, _) =>
             {
-                Text = _localizationService.T("QuickCapture.SaveToRecords"),
-                Icon = new FontIcon { Glyph = "\uE74E" }
+                flyout.Hide();
+                await ViewModel.SaveRecentItemAsync(item);
             };
-            saveItem.Click += async (_, _) => await ViewModel.SaveRecentItemAsync(item);
             flyout.Items.Add(saveItem);
 
-            var pinRecentItem = new MenuFlyoutItem
+            var pinRecentItem = CreateQuickCaptureContextCommand("QuickCapture.PinToRecords", "\uE718");
+            pinRecentItem.Click += async (_, _) =>
             {
-                Text = _localizationService.T("QuickCapture.PinToRecords"),
-                Icon = new FontIcon { Glyph = "\uE718" }
+                flyout.Hide();
+                await ViewModel.PinRecentItemAsync(item);
             };
-            pinRecentItem.Click += async (_, _) => await ViewModel.PinRecentItemAsync(item);
             flyout.Items.Add(pinRecentItem);
-            flyout.Items.Add(new MenuFlyoutSeparator());
 
-            var deleteRecentItem = new MenuFlyoutItem
+            var deleteRecentItem = CreateQuickCaptureContextCommand("Common.Delete", "\uE74D");
+            deleteRecentItem.Click += (_, _) =>
             {
-                Text = _localizationService.T("Common.Delete"),
-                Icon = new FontIcon { Glyph = "\uE74D" }
+                flyout.Hide();
+                DispatcherQueue.TryEnqueue(() => ShowQuickCaptureDeleteConfirmFlyout(item, anchor));
             };
-            deleteRecentItem.Click += (_, _) => ShowQuickCaptureDeleteConfirmFlyout(item, anchor);
+            flyout.Items.Add(new MenuFlyoutSeparator());
             flyout.Items.Add(deleteRecentItem);
             return flyout;
         }
 
-        if (item.Type != QuickCaptureItemType.Image)
+        var editItem = CreateQuickCaptureContextCommand("QuickCapture.Edit", "\uE70F");
+        editItem.Click += (_, _) =>
         {
-            var editItem = new MenuFlyoutItem
-            {
-                Text = _localizationService.T("QuickCapture.Edit"),
-                Icon = new FontIcon { Glyph = "\uE70F" }
-            };
-            editItem.Click += async (_, _) => await EditItemAsync(item);
-            flyout.Items.Add(editItem);
-
-            var notepadItem = new MenuFlyoutItem
-            {
-                Text = _localizationService.T("QuickCapture.EditInNotepad"),
-                Icon = new FontIcon { Glyph = "\uE70F" }
-            };
-            notepadItem.Click += async (_, _) => await OpenTextInNotepadAsync(item);
-            flyout.Items.Add(notepadItem);
-        }
+            flyout.Hide();
+            OpenDetail(item);
+        };
+        flyout.Items.Add(editItem);
 
         var pinItem = new MenuFlyoutItem
         {
             Text = item.IsPinned ? _localizationService.T("QuickCapture.Unpin") : _localizationService.T("QuickCapture.Pin"),
             Icon = new FontIcon { Glyph = item.IsPinned ? "\uE840" : "\uE718" }
         };
-        pinItem.Click += async (_, _) => await ViewModel.TogglePinnedAsync(item);
+        pinItem.Click += async (_, _) =>
+        {
+            flyout.Hide();
+            await ViewModel.TogglePinnedAsync(item);
+        };
         flyout.Items.Add(pinItem);
 
-        if (ViewModel.IsPinnedView && !ViewModel.HasSearchText)
+        var deleteItem = CreateQuickCaptureContextCommand("Common.Delete", "\uE74D");
+        deleteItem.Click += (_, _) =>
         {
-            var moveUpItem = new MenuFlyoutItem
-            {
-                Text = _localizationService.T("QuickCapture.MoveUp"),
-                Icon = new FontIcon { Glyph = "\uE70E" },
-                IsEnabled = item.CanMovePinnedUp
-            };
-            moveUpItem.Click += async (_, _) => await ViewModel.MovePinnedItemAsync(item, -1);
-            flyout.Items.Add(moveUpItem);
+            flyout.Hide();
+            DispatcherQueue.TryEnqueue(() => ShowQuickCaptureDeleteConfirmFlyout(item, anchor));
+        };
+        flyout.Items.Add(new MenuFlyoutSeparator());
 
-            var moveDownItem = new MenuFlyoutItem
+        if (item.Type != QuickCaptureItemType.Image)
+        {
+            var notepadItem = CreateQuickCaptureContextCommand("QuickCapture.EditInNotepad", "\uE70F");
+            notepadItem.Click += async (_, _) =>
             {
-                Text = _localizationService.T("QuickCapture.MoveDown"),
-                Icon = new FontIcon { Glyph = "\uE70D" },
-                IsEnabled = item.CanMovePinnedDown
+                flyout.Hide();
+                await OpenTextInNotepadAsync(item);
             };
-            moveDownItem.Click += async (_, _) => await ViewModel.MovePinnedItemAsync(item, 1);
-            flyout.Items.Add(moveDownItem);
+            flyout.Items.Add(notepadItem);
+        }
+
+        flyout.Items.Add(CreateAppearanceFlyout(item, flyout));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(deleteItem);
+        return flyout;
+    }
+
+    private MenuFlyout CreateMultiItemFlyout(
+        IReadOnlyList<QuickCaptureItemViewModel> selectedItems,
+        FrameworkElement anchor)
+    {
+        var flyout = new MenuFlyout();
+        string[] selectedIds = selectedItems.Select(item => item.Id).ToArray();
+        bool isRecent = selectedItems.All(item => item.IsRecent);
+
+        var copyItem = new MenuFlyoutItem
+        {
+            Text = _localizationService.Format("QuickCapture.CopySelected", selectedItems.Count),
+            Icon = new FontIcon { Glyph = "\uE8C8" }
+        };
+        copyItem.Click += async (_, _) =>
+        {
+            flyout.Hide();
+            await CopySelectedQuickCaptureItemsAsync(selectedItems);
+        };
+        flyout.Items.Add(copyItem);
+
+        if (!isRecent)
+        {
+            bool shouldPin = !selectedItems.All(item => item.IsPinned);
+            var pinItem = new MenuFlyoutItem
+            {
+                Text = _localizationService.T(shouldPin ? "QuickCapture.Pin" : "QuickCapture.Unpin"),
+                Icon = new FontIcon { Glyph = shouldPin ? "\uE718" : "\uE840" }
+            };
+            pinItem.Click += async (_, _) =>
+            {
+                flyout.Hide();
+                ClearQuickCaptureCopySelection();
+                await ViewModel.SetPinnedAsync(selectedIds, shouldPin);
+                if (shouldPin)
+                {
+                    ShowStatusToast(_localizationService.T("QuickCapture.PinnedSuccess"));
+                }
+            };
+            flyout.Items.Add(pinItem);
+        }
+
+        var deleteItem = CreateQuickCaptureContextCommand("Common.Delete", "\uE74D");
+        deleteItem.Click += (_, _) =>
+        {
+            flyout.Hide();
+            DispatcherQueue.TryEnqueue(() => ShowQuickCaptureDeleteSelectedConfirmFlyout(
+                selectedIds,
+                isRecent,
+                anchor));
+        };
+        if (!isRecent)
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+            flyout.Items.Add(CreateBatchAppearanceFlyout(selectedItems, selectedIds, flyout));
         }
 
         flyout.Items.Add(new MenuFlyoutSeparator());
-
-        var deleteItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("Common.Delete"),
-            Icon = new FontIcon { Glyph = "\uE74D" }
-        };
-        deleteItem.Click += (_, _) => ShowQuickCaptureDeleteConfirmFlyout(item, anchor);
         flyout.Items.Add(deleteItem);
+
         return flyout;
+    }
+
+    private MenuFlyoutItem CreateQuickCaptureContextCommand(string localizationKey, string glyph)
+    {
+        return new MenuFlyoutItem
+        {
+            Text = _localizationService.T(localizationKey),
+            Icon = new FontIcon { Glyph = glyph }
+        };
+    }
+
+    private MenuFlyoutSubItem CreateAppearanceFlyout(QuickCaptureItemViewModel item, MenuFlyout owner)
+    {
+        var appearanceMenu = new MenuFlyoutSubItem
+        {
+            Text = _localizationService.T("QuickCapture.Detail.Appearance"),
+            Icon = new FontIcon { Glyph = "\uE790" }
+        };
+
+        foreach (var (preset, textKey) in new[]
+        {
+            (QuickCaptureAppearancePreset.Default, "QuickCapture.Material.Default"),
+            (QuickCaptureAppearancePreset.Paper, "QuickCapture.Material.Paper"),
+            (QuickCaptureAppearancePreset.StickyYellow, "QuickCapture.Material.Yellow"),
+            (QuickCaptureAppearancePreset.Rose, "QuickCapture.Material.Rose"),
+            (QuickCaptureAppearancePreset.Mint, "QuickCapture.Material.Mint"),
+            (QuickCaptureAppearancePreset.MistBlue, "QuickCapture.Material.Blue")
+        })
+        {
+            var menuItem = new ToggleMenuFlyoutItem
+            {
+                Text = _localizationService.T(textKey),
+                IsChecked = item.AppearancePreset == preset
+            };
+            menuItem.Click += async (_, _) =>
+            {
+                owner.Hide();
+                await ViewModel.SetAppearanceAsync(item, preset);
+                DispatcherQueue.TryEnqueue(RefreshItemMaterialSurfaces);
+            };
+            appearanceMenu.Items.Add(menuItem);
+        }
+
+        return appearanceMenu;
+    }
+
+    private MenuFlyoutSubItem CreateBatchAppearanceFlyout(
+        IReadOnlyList<QuickCaptureItemViewModel> selectedItems,
+        IReadOnlyList<string> selectedIds,
+        MenuFlyout owner)
+    {
+        var appearanceMenu = new MenuFlyoutSubItem
+        {
+            Text = _localizationService.T("QuickCapture.Detail.Appearance"),
+            Icon = new FontIcon { Glyph = "\uE790" }
+        };
+        foreach (var (preset, textKey) in new[]
+        {
+            (QuickCaptureAppearancePreset.Default, "QuickCapture.Material.Default"),
+            (QuickCaptureAppearancePreset.Paper, "QuickCapture.Material.Paper"),
+            (QuickCaptureAppearancePreset.StickyYellow, "QuickCapture.Material.Yellow"),
+            (QuickCaptureAppearancePreset.Rose, "QuickCapture.Material.Rose"),
+            (QuickCaptureAppearancePreset.Mint, "QuickCapture.Material.Mint"),
+            (QuickCaptureAppearancePreset.MistBlue, "QuickCapture.Material.Blue")
+        })
+        {
+            var menuItem = new ToggleMenuFlyoutItem
+            {
+                Text = _localizationService.T(textKey),
+                IsChecked = selectedItems.All(item => item.AppearancePreset == preset)
+            };
+            menuItem.Click += async (_, _) =>
+            {
+                owner.Hide();
+                ClearQuickCaptureCopySelection();
+                await ViewModel.SetAppearanceAsync(selectedIds, preset);
+                DispatcherQueue.TryEnqueue(RefreshItemMaterialSurfaces);
+            };
+            appearanceMenu.Items.Add(menuItem);
+        }
+
+        return appearanceMenu;
     }
 
     private MenuFlyoutSubItem CreateSaveToFileWidgetSubItem(QuickCaptureItemViewModel item)
@@ -2060,14 +2831,17 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         CloseInlineEdit();
     }
 
-    private void CloseInlineEdit()
+    private void CloseInlineEdit(bool restoreInputFocus = true)
     {
         _editingItem = null;
         _isExpandingInput = false;
         QuickCaptureInlineEditor.Visibility = Visibility.Collapsed;
         QuickCaptureInlineEditor.Text = string.Empty;
         QuickCaptureInlineEditor.Title = _localizationService.T("QuickCapture.Edit");
-        InputTextBox.Focus(FocusState.Programmatic);
+        if (restoreInputFocus)
+        {
+            InputTextBox.Focus(FocusState.Programmatic);
+        }
     }
 
     private async Task ConfirmClearDataAsync()
@@ -2762,7 +3536,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
                 : $"{imageText}: {item.ImagePath}";
         }
 
-        return (item.Body ?? string.Empty).Trim();
+        return item.CopyText.Trim();
     }
 
     private static void SetClipboardText(string text)
@@ -2835,10 +3609,17 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         return false;
     }
 
-    private void RootGrid_KeyDown(object sender, KeyRoutedEventArgs e)
+    private async void RootGrid_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == Windows.System.VirtualKey.Escape)
         {
+            if (DetailPage.Visibility == Visibility.Visible)
+            {
+                await SaveAndCloseDetailAsync();
+                e.Handled = true;
+                return;
+            }
+
             bool isFromTextBox = e.OriginalSource is DependencyObject source &&
                 HasAncestorOfType<TextBox>(source);
             if (!isFromTextBox && HasQuickCaptureCopySelection())
@@ -2869,6 +3650,11 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
     private async void RootGrid_DragOver(object sender, DragEventArgs e)
     {
+        if (_isInternalQuickCaptureDrag)
+        {
+            return;
+        }
+
         if (e.DataView.Contains(StandardDataFormats.StorageItems))
         {
             var deferral = e.GetDeferral();
@@ -2936,6 +3722,11 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
     private async void RootGrid_Drop(object sender, DragEventArgs e)
     {
+        if (_isInternalQuickCaptureDrag)
+        {
+            return;
+        }
+
         var deferral = e.GetDeferral();
         try
         {
@@ -3216,6 +4007,21 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        bool isLeftButtonPressed = e.GetCurrentPoint(TitleBarGrid).Properties.IsLeftButtonPressed;
+        if (isLeftButtonPressed &&
+            QuickCaptureShell.TitleEditorContent is TextBox &&
+            ShouldOpenTitleBarFlyout(e.OriginalSource))
+        {
+            _ = CommitTitleRenameAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (isLeftButtonPressed && ShouldOpenTitleBarFlyout(e.OriginalSource))
+        {
+            App.Current.WidgetManager?.ActivateAllVisibleWidgetsFromTitle(_hWnd);
+        }
+
         BeginWindowDrag(e, TitleBarGrid, focusWhenClicked: true);
     }
 
@@ -3443,11 +4249,11 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         if (materialType is SettingsService.WidgetMaterialTypeSolid)
         {
             var surfaceColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
-            BackgroundPlate.Background = new SolidColorBrush(surfaceColor);
+            BackgroundPlate.Background = GetOrUpdateSolidColorBrush(BackgroundPlate.Background, surfaceColor);
         }
         else
         {
-            BackgroundPlate.Background = new SolidColorBrush(Colors.Transparent);
+            BackgroundPlate.Background = GetOrUpdateSolidColorBrush(BackgroundPlate.Background, Colors.Transparent);
         }
 
         var (borderThickness, borderAlpha) = borderStyle switch
@@ -3474,18 +4280,23 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             : ColorHelper.FromArgb(0xD0, 0x62, 0x65, 0x6A);
 
         BackgroundPlate.BorderThickness = new Thickness(borderThickness);
-        BackgroundPlate.BorderBrush = new SolidColorBrush(borderColor);
+        BackgroundPlate.BorderBrush = GetOrUpdateSolidColorBrush(BackgroundPlate.BorderBrush, borderColor);
         BackgroundPlate.CornerRadius = new CornerRadius(GetCornerRadiusFromPreference());
-        HeaderDivider.Background = new SolidColorBrush(dividerColor);
+        HeaderDivider.Background = GetOrUpdateSolidColorBrush(HeaderDivider.Background, dividerColor);
         QuickCaptureShell.TitleIconAccentColor = iconForeground;
         QuickCaptureShell.TitleIconKind = WidgetTitleIconKindNames.QuickCapture;
         QuickCaptureShell.TitleIconMode = _settingsService.Settings.WidgetTitleIconMode;
-        EmptyStateIcon.Foreground = new SolidColorBrush(secondaryForeground);
-        SelectionRectangle.Background = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x2D : (byte)0x24));
-        SelectionRectangle.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0xD8 : (byte)0xCC));
+        EmptyStateIcon.Foreground = GetOrUpdateSolidColorBrush(EmptyStateIcon.Foreground, secondaryForeground);
+        SelectionRectangle.Background = GetOrUpdateSolidColorBrush(
+            SelectionRectangle.Background,
+            WithAlpha(accentColor, isDark ? (byte)0x2D : (byte)0x24));
+        SelectionRectangle.BorderBrush = GetOrUpdateSolidColorBrush(
+            SelectionRectangle.BorderBrush,
+            WithAlpha(accentColor, isDark ? (byte)0xD8 : (byte)0xCC));
         ApplySearchVisualStyle(isDark, accentColor);
         ApplyEditOverlayStyle(isDark, accentColor);
         RefreshSelectedViewSegment();
+        RefreshItemMaterialSurfaces();
     }
 
     private void ApplyTabStyles()
@@ -3601,18 +4412,26 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             accentMix: ViewModel.IsSearchExpanded ? (isDark ? 0.20 : 0.10) : 0.0,
             overlayMix: isDark ? 0.05 : 0.0);
 
-        SearchTextBox.Background = new SolidColorBrush(WithAlpha(background, isDark ? (byte)0xE8 : (byte)0xF6));
-        SearchTextBox.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0xCC : (byte)0xAA));
+        SearchTextBox.Background = GetOrUpdateSolidColorBrush(
+            SearchTextBox.Background,
+            WithAlpha(background, isDark ? (byte)0xE8 : (byte)0xF6));
+        SearchTextBox.BorderBrush = GetOrUpdateSolidColorBrush(
+            SearchTextBox.BorderBrush,
+            WithAlpha(accentColor, isDark ? (byte)0xCC : (byte)0xAA));
     }
 
     private void ApplyEditOverlayStyle(bool isDark, Windows.UI.Color accentColor)
     {
-        QuickCaptureInlineEditor.OverlaySurface.Background = new SolidColorBrush(GetNeutralOverlaySurfaceColor(isDark));
+        QuickCaptureInlineEditor.OverlaySurface.Background = GetOrUpdateSolidColorBrush(
+            QuickCaptureInlineEditor.OverlaySurface.Background,
+            GetNeutralOverlaySurfaceColor(isDark));
         QuickCaptureInlineEditor.OverlaySurface.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         QuickCaptureInlineEditor.OverlaySurface.BorderThickness = new Thickness(0.8);
         QuickCaptureInlineEditor.Translation = new Vector3(0, 0, 16);
 
-        EditTextBox.Background = new SolidColorBrush(GetNeutralInputSurfaceColor(isDark));
+        EditTextBox.Background = GetOrUpdateSolidColorBrush(
+            EditTextBox.Background,
+            GetNeutralInputSurfaceColor(isDark));
         EditTextBox.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         EditTextBox.Foreground = GetBrushResourceOrFallback(
             "TextFillColorPrimaryBrush",

@@ -133,11 +133,15 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         if (materialType is SettingsService.WidgetMaterialTypeSolid)
         {
             var surfaceColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
-            ContentWidgetShell.BackgroundSurface.Background = new SolidColorBrush(surfaceColor);
+            ContentWidgetShell.BackgroundSurface.Background = GetOrUpdateSolidColorBrush(
+                ContentWidgetShell.BackgroundSurface.Background,
+                surfaceColor);
         }
         else
         {
-            ContentWidgetShell.BackgroundSurface.Background = new SolidColorBrush(Colors.Transparent);
+            ContentWidgetShell.BackgroundSurface.Background = GetOrUpdateSolidColorBrush(
+                ContentWidgetShell.BackgroundSurface.Background,
+                Colors.Transparent);
         }
 
         var (borderThickness, borderAlpha) = borderStyle switch
@@ -161,9 +165,13 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             accentColor.B);
 
         ContentWidgetShell.BackgroundSurface.BorderThickness = new Thickness(borderThickness);
-        ContentWidgetShell.BackgroundSurface.BorderBrush = new SolidColorBrush(borderColor);
+        ContentWidgetShell.BackgroundSurface.BorderBrush = GetOrUpdateSolidColorBrush(
+            ContentWidgetShell.BackgroundSurface.BorderBrush,
+            borderColor);
         ContentWidgetShell.BackgroundSurface.CornerRadius = new CornerRadius(GetCornerRadiusFromPreference());
-        ContentWidgetShell.Divider.Background = new SolidColorBrush(dividerColor);
+        ContentWidgetShell.Divider.Background = GetOrUpdateSolidColorBrush(
+            ContentWidgetShell.Divider.Background,
+            dividerColor);
         ContentWidgetShell.TitleIconAccentColor = iconForeground;
         ContentWidgetShell.TitleIconMode = SettingsService.Settings.WidgetTitleIconMode;
     }
@@ -202,7 +210,6 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
         ApplyWindowCornerPreference();
         ApplyBackdropPreference();
-        ApplySurfaceStyle();
         ContentWidgetShell.ShowHoverButtons = SettingsService.Settings.ShowHoverButtons;
         ApplyTitleBarLayout();
         _contentHost.ApplyAppearance();
@@ -297,6 +304,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
         HoldTemporaryTopMost();
         base.Activate();
+        Win32Helper.SetForegroundWindow(HWnd);
         RootGrid.Focus(FocusState.Programmatic);
         _contentHost.OnActivated();
     }
@@ -386,7 +394,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         ToolTipService.SetToolTip(ContentWidgetShell.SizeLockActionButton, localization.T("Widget.LockSize"));
         ToolTipService.SetToolTip(ContentWidgetShell.AddActionButton, localization.T("Widget.Tooltip.Add"));
         ToolTipService.SetToolTip(ContentWidgetShell.MoreActionButton, localization.T("Widget.Tooltip.More"));
-        ToolTipService.SetToolTip(ContentWidgetShell.CloseActionButton, localization.T("Widget.Tooltip.DeleteWidget"));
+        ToolTipService.SetToolTip(ContentWidgetShell.CloseActionButton, localization.T("Widget.FeatureWidget.Disable"));
     }
 
     private void SetupEventHandlers()
@@ -453,10 +461,63 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (_config.IsPositionLocked) return;
         var properties = e.GetCurrentPoint(ContentWidgetShell.TitleBar).Properties;
         if (!properties.IsLeftButtonPressed) return;
+        if (ContentWidgetShell.TitleEditorContent is TextBox &&
+            ShouldOpenTitleBarFlyout(e.OriginalSource))
+        {
+            _ = CommitTitleRenameAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (ShouldOpenTitleBarFlyout(e.OriginalSource))
+        {
+            App.Current.WidgetManager?.ActivateAllVisibleWidgetsFromTitle(HWnd);
+        }
+        if (_config.IsPositionLocked) return;
         BeginWindowDragCore(e, ContentWidgetShell.TitleBar);
+    }
+
+    private bool ShouldOpenTitleBarFlyout(object? originalSource)
+    {
+        if (originalSource is not DependencyObject source)
+        {
+            return true;
+        }
+
+        return !IsWithin(source, ContentWidgetShell.PositionLockActionButton) &&
+               !IsWithin(source, ContentWidgetShell.SizeLockActionButton) &&
+               !IsWithin(source, ContentWidgetShell.AddActionButton) &&
+               !IsWithin(source, ContentWidgetShell.MoreActionButton) &&
+               !IsWithin(source, ContentWidgetShell.CloseActionButton) &&
+               !HasAncestorOfType<TextBox>(source);
+    }
+
+    private static bool IsWithin(DependencyObject source, DependencyObject target)
+    {
+        for (DependencyObject? current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasAncestorOfType<T>(DependencyObject source) where T : DependencyObject
+    {
+        for (DependencyObject? current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is T)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void TitleBarGrid_PointerMoved(object sender, PointerRoutedEventArgs e)
@@ -571,13 +632,27 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             if (Visible && !IsAtDesktopLayer &&
                 App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
             {
-                App.Log($"[ZOrder] Content Deactivated→Restore hwnd=0x{HWnd.ToInt64():X}");
-                RestoreDesktopLayer(force: true);
+                QueueRestoreDesktopLayerIfForegroundLeavesDeskBox();
             }
             return;
         }
 
         _contentHost.OnActivated();
+    }
+
+    private void QueueRestoreDesktopLayerIfForegroundLeavesDeskBox()
+    {
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(80);
+            if (!Visible || IsAtDesktopLayer || ShouldDeferDesktopLayerRestore())
+            {
+                return;
+            }
+
+            App.Log($"[ZOrder] Content Deactivated->Restore hwnd=0x{HWnd.ToInt64():X}");
+            RestoreDesktopLayer(force: true);
+        });
     }
 
     // ── Tray animation ─────────────────────────────────────────
@@ -877,7 +952,15 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             Text = App.Current.LocalizationService.T("Common.Rename"),
             Icon = new FontIcon { Glyph = "\uE8AC" }
         };
-        rename.Click += (_, _) => DispatcherQueue.TryEnqueue(StartTitleRename);
+        bool startRenameWhenClosed = false;
+        rename.Click += (_, _) => startRenameWhenClosed = true;
+        flyout.Closed += (_, _) =>
+        {
+            if (startRenameWhenClosed)
+            {
+                DispatcherQueue.TryEnqueue(StartTitleRename);
+            }
+        };
         flyout.Items.Add(rename);
 
         if (_descriptor.HasSettingsPage && !string.IsNullOrWhiteSpace(_descriptor.SettingsSectionTag))
@@ -908,23 +991,19 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         }
 
         flyout.Items.Add(new MenuFlyoutSeparator());
-        var deleteWidget = new MenuFlyoutItem
+        var disableWidget = new MenuFlyoutItem
         {
-            Text = App.Current.LocalizationService.T("Widget.Tooltip.DeleteWidget"),
-            Icon = new FontIcon
-            {
-                Glyph = "\uE74D",
-                Foreground = new SolidColorBrush(Colors.Red)
-            }
+            Text = App.Current.LocalizationService.T("Widget.FeatureWidget.Disable"),
+            Icon = new FontIcon { Glyph = "\uE7E8" }
         };
-        deleteWidget.Click += async (_, _) =>
+        disableWidget.Click += async (_, _) =>
         {
             if (App.Current.WidgetManager is { } widgetManager)
             {
-                await widgetManager.RemoveWidgetAsync(_config.Id);
+                await widgetManager.SetFeatureWidgetEnabledAsync(_config.WidgetKind, enabled: false, reveal: false);
             }
         };
-        flyout.Items.Add(deleteWidget);
+        flyout.Items.Add(disableWidget);
 
         return flyout;
     }
@@ -1005,8 +1084,14 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         App.Current.WidgetManager?.BeginWidgetInteraction("content-title-rename-opened");
         var editor = CreateTitleRenameEditor();
         ContentWidgetShell.TitleEditorContent = editor;
-        editor.Focus(FocusState.Programmatic);
-        editor.SelectAll();
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (ReferenceEquals(ContentWidgetShell.TitleEditorContent, editor))
+            {
+                editor.Focus(FocusState.Programmatic);
+                editor.SelectAll();
+            }
+        });
     }
 
     private TextBox CreateTitleRenameEditor()

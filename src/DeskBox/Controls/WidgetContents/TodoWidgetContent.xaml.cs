@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Numerics;
 using DeskBox.Services;
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -7,10 +8,15 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.System;
+using WinRT.Interop;
 
 namespace DeskBox.Controls.WidgetContents;
 
@@ -27,14 +33,17 @@ public sealed partial class TodoWidgetContent : UserControl
     private string? _draggedTodoItemId;
     private TodoItemViewModel? _editingItem;
     private TodoItemViewModel? _customDueDateItem;
+    private IReadOnlyList<string>? _customDueDateItemIds;
     private MenuFlyout? _pendingConfirmFlyout;
     private TimeSpan _customDueTime = new(23, 59, 0);
     private string? _copySelectionAnchorId;
     private long _undoToastGeneration;
     private long _copyTapGeneration;
-    private bool _isAddingFromInlineEditor;
     private bool _selectionPointerPressed;
     private bool _isBoxSelecting;
+    private bool _isResizingDetailTitle;
+    private double _detailTitleResizeStartY;
+    private double _detailTitleResizeStartHeight;
     private Windows.Foundation.Point _selectionStartPoint;
     private Windows.Foundation.Point _selectionCurrentPoint;
     private List<TodoItemViewModel> _selectionSnapshot = [];
@@ -173,6 +182,7 @@ public sealed partial class TodoWidgetContent : UserControl
         if (e.PropertyName == nameof(TodoWidgetViewModel.SelectedFilter))
         {
             ClearCopySelection();
+            ViewModel?.CollapseAllExpanded();
             RefreshFilterButtons();
         }
 
@@ -207,9 +217,7 @@ public sealed partial class TodoWidgetContent : UserControl
         }
 
         var localization = App.Current.LocalizationService;
-        TodoInlineEditor.Title = _isAddingFromInlineEditor
-            ? localization.T("Todo.AddPlaceholder")
-            : localization.T("Todo.Menu.Edit");
+        TodoInlineEditor.Title = localization.T("Todo.Menu.Edit");
         TodoInlineEditor.CancelText = localization.T("Common.Cancel");
         TodoInlineEditor.SaveText = localization.T("Common.Save");
         CustomDueDateTitleText.Text = localization.T("Todo.Due.Custom");
@@ -218,31 +226,28 @@ public sealed partial class TodoWidgetContent : UserControl
         CustomDueDateSaveButton.Content = localization.T("Common.Ok");
     }
 
-    private async void AddTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    public void OpenAddEditor()
     {
-        if (e.Key != VirtualKey.Enter)
+        if (ViewModel is null)
         {
             return;
         }
 
-        e.Handled = true;
-        if (ViewModel is not null)
-        {
-            await ViewModel.AddInputAsync();
-        }
-    }
-
-    public void OpenAddEditor()
-    {
         ClearCopySelection();
         CloseCustomDueDateOverlay();
-        _editingItem = null;
-        _isAddingFromInlineEditor = true;
-        TodoInlineEditor.Title = App.Current.LocalizationService.T("Todo.AddPlaceholder");
-        TodoInlineEditor.Text = ViewModel?.InputText ?? string.Empty;
-        ApplyEditorVisualStyle();
-        TodoInlineEditor.Visibility = Visibility.Visible;
-        TodoInlineEditor.FocusEditor(moveCaretToEnd: true);
+        CloseTodoEdit();
+        ViewModel.OpenNewDetail();
+        DetailTitleTextBox.Height = 64;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            DetailTitleTextBox.Focus(FocusState.Programmatic);
+            DetailTitleTextBox.SelectAll();
+        });
+    }
+
+    private void AddCard_Click(object sender, RoutedEventArgs e)
+    {
+        OpenAddEditor();
     }
 
     private void ExpandInputButton_Click(object sender, RoutedEventArgs e)
@@ -283,6 +288,16 @@ public sealed partial class TodoWidgetContent : UserControl
     private void PurpleColorFilterButton_Click(object sender, RoutedEventArgs e)
     {
         SelectColorFilter(TodoColorFilter.Purple);
+    }
+
+    private void TealColorFilterButton_Click(object sender, RoutedEventArgs e)
+    {
+        SelectColorFilter(TodoColorFilter.Teal);
+    }
+
+    private void PinkColorFilterButton_Click(object sender, RoutedEventArgs e)
+    {
+        SelectColorFilter(TodoColorFilter.Pink);
     }
 
     private void SelectColorFilter(TodoColorFilter filter)
@@ -334,6 +349,8 @@ public sealed partial class TodoWidgetContent : UserControl
         ApplyColorFilterButtonState(GreenColorFilterButton, ViewModel.SelectedColorFilter == TodoColorFilter.Green);
         ApplyColorFilterButtonState(BlueColorFilterButton, ViewModel.SelectedColorFilter == TodoColorFilter.Blue);
         ApplyColorFilterButtonState(PurpleColorFilterButton, ViewModel.SelectedColorFilter == TodoColorFilter.Purple);
+        ApplyColorFilterButtonState(TealColorFilterButton, ViewModel.SelectedColorFilter == TodoColorFilter.Teal);
+        ApplyColorFilterButtonState(PinkColorFilterButton, ViewModel.SelectedColorFilter == TodoColorFilter.Pink);
     }
 
     private TodoFilter GetSelectedSegmentFilter()
@@ -374,7 +391,42 @@ public sealed partial class TodoWidgetContent : UserControl
             return;
         }
 
+        PlayCompletionToggleAnimation(element);
         await ViewModel.SetCompletedAsync(item.Id, !item.IsCompleted);
+        ApplyDetailCompletionVisualState();
+    }
+
+    private static void PlayCompletionToggleAnimation(FrameworkElement element)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        if (visual is null)
+        {
+            return;
+        }
+
+        var compositor = visual.Compositor;
+        if (compositor is null)
+        {
+            return;
+        }
+
+        visual.StopAnimation("Scale");
+        visual.CenterPoint = new Vector3(
+            (float)(element.ActualSize.X * 0.5),
+            (float)(element.ActualSize.Y * 0.5),
+            0f);
+
+        var easing = compositor.CreateCubicBezierEasingFunction(
+            new Vector2(0.16f, 1.0f),
+            new Vector2(0.3f, 1.0f));
+
+        var scaleAnimation = compositor.CreateVector3KeyFrameAnimation();
+        scaleAnimation.Duration = TimeSpan.FromMilliseconds(300);
+        scaleAnimation.InsertKeyFrame(0.0f, new Vector3(1.0f, 1.0f, 1.0f));
+        scaleAnimation.InsertKeyFrame(0.4f, new Vector3(1.3f, 1.3f, 1.0f), easing);
+        scaleAnimation.InsertKeyFrame(1.0f, new Vector3(1.0f, 1.0f, 1.0f), easing);
+
+        visual.StartAnimation("Scale", scaleAnimation);
     }
 
     private async void ImportantItemButton_Click(object sender, RoutedEventArgs e)
@@ -608,9 +660,38 @@ public sealed partial class TodoWidgetContent : UserControl
             return;
         }
 
-        if (e.Key == VirtualKey.Escape && HasCopySelection())
+                if (e.Key == VirtualKey.Escape && HasCopySelection())
         {
             ClearCopySelection();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == VirtualKey.Escape &&
+            ViewModel?.Items.Any(item => item.IsExpanded) == true)
+        {
+            ViewModel.CollapseAllExpanded();
+            e.Handled = true;
+        }
+    }
+
+    private async void TodoWidgetContent_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape || ViewModel is null)
+        {
+            return;
+        }
+
+        if (CustomDueDateOverlay.Visibility == Visibility.Visible)
+        {
+            CloseCustomDueDateOverlay();
+            e.Handled = true;
+            return;
+        }
+
+        if (ViewModel.IsDetailPageOpen)
+        {
+            await CloseDetailAsync();
             e.Handled = true;
         }
     }
@@ -623,10 +704,14 @@ public sealed partial class TodoWidgetContent : UserControl
         }
 
         var properties = e.GetCurrentPoint(listView).Properties;
-        if (!properties.IsLeftButtonPressed ||
+                if (!properties.IsLeftButtonPressed ||
             Win32Helper.IsKeyPressed(VirtualKey.Shift) ||
             !CanStartTodoBoxSelection(e.OriginalSource))
         {
+            if (CanStartTodoBoxSelection(e.OriginalSource))
+            {
+                ViewModel?.CollapseAllExpanded();
+            }
             return;
         }
 
@@ -741,21 +826,13 @@ public sealed partial class TodoWidgetContent : UserControl
         _ = localization;
     }
 
-    private void TodoItemContent_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+        private void TodoItemContent_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        _copyTapGeneration++;
-        if (ViewModel is null ||
-            sender is not FrameworkElement element ||
-            element.DataContext is not TodoItemViewModel item)
-        {
-            return;
-        }
-
-        BeginItemEdit(item);
+        // Single tap handles expand/edit; double tap just prevents default
         e.Handled = true;
     }
 
-    private async void TodoItemContent_Tapped(object sender, TappedRoutedEventArgs e)
+        private async void TodoItemContent_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (sender is not FrameworkElement element ||
             element.DataContext is not TodoItemViewModel item)
@@ -785,22 +862,104 @@ public sealed partial class TodoWidgetContent : UserControl
         if (HasCopySelection())
         {
             ClearCopySelection();
+            e.Handled = true;
+            return;
         }
 
-        long generation = ++_copyTapGeneration;
-        await Task.Delay(CopyTapDelayMs);
-
-        DispatcherQueue.TryEnqueue(() =>
+        if (ViewModel is null)
         {
-            if (generation != _copyTapGeneration)
-            {
-                return;
-            }
+            return;
+        }
 
-            CopyTodoItemText(item);
-        });
+        if (!item.IsExpanded)
+        {
+            ViewModel.ToggleExpanded(item.Id);
+            TodoListView.ScrollIntoView(item);
+        }
+        else if (!item.IsEditing)
+        {
+            ViewModel.BeginEdit(item.Id);
+        }
 
         e.Handled = true;
+    }
+
+    private void TodoItemCard_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element ||
+            element.DataContext is not TodoItemViewModel item ||
+            ViewModel is null ||
+            IsInteractiveTodoSource(e.OriginalSource))
+        {
+            return;
+        }
+
+        ClearCopySelection();
+        ClearTodoListContainerSelection();
+        if (ViewModel.OpenDetail(item.Id) is null)
+        {
+            return;
+        }
+
+        DetailTitleTextBox.Height = 64;
+        ApplyDetailCompletionVisualState();
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            DetailTitleTextBox.Focus(FocusState.Programmatic);
+            DetailTitleTextBox.Select(DetailTitleTextBox.Text?.Length ?? 0, 0);
+        });
+        e.Handled = true;
+    }
+
+    private void TodoListView_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not TodoItemViewModel item || ViewModel is null)
+        {
+            return;
+        }
+
+        ClearCopySelection();
+        ClearTodoListContainerSelection();
+        if (ViewModel.OpenDetail(item.Id) is null)
+        {
+            return;
+        }
+
+        DetailTitleTextBox.Height = 64;
+        ApplyDetailCompletionVisualState();
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            DetailTitleTextBox.Focus(FocusState.Programmatic);
+            DetailTitleTextBox.Select(DetailTitleTextBox.Text?.Length ?? 0, 0);
+        });
+    }
+
+    private static bool IsInteractiveTodoSource(object? source)
+    {
+        DependencyObject? current = source as DependencyObject;
+        while (current is not null)
+        {
+            if (current is ButtonBase or TextBox or CheckBox)
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
+    private void ClearTodoListContainerSelection()
+    {
+        TodoListView.SelectedItem = null;
+        foreach (object visibleItem in TodoListView.Items)
+        {
+            if (TodoListView.ContainerFromItem(visibleItem) is SelectorItem container)
+            {
+                container.IsSelected = false;
+            }
+        }
     }
 
     private void TodoItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -819,175 +978,401 @@ public sealed partial class TodoWidgetContent : UserControl
             _copySelectionAnchorId = item.Id;
         }
 
-        CreateItemFlyout(item, element).ShowAt(element, e.GetPosition(element));
+        CreateItemFlyout(item, element).ShowAt(
+            element,
+            new FlyoutShowOptions { Position = e.GetPosition(element) });
         e.Handled = true;
     }
 
     private MenuFlyout CreateItemFlyout(TodoItemViewModel item, FrameworkElement anchor)
     {
-        var flyout = new MenuFlyout();
-        var localization = App.Current.LocalizationService;
         var selectedItems = GetSelectedCopyItemsInVisibleOrder();
-
         if (selectedItems.Count > 1 && item.IsCopySelected)
         {
-            var copySelectedItem = new MenuFlyoutItem
-            {
-                Text = localization.Format("Todo.Menu.CopySelected", selectedItems.Count),
-                Icon = new FontIcon { Glyph = "\uE8C8" }
-            };
-            copySelectedItem.Click += (_, _) => CopySelectedTodoItems(selectedItems);
-            flyout.Items.Add(copySelectedItem);
-            flyout.Items.Add(new MenuFlyoutSeparator());
+            return CreateMultiItemFlyout(selectedItems, anchor);
         }
 
-        var editItem = new MenuFlyoutItem
+        var flyout = new MenuFlyout();
+        var localization = App.Current.LocalizationService;
+
+        var editItem = CreateTodoContextCommand("Todo.Menu.Edit", "\uE70F");
+        editItem.Click += (_, _) =>
         {
-            Text = localization.T("Todo.Menu.Edit"),
-            Icon = new FontIcon { Glyph = "\uE70F" }
+            flyout.Hide();
+            ClearCopySelection();
+            ClearTodoListContainerSelection();
+            CloseCustomDueDateOverlay();
+            if (ViewModel?.OpenDetail(item.Id) is null)
+            {
+                return;
+            }
+
+            DetailTitleTextBox.Height = 64;
+            ApplyDetailCompletionVisualState();
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                DetailTitleTextBox.Focus(FocusState.Programmatic);
+                DetailTitleTextBox.Select(DetailTitleTextBox.Text?.Length ?? 0, 0);
+            });
         };
-        editItem.Click += (_, _) => BeginItemEdit(item);
         flyout.Items.Add(editItem);
 
         var copyItem = new MenuFlyoutItem
         {
-            Text = localization.T("Todo.Menu.Copy"),
+            Text = selectedItems.Count > 1 && item.IsCopySelected
+                ? localization.Format("Todo.Menu.CopySelected", selectedItems.Count)
+                : localization.T("Todo.Menu.Copy"),
             Icon = new FontIcon { Glyph = "\uE8C8" }
         };
-        copyItem.Click += (_, _) => CopyTodoItemText(item);
+        copyItem.Click += (_, _) =>
+        {
+            flyout.Hide();
+            if (selectedItems.Count > 1 && item.IsCopySelected)
+            {
+                CopySelectedTodoItems(selectedItems);
+            }
+            else
+            {
+                CopyTodoItemText(item);
+            }
+        };
         flyout.Items.Add(copyItem);
 
-        var completeItem = new MenuFlyoutItem
+        var deleteItem = CreateTodoContextCommand("Common.Delete", "\uE74D");
+        deleteItem.Click += (_, _) =>
         {
-            Text = item.IsCompleted
-                ? localization.T("Todo.Menu.MarkActive")
-                : localization.T("Todo.Menu.MarkCompleted"),
-            Icon = new FontIcon { Glyph = item.IsCompleted ? "\uE73A" : "\uE73E" }
+            flyout.Hide();
+            DispatcherQueue.TryEnqueue(() => ShowDeleteItemConfirmation(item, anchor));
         };
-        completeItem.Click += async (_, _) =>
-        {
-            if (ViewModel is not null)
-            {
-                await ViewModel.SetCompletedAsync(item.Id, !item.IsCompleted);
-            }
-        };
-        flyout.Items.Add(completeItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
 
-        var importantItem = new MenuFlyoutItem
+        var colorMenu = CreateLazyTodoMenu(flyout, menu =>
         {
-            Text = item.IsImportant
-                ? localization.T("Todo.Menu.UnmarkImportant")
-                : localization.T("Todo.Menu.MarkImportant"),
-            Icon = new FontIcon { Glyph = item.IsImportant ? "\uE735" : "\uE734" }
-        };
-        importantItem.Click += async (_, _) =>
-        {
-            if (ViewModel is not null)
+            menu.Items.Add(CreateColorMarkerItem(item, null));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            foreach (string colorMarker in TodoItem.SupportedColorMarkers)
             {
-                await ViewModel.SetImportantAsync(item.Id, !item.IsImportant);
+                menu.Items.Add(CreateColorMarkerItem(item, colorMarker));
             }
-        };
-        flyout.Items.Add(importantItem);
+        });
+        flyout.Items.Add(CreateTodoContextSubmenu(
+            "Todo.Menu.ColorMarker", "\uE790", colorMenu, flyout));
 
-        var colorSubItem = new MenuFlyoutSubItem
+        var dueDateMenu = CreateLazyTodoMenu(flyout, menu =>
         {
-            Text = localization.T("Todo.Menu.ColorMarker"),
-            Icon = new FontIcon { Glyph = "\uE915" }
-        };
-        colorSubItem.Items.Add(CreateColorMarkerItem(item, null));
-        colorSubItem.Items.Add(new MenuFlyoutSeparator());
-        foreach (string colorMarker in TodoItem.SupportedColorMarkers)
+            menu.Items.Add(CreateDuePresetItem(item, TodoDuePreset.Today, localization.T("Todo.Due.Today")));
+            menu.Items.Add(CreateDuePresetItem(item, TodoDuePreset.Tomorrow, localization.T("Todo.Due.Tomorrow")));
+            menu.Items.Add(CreateDuePresetItem(item, TodoDuePreset.ThisWeek, localization.T("Todo.Due.ThisWeek")));
+            menu.Items.Add(CreateDuePresetItem(item, TodoDuePreset.NextMonday, localization.T("Todo.Due.NextMonday")));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            var customDueDateItem = new MenuFlyoutItem
+            {
+                Text = localization.T("Todo.Due.Custom"),
+                Icon = new FontIcon { Glyph = "\uE8A5" }
+            };
+            customDueDateItem.Click += async (_, _) => await PickCustomDueDateAsync(item);
+            menu.Items.Add(customDueDateItem);
+            if (item.DueDate is not null)
+            {
+                menu.Items.Add(CreateDuePresetItem(item, TodoDuePreset.Clear, localization.T("Todo.Due.Clear")));
+            }
+        });
+        flyout.Items.Add(CreateTodoContextSubmenu(
+            "Todo.Menu.DueDate", "\uE787", dueDateMenu, flyout));
+
+        var reminderMenu = CreateLazyTodoMenu(flyout, menu =>
         {
-            colorSubItem.Items.Add(CreateColorMarkerItem(item, colorMarker));
+            menu.Items.Add(CreateReminderOffsetItem(item, null));
+            menu.Items.Add(CreateReminderOffsetItem(item, TodoReminderOptions.ReminderOff));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            foreach (int offsetMinutes in TodoReminderOptions.SupportedOffsetMinutes)
+            {
+                menu.Items.Add(CreateReminderOffsetItem(item, offsetMinutes));
+            }
+        });
+        flyout.Items.Add(CreateTodoContextSubmenu(
+            "Todo.Menu.Reminder", "\uEA8F", reminderMenu, flyout, item.DueDate is not null));
+
+        var recurrenceMenu = CreateLazyTodoMenu(flyout, menu =>
+        {
+            foreach (string recurrenceMode in TodoRecurrenceMode.SupportedModes)
+            {
+                menu.Items.Add(CreateRecurrenceItem(item, recurrenceMode));
+            }
+        });
+        flyout.Items.Add(CreateTodoContextSubmenu(
+            "Todo.Menu.Recurrence", "\uE823", recurrenceMenu, flyout, item.DueDate is not null));
+
+        if (item.DueDate is not null &&
+            !item.IsCompleted &&
+            !TodoReminderOptions.IsReminderOff(item.ReminderOffsetMinutes))
+        {
+            var snoozeMenu = CreateLazyTodoMenu(flyout, menu =>
+            {
+                menu.Items.Add(CreateSnoozeItem(item, localization.T("Todo.Snooze.10Minutes"), TimeSpan.FromMinutes(10)));
+                menu.Items.Add(CreateSnoozeItem(item, localization.T("Todo.Snooze.30Minutes"), TimeSpan.FromMinutes(30)));
+                menu.Items.Add(CreateSnoozeItem(item, localization.T("Todo.Snooze.OneHour"), TimeSpan.FromHours(1)));
+                menu.Items.Add(CreateSnoozeItem(item, localization.T("Todo.Snooze.Tomorrow"), GetTomorrowSnoozeTime()));
+            });
+            flyout.Items.Add(CreateTodoContextSubmenu(
+                "Todo.Menu.Snooze", "\uE823", snoozeMenu, flyout));
         }
 
-        flyout.Items.Add(colorSubItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(deleteItem);
 
-        var dueSubItem = new MenuFlyoutSubItem
+        return flyout;
+    }
+
+    private static MenuFlyout CreateLazyTodoMenu(
+        MenuFlyout owner,
+        Action<MenuFlyout> populate)
+    {
+        var menu = new MenuFlyout();
+        populate(menu);
+        foreach (var menuItem in menu.Items.OfType<MenuFlyoutItem>())
         {
-            Text = localization.T("Todo.Menu.DueDate"),
-            Icon = new FontIcon { Glyph = "\uE787" }
+            menuItem.Click += (_, _) => owner.Hide();
+        }
+        return menu;
+    }
+
+    private MenuFlyout CreateMultiItemFlyout(
+        IReadOnlyList<TodoItemViewModel> selectedItems,
+        FrameworkElement anchor)
+    {
+        var flyout = new MenuFlyout();
+        var localization = App.Current.LocalizationService;
+        string[] selectedIds = selectedItems.Select(item => item.Id).ToArray();
+
+        var copyItem = new MenuFlyoutItem
+        {
+            Text = localization.Format("Todo.Menu.CopySelected", selectedItems.Count),
+            Icon = new FontIcon { Glyph = "\uE8C8" }
         };
-        dueSubItem.Items.Add(CreateDuePresetItem(item, TodoDuePreset.Today, localization.T("Todo.Due.Today")));
-        dueSubItem.Items.Add(CreateDuePresetItem(item, TodoDuePreset.Tomorrow, localization.T("Todo.Due.Tomorrow")));
-        dueSubItem.Items.Add(CreateDuePresetItem(item, TodoDuePreset.ThisWeek, localization.T("Todo.Due.ThisWeek")));
-        dueSubItem.Items.Add(new MenuFlyoutSeparator());
-        var customDueItem = new MenuFlyoutItem
+        copyItem.Click += (_, _) =>
+        {
+            flyout.Hide();
+            CopySelectedTodoItems(selectedItems);
+        };
+        flyout.Items.Add(copyItem);
+
+        var deleteItem = CreateTodoContextCommand("Common.Delete", "\uE74D");
+        deleteItem.Click += (_, _) =>
+        {
+            flyout.Hide();
+            DispatcherQueue.TryEnqueue(() => ShowDeleteSelectedConfirmation(selectedIds, anchor));
+        };
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var colorMenu = new MenuFlyout();
+        colorMenu.Items.Add(CreateBatchColorMarkerItem(selectedItems, selectedIds, null, flyout));
+        colorMenu.Items.Add(new MenuFlyoutSeparator());
+        foreach (string colorMarker in TodoItem.SupportedColorMarkers)
+        {
+            colorMenu.Items.Add(CreateBatchColorMarkerItem(selectedItems, selectedIds, colorMarker, flyout));
+        }
+        flyout.Items.Add(CreateTodoContextSubmenu(
+            "Todo.Menu.ColorMarker", "\uE790", colorMenu, flyout));
+
+        bool hasDueDate = selectedItems.Any(item => item.DueDate is not null);
+        var dueDateMenu = new MenuFlyout();
+        dueDateMenu.Items.Add(CreateBatchDuePresetItem(
+            selectedIds, TodoDuePreset.Today, localization.T("Todo.Due.Today"), flyout));
+        dueDateMenu.Items.Add(CreateBatchDuePresetItem(
+            selectedIds, TodoDuePreset.Tomorrow, localization.T("Todo.Due.Tomorrow"), flyout));
+        dueDateMenu.Items.Add(CreateBatchDuePresetItem(
+            selectedIds, TodoDuePreset.ThisWeek, localization.T("Todo.Due.ThisWeek"), flyout));
+        dueDateMenu.Items.Add(CreateBatchDuePresetItem(
+            selectedIds, TodoDuePreset.NextMonday, localization.T("Todo.Due.NextMonday"), flyout));
+        dueDateMenu.Items.Add(new MenuFlyoutSeparator());
+        var customDueDateItem = new MenuFlyoutItem
         {
             Text = localization.T("Todo.Due.Custom"),
             Icon = new FontIcon { Glyph = "\uE8A5" }
         };
-        customDueItem.Click += async (_, _) => await PickCustomDueDateAsync(item);
-        dueSubItem.Items.Add(customDueItem);
-        var clearDueItem = new MenuFlyoutItem
+        customDueDateItem.Click += async (_, _) =>
         {
-            Text = localization.T("Todo.Due.Clear"),
-            Icon = new FontIcon { Glyph = "\uE711" }
+            flyout.Hide();
+            await PickBatchCustomDueDateAsync(
+                selectedIds,
+                selectedItems.FirstOrDefault(item => item.DueDate is not null)?.DueDate);
         };
-        clearDueItem.Click += async (_, _) =>
+        dueDateMenu.Items.Add(customDueDateItem);
+        if (hasDueDate)
         {
-            if (ViewModel is not null)
-            {
-                await ViewModel.SetDueDatePresetAsync(item.Id, TodoDuePreset.Clear);
-            }
-        };
-        dueSubItem.Items.Add(clearDueItem);
-        flyout.Items.Add(dueSubItem);
+            dueDateMenu.Items.Add(CreateBatchDuePresetItem(
+                selectedIds, TodoDuePreset.Clear, localization.T("Todo.Due.Clear"), flyout));
+        }
+        flyout.Items.Add(CreateTodoContextSubmenu(
+            "Todo.Menu.DueDate", "\uE787", dueDateMenu, flyout));
 
-        var reminderSubItem = new MenuFlyoutSubItem
-        {
-            Text = localization.T("Todo.Menu.Reminder"),
-            Icon = new FontIcon { Glyph = "\uEA8F" },
-            IsEnabled = item.DueDate is not null && !item.IsCompleted
-        };
-        reminderSubItem.Items.Add(CreateReminderOffsetItem(item, null));
-        reminderSubItem.Items.Add(CreateReminderOffsetItem(item, TodoReminderOptions.ReminderOff));
-        reminderSubItem.Items.Add(new MenuFlyoutSeparator());
+        var reminderMenu = new MenuFlyout();
+        reminderMenu.Items.Add(CreateBatchReminderOffsetItem(selectedItems, selectedIds, null, flyout));
+        reminderMenu.Items.Add(CreateBatchReminderOffsetItem(
+            selectedItems,
+            selectedIds,
+            TodoReminderOptions.ReminderOff,
+            flyout));
+        reminderMenu.Items.Add(new MenuFlyoutSeparator());
         foreach (int offsetMinutes in TodoReminderOptions.SupportedOffsetMinutes)
         {
-            reminderSubItem.Items.Add(CreateReminderOffsetItem(item, offsetMinutes));
+            reminderMenu.Items.Add(CreateBatchReminderOffsetItem(
+                selectedItems,
+                selectedIds,
+                offsetMinutes,
+                flyout));
         }
+        flyout.Items.Add(CreateTodoContextSubmenu(
+            "Todo.Menu.Reminder", "\uEA8F", reminderMenu, flyout, hasDueDate));
 
-        flyout.Items.Add(reminderSubItem);
-
-        var snoozeSubItem = new MenuFlyoutSubItem
-        {
-            Text = localization.T("Todo.Menu.Snooze"),
-            Icon = new FontIcon { Glyph = "\uE823" },
-            IsEnabled = item.DueDate is not null &&
-                        !item.IsCompleted &&
-                        !TodoReminderOptions.IsReminderOff(item.ReminderOffsetMinutes)
-        };
-        snoozeSubItem.Items.Add(CreateSnoozeItem(item, localization.T("Todo.Snooze.10Minutes"), TimeSpan.FromMinutes(10)));
-        snoozeSubItem.Items.Add(CreateSnoozeItem(item, localization.T("Todo.Snooze.30Minutes"), TimeSpan.FromMinutes(30)));
-        snoozeSubItem.Items.Add(CreateSnoozeItem(item, localization.T("Todo.Snooze.OneHour"), TimeSpan.FromHours(1)));
-        snoozeSubItem.Items.Add(CreateSnoozeItem(item, localization.T("Todo.Snooze.Tomorrow"), GetTomorrowSnoozeTime()));
-        flyout.Items.Add(snoozeSubItem);
-
-        var recurrenceSubItem = new MenuFlyoutSubItem
-        {
-            Text = localization.T("Todo.Menu.Recurrence"),
-            Icon = new FontIcon { Glyph = "\uE823" },
-            IsEnabled = item.DueDate is not null && !item.IsCompleted
-        };
+        var recurrenceMenu = new MenuFlyout();
         foreach (string recurrenceMode in TodoRecurrenceMode.SupportedModes)
         {
-            recurrenceSubItem.Items.Add(CreateRecurrenceItem(item, recurrenceMode));
+            recurrenceMenu.Items.Add(CreateBatchRecurrenceItem(
+                selectedItems, selectedIds, recurrenceMode, flyout));
         }
-
-        flyout.Items.Add(recurrenceSubItem);
+        flyout.Items.Add(CreateTodoContextSubmenu(
+            "Todo.Menu.Recurrence", "\uE823", recurrenceMenu, flyout, hasDueDate));
 
         flyout.Items.Add(new MenuFlyoutSeparator());
-
-        var deleteItem = new MenuFlyoutItem
-        {
-            Text = localization.T("Common.Delete"),
-            Icon = new FontIcon { Glyph = "\uE74D" }
-        };
-        deleteItem.Click += (_, _) => ShowDeleteItemConfirmation(item, anchor);
         flyout.Items.Add(deleteItem);
 
         return flyout;
+    }
+
+    private MenuFlyoutItem CreateBatchColorMarkerItem(
+        IReadOnlyList<TodoItemViewModel> selectedItems,
+        IReadOnlyList<string> selectedIds,
+        string? colorMarker,
+        MenuFlyout owner)
+    {
+        string? normalizedColorMarker = TodoItem.NormalizeColorMarker(colorMarker);
+        bool isSelected = selectedItems.All(item =>
+            string.Equals(item.ColorMarker, normalizedColorMarker, StringComparison.Ordinal));
+        var menuItem = new MenuFlyoutItem
+        {
+            Text = App.Current.LocalizationService.T(TodoItem.GetColorMarkerLocalizationKey(colorMarker)),
+            Icon = colorMarker is null
+                ? new FontIcon { Glyph = isSelected ? "\uE73E" : "\uE711" }
+                : CreateColorMarkerIcon(colorMarker, isSelected)
+        };
+        menuItem.Click += async (_, _) =>
+        {
+            owner.Hide();
+            if (ViewModel is not null)
+            {
+                await ViewModel.SetColorMarkerAsync(selectedIds, colorMarker);
+            }
+        };
+        return menuItem;
+    }
+
+    private MenuFlyoutItem CreateBatchReminderOffsetItem(
+        IReadOnlyList<TodoItemViewModel> selectedItems,
+        IReadOnlyList<string> selectedIds,
+        int? offsetMinutes,
+        MenuFlyout owner)
+    {
+        int? normalizedOffset = TodoReminderOptions.NormalizeOffsetMinutes(offsetMinutes);
+        var dueItems = selectedItems.Where(item => item.DueDate is not null).ToList();
+        bool isSelected = dueItems.Count > 0 &&
+                          dueItems.All(item => Nullable.Equals(item.ReminderOffsetMinutes, normalizedOffset));
+        var menuItem = new MenuFlyoutItem
+        {
+            Text = FormatReminderOffsetText(normalizedOffset),
+            Icon = isSelected ? new FontIcon { Glyph = "\uE73E" } : null
+        };
+        menuItem.Click += async (_, _) =>
+        {
+            owner.Hide();
+            if (ViewModel is not null)
+            {
+                await ViewModel.SetReminderOffsetAsync(selectedIds, normalizedOffset);
+            }
+        };
+        return menuItem;
+    }
+
+    private MenuFlyoutItem CreateBatchDuePresetItem(
+        IReadOnlyList<string> selectedIds,
+        TodoDuePreset preset,
+        string text,
+        MenuFlyout owner)
+    {
+        var menuItem = new MenuFlyoutItem { Text = text };
+        menuItem.Click += async (_, _) =>
+        {
+            owner.Hide();
+            if (ViewModel is not null)
+            {
+                await ViewModel.SetDueDatePresetAsync(selectedIds, preset);
+            }
+        };
+        return menuItem;
+    }
+
+    private MenuFlyoutItem CreateBatchRecurrenceItem(
+        IReadOnlyList<TodoItemViewModel> selectedItems,
+        IReadOnlyList<string> selectedIds,
+        string recurrenceMode,
+        MenuFlyout owner)
+    {
+        string normalizedMode = TodoRecurrenceMode.Normalize(recurrenceMode);
+        var dueItems = selectedItems.Where(item => item.DueDate is not null).ToList();
+        bool isSelected = dueItems.Count > 0 &&
+                          dueItems.All(item => string.Equals(item.RecurrenceMode, normalizedMode, StringComparison.Ordinal));
+        var menuItem = new MenuFlyoutItem
+        {
+            Text = App.Current.LocalizationService.T(TodoRecurrenceService.GetLocalizationKey(normalizedMode)),
+            Icon = isSelected ? new FontIcon { Glyph = "\uE73E" } : null
+        };
+        menuItem.Click += async (_, _) =>
+        {
+            owner.Hide();
+            if (ViewModel is not null)
+            {
+                await ViewModel.SetRecurrenceAsync(selectedIds, normalizedMode);
+            }
+        };
+        return menuItem;
+    }
+
+    private MenuFlyoutItem CreateTodoContextCommand(string localizationKey, string glyph)
+    {
+        return new MenuFlyoutItem
+        {
+            Text = App.Current.LocalizationService.T(localizationKey),
+            Icon = new FontIcon { Glyph = glyph }
+        };
+    }
+
+    private MenuFlyoutSubItem CreateTodoContextSubmenu(
+        string localizationKey,
+        string glyph,
+        MenuFlyout submenu,
+        MenuFlyout owner,
+        bool isEnabled = true)
+    {
+        foreach (var menuItem in submenu.Items.OfType<MenuFlyoutItem>())
+        {
+            menuItem.Click += (_, _) => owner.Hide();
+        }
+
+        var subItem = new MenuFlyoutSubItem
+        {
+            Text = App.Current.LocalizationService.T(localizationKey),
+            Icon = new FontIcon { Glyph = glyph },
+            IsEnabled = isEnabled
+        };
+        while (submenu.Items.Count > 0)
+        {
+            MenuFlyoutItemBase item = submenu.Items[0];
+            submenu.Items.RemoveAt(0);
+            subItem.Items.Add(item);
+        }
+
+        return subItem;
     }
 
     private MenuFlyoutItem CreateColorMarkerItem(TodoItemViewModel item, string? colorMarker)
@@ -1482,7 +1867,7 @@ public sealed partial class TodoWidgetContent : UserControl
             .ToList();
     }
 
-    private Task PickCustomDueDateAsync(TodoItemViewModel item)
+        private Task PickCustomDueDateAsync(TodoItemViewModel? item)
     {
         if (ViewModel is null)
         {
@@ -1492,7 +1877,32 @@ public sealed partial class TodoWidgetContent : UserControl
         CloseTodoEdit();
         _pendingConfirmFlyout?.Hide();
         _customDueDateItem = item;
-        DateTimeOffset dueDate = item.DueDate ?? GetDefaultCustomDueDate();
+        _customDueDateItemIds = null;
+        DateTimeOffset dueDate = item?.DueDate ?? ViewModel.DraftDueDate ?? GetDefaultCustomDueDate();
+        CustomDueDatePicker.MinDate = DateTimeOffset.Now.Date;
+        CustomDueDatePicker.Date = dueDate;
+        SetCustomDueTime(dueDate);
+        ApplyLocalizedText();
+        ApplyEditorVisualStyle();
+        CustomDueDateOverlay.Visibility = Visibility.Visible;
+        CustomDueDatePicker.Focus(FocusState.Programmatic);
+        return Task.CompletedTask;
+    }
+
+    private Task PickBatchCustomDueDateAsync(
+        IReadOnlyList<string> itemIds,
+        DateTimeOffset? initialDueDate)
+    {
+        if (ViewModel is null || itemIds.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        CloseTodoEdit();
+        _pendingConfirmFlyout?.Hide();
+        _customDueDateItem = null;
+        _customDueDateItemIds = itemIds.ToArray();
+        DateTimeOffset dueDate = initialDueDate ?? GetDefaultCustomDueDate();
         CustomDueDatePicker.MinDate = DateTimeOffset.Now.Date;
         CustomDueDatePicker.Date = dueDate;
         SetCustomDueTime(dueDate);
@@ -1528,24 +1938,38 @@ public sealed partial class TodoWidgetContent : UserControl
         });
     }
 
-    private async void CustomDueDateSaveButton_Click(object sender, RoutedEventArgs e)
+        private async void CustomDueDateSaveButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel is null || _customDueDateItem is null)
+        if (ViewModel is null)
         {
             CloseCustomDueDateOverlay();
             return;
         }
 
-        string itemId = _customDueDateItem.Id;
         DateTimeOffset selectedDate = CustomDueDatePicker.Date ?? DateTimeOffset.Now;
         DateTimeOffset selectedDueDate = CombineCustomDueDateAndTime(selectedDate);
+        TodoItemViewModel? customDueDateItem = _customDueDateItem;
+        IReadOnlyList<string>? customDueDateItemIds = _customDueDateItemIds;
         CloseCustomDueDateOverlay();
-        await ViewModel.SetDueDateAsync(itemId, selectedDueDate);
+
+        if (customDueDateItem is { } item)
+        {
+            await ViewModel.SetDueDateAsync(item.Id, selectedDueDate);
+        }
+        else if (customDueDateItemIds is { Count: > 0 } itemIds)
+        {
+            await ViewModel.SetDueDateAsync(itemIds, selectedDueDate);
+        }
+        else
+        {
+            ViewModel.DraftDueDate = selectedDueDate;
+        }
     }
 
     private void CloseCustomDueDateOverlay()
     {
         _customDueDateItem = null;
+        _customDueDateItemIds = null;
         if (CustomDueDateOverlay is not null)
         {
             CustomDueDateOverlay.Visibility = Visibility.Collapsed;
@@ -1628,17 +2052,44 @@ public sealed partial class TodoWidgetContent : UserControl
             async () => await ViewModel.DeleteItemAsync(item.Id));
     }
 
-    private void BeginItemEdit(TodoItemViewModel item)
+    private void ShowDeleteSelectedConfirmation(IReadOnlyList<string> selectedIds, FrameworkElement anchor)
+    {
+        if (ViewModel is null || selectedIds.Count == 0)
+        {
+            return;
+        }
+
+        async Task DeleteSelectedAsync()
+        {
+            ClearCopySelection();
+            await ViewModel.DeleteItemsAsync(selectedIds);
+        }
+
+        if (!ViewModel.ConfirmBeforeDelete)
+        {
+            _ = DeleteSelectedAsync();
+            return;
+        }
+
+        ShowTodoConfirmMenu(
+            anchor,
+            App.Current.LocalizationService.Format("Todo.DeleteSelectedConfirm.Title", selectedIds.Count),
+            App.Current.LocalizationService.T("Common.Delete"),
+            DeleteSelectedAsync);
+    }
+
+        private void BeginItemEdit(TodoItemViewModel item)
     {
         ClearCopySelection();
         CloseCustomDueDateOverlay();
-        _isAddingFromInlineEditor = false;
-        _editingItem = item;
-        TodoInlineEditor.Title = App.Current.LocalizationService.T("Todo.Menu.Edit");
-        TodoInlineEditor.Text = item.Text;
-        ApplyEditorVisualStyle();
-        TodoInlineEditor.Visibility = Visibility.Visible;
-        TodoInlineEditor.FocusEditor(moveCaretToEnd: true);
+
+        if (!item.IsExpanded && ViewModel is not null)
+        {
+            ViewModel.ToggleExpanded(item.Id);
+            TodoListView.ScrollIntoView(item);
+        }
+
+        ViewModel?.BeginEdit(item.Id);
     }
 
     private async void TodoEditSaveButton_Click(object sender, RoutedEventArgs e)
@@ -1676,22 +2127,6 @@ public sealed partial class TodoWidgetContent : UserControl
             return;
         }
 
-        if (_isAddingFromInlineEditor)
-        {
-            ViewModel.InputText = TodoInlineEditor.Text;
-            var addedItem = await ViewModel.AddInputAsync();
-            if (addedItem is null)
-            {
-                TodoEditTextBox.Focus(FocusState.Programmatic);
-                TodoEditTextBox.SelectAll();
-                return;
-            }
-
-            CloseTodoEdit();
-            AddTextBox.Focus(FocusState.Programmatic);
-            return;
-        }
-
         if (_editingItem is not { } item)
         {
             CloseTodoEdit();
@@ -1712,7 +2147,6 @@ public sealed partial class TodoWidgetContent : UserControl
     private void CloseTodoEdit()
     {
         _editingItem = null;
-        _isAddingFromInlineEditor = false;
         if (TodoInlineEditor is null)
         {
             return;
@@ -1803,6 +2237,26 @@ public sealed partial class TodoWidgetContent : UserControl
         CustomDueDateOverlay.Background = new SolidColorBrush(GetNeutralOverlaySurfaceColor(isDark));
         CustomDueDateOverlay.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         CustomDueDateOverlay.BorderThickness = new Thickness(0.8);
+        ApplyDetailCompletionVisualState();
+    }
+
+    private void ApplyDetailCompletionVisualState()
+    {
+        if (DetailCompletionBox is null || ViewModel?.SelectedDetailItem is not { } item)
+        {
+            return;
+        }
+
+        bool isDark = ActualTheme == ElementTheme.Dark;
+        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor;
+        DetailCompletionBox.Background = item.IsCompleted
+            ? new SolidColorBrush(accentColor)
+            : new SolidColorBrush(Colors.Transparent);
+        DetailCompletionBox.BorderBrush = item.IsCompleted
+            ? new SolidColorBrush(Colors.Transparent)
+            : new SolidColorBrush(isDark
+                ? WithAlpha(accentColor, 0xD8)
+                : WithAlpha(accentColor, 0xB8));
     }
 
     private void ApplySelectionRectangleStyle()
@@ -2130,5 +2584,461 @@ public sealed partial class TodoWidgetContent : UserControl
         }
 
         return normalized.Length <= 34 ? normalized : $"{normalized[..34].Trim()}...";
+    }
+
+    private void DraftImportantButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        ViewModel.DraftImportant = !ViewModel.DraftImportant;
+    }
+
+    private void DraftDueDateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || ViewModel is null)
+        {
+            return;
+        }
+
+        var flyout = CreateDraftDueDateFlyout();
+        flyout.ShowAt(button, new FlyoutShowOptions { Placement = FlyoutPlacementMode.Bottom });
+    }
+
+    private MenuFlyout CreateDraftDueDateFlyout()
+    {
+        var flyout = new MenuFlyout();
+        var localization = App.Current.LocalizationService;
+
+        var todayItem = new MenuFlyoutItem { Text = localization.T("Todo.Due.Today") };
+        todayItem.Click += (_, _) => ViewModel?.SetDraftDueDatePreset(TodoDuePreset.Today);
+        flyout.Items.Add(todayItem);
+
+        var tomorrowItem = new MenuFlyoutItem { Text = localization.T("Todo.Due.Tomorrow") };
+        tomorrowItem.Click += (_, _) => ViewModel?.SetDraftDueDatePreset(TodoDuePreset.Tomorrow);
+        flyout.Items.Add(tomorrowItem);
+
+        var thisWeekItem = new MenuFlyoutItem { Text = localization.T("Todo.Due.ThisWeek") };
+        thisWeekItem.Click += (_, _) => ViewModel?.SetDraftDueDatePreset(TodoDuePreset.ThisWeek);
+        flyout.Items.Add(thisWeekItem);
+
+        var nextMondayItem = new MenuFlyoutItem { Text = localization.T("Todo.Due.NextMonday") };
+        nextMondayItem.Click += (_, _) => ViewModel?.SetDraftDueDatePreset(TodoDuePreset.NextMonday);
+        flyout.Items.Add(nextMondayItem);
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var customItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Todo.Due.Custom"),
+            Icon = new FontIcon { Glyph = "\uE8A5" }
+        };
+        customItem.Click += async (_, _) => await PickCustomDueDateAsync(null);
+        flyout.Items.Add(customItem);
+
+        if (ViewModel?.DraftDueDate is not null)
+        {
+            var clearItem = new MenuFlyoutItem
+            {
+                Text = localization.T("Todo.Due.Clear"),
+                Icon = new FontIcon { Glyph = "\uE711" }
+            };
+            clearItem.Click += (_, _) => ViewModel?.SetDraftDueDatePreset(TodoDuePreset.Clear);
+            flyout.Items.Add(clearItem);
+        }
+
+        return flyout;
+    }
+
+    private void MetadataImportant_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element ||
+            element.DataContext is not TodoItemViewModel item ||
+            ViewModel is null)
+        {
+            return;
+        }
+
+        _ = ViewModel.SetImportantAsync(item.Id, !item.IsImportant);
+    }
+
+    private void MetadataDueDate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button ||
+            button.DataContext is not TodoItemViewModel item)
+        {
+            return;
+        }
+
+        var flyout = CreateDueDateFlyout(item);
+        flyout.ShowAt(button, new FlyoutShowOptions { Placement = FlyoutPlacementMode.Bottom });
+    }
+
+    private MenuFlyout CreateDueDateFlyout(TodoItemViewModel item)
+    {
+        var flyout = new MenuFlyout();
+        var localization = App.Current.LocalizationService;
+
+        flyout.Items.Add(CreateDuePresetItem(item, TodoDuePreset.Today, localization.T("Todo.Due.Today")));
+        flyout.Items.Add(CreateDuePresetItem(item, TodoDuePreset.Tomorrow, localization.T("Todo.Due.Tomorrow")));
+        flyout.Items.Add(CreateDuePresetItem(item, TodoDuePreset.ThisWeek, localization.T("Todo.Due.ThisWeek")));
+        flyout.Items.Add(CreateDuePresetItem(item, TodoDuePreset.NextMonday, localization.T("Todo.Due.NextMonday")));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var customItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Todo.Due.Custom"),
+            Icon = new FontIcon { Glyph = "\uE8A5" }
+        };
+        customItem.Click += async (_, _) => await PickCustomDueDateAsync(item);
+        flyout.Items.Add(customItem);
+
+        if (item.DueDate is not null)
+        {
+            var clearItem = new MenuFlyoutItem
+            {
+                Text = localization.T("Todo.Due.Clear"),
+                Icon = new FontIcon { Glyph = "\uE711" }
+            };
+            clearItem.Click += async (_, _) =>
+            {
+                if (ViewModel is not null)
+                {
+                    await ViewModel.SetDueDatePresetAsync(item.Id, TodoDuePreset.Clear);
+                }
+            };
+            flyout.Items.Add(clearItem);
+        }
+
+        return flyout;
+    }
+
+    private void MetadataReminder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button ||
+            button.DataContext is not TodoItemViewModel item)
+        {
+            return;
+        }
+
+        var flyout = new MenuFlyout();
+        flyout.Items.Add(CreateReminderOffsetItem(item, null));
+        flyout.Items.Add(CreateReminderOffsetItem(item, TodoReminderOptions.ReminderOff));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        foreach (int offsetMinutes in TodoReminderOptions.SupportedOffsetMinutes)
+        {
+            flyout.Items.Add(CreateReminderOffsetItem(item, offsetMinutes));
+        }
+
+        flyout.ShowAt(button, new FlyoutShowOptions { Placement = FlyoutPlacementMode.Bottom });
+    }
+
+    private void MetadataRecurrence_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button ||
+            button.DataContext is not TodoItemViewModel item)
+        {
+            return;
+        }
+
+        var flyout = new MenuFlyout();
+        foreach (string recurrenceMode in TodoRecurrenceMode.SupportedModes)
+        {
+            flyout.Items.Add(CreateRecurrenceItem(item, recurrenceMode));
+        }
+
+        flyout.ShowAt(button, new FlyoutShowOptions { Placement = FlyoutPlacementMode.Bottom });
+    }
+
+    private void MetadataColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button ||
+            button.DataContext is not TodoItemViewModel item)
+        {
+            return;
+        }
+
+        var flyout = new MenuFlyout();
+        flyout.Items.Add(CreateColorMarkerItem(item, null));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        foreach (string colorMarker in TodoItem.SupportedColorMarkers)
+        {
+            flyout.Items.Add(CreateColorMarkerItem(item, colorMarker));
+        }
+
+        flyout.ShowAt(button, new FlyoutShowOptions { Placement = FlyoutPlacementMode.Bottom });
+    }
+
+    private async void InlineEditTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element ||
+            element.DataContext is not TodoItemViewModel item ||
+            ViewModel is null)
+        {
+            return;
+        }
+
+        if (!item.IsEditing)
+        {
+            return;
+        }
+
+        _ = await ViewModel.CommitEditAsync(item.Id);
+    }
+
+    private async void InlineEditTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element ||
+            element.DataContext is not TodoItemViewModel item ||
+            ViewModel is null)
+        {
+            return;
+        }
+
+        if (e.Key == VirtualKey.Escape)
+        {
+            ViewModel.CancelEdit(item.Id);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == VirtualKey.Enter)
+        {
+            _ = await ViewModel.CommitEditAsync(item.Id);
+            e.Handled = true;
+        }
+    }
+
+    private async void DetailBackButton_Click(object sender, RoutedEventArgs e)
+    {
+        await CloseDetailAsync();
+    }
+
+    private async Task CloseDetailAsync()
+    {
+        if (ViewModel?.SelectedDetailItem is not { } item)
+        {
+            return;
+        }
+
+        TodoItemViewModel? finalizedItem = await ViewModel.FinalizeDetailAsync(DetailTitleTextBox.Text);
+        ClearTodoListContainerSelection();
+        Focus(FocusState.Programmatic);
+        if (finalizedItem is not null)
+        {
+            TodoListView.ScrollIntoView(finalizedItem);
+        }
+    }
+
+    private async Task SaveDetailEditorsAsync(TodoItemViewModel item)
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        await ViewModel.UpdateItemTextAsync(item.Id, DetailTitleTextBox.Text);
+    }
+
+    private async void DetailCompletionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel?.SelectedDetailItem is not { } item || sender is not FrameworkElement element)
+        {
+            return;
+        }
+
+        PlayCompletionToggleAnimation(element);
+        await ViewModel.SetCompletedAsync(item.Id, !item.IsCompleted);
+        ApplyDetailCompletionVisualState();
+    }
+
+    private async void DetailImportantButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel?.SelectedDetailItem is not { } item)
+        {
+            return;
+        }
+
+        await ViewModel.SetImportantAsync(item.Id, !item.IsImportant);
+    }
+
+    private async void DetailTitleTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel?.SelectedDetailItem is { } item)
+        {
+            await ViewModel.UpdateItemTextAsync(item.Id, DetailTitleTextBox.Text);
+        }
+    }
+
+    private async void DetailTitleTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape)
+        {
+            await CloseDetailAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == VirtualKey.Enter && Win32Helper.IsKeyPressed(VirtualKey.Control))
+        {
+            if (ViewModel?.SelectedDetailItem is { } item)
+            {
+                await ViewModel.UpdateItemTextAsync(item.Id, DetailTitleTextBox.Text);
+            }
+
+            e.Handled = true;
+        }
+    }
+
+    private void DetailTitleResizeHandle_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement handle)
+        {
+            return;
+        }
+
+        _isResizingDetailTitle = true;
+        _detailTitleResizeStartY = e.GetCurrentPoint(DetailPage).Position.Y;
+        _detailTitleResizeStartHeight = DetailTitleTextBox.ActualHeight;
+        handle.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void DetailTitleResizeHandle_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isResizingDetailTitle)
+        {
+            return;
+        }
+
+        double currentY = e.GetCurrentPoint(DetailPage).Position.Y;
+        double maxHeight = Math.Max(64, Math.Min(180, DetailPage.ActualHeight * 0.45));
+        DetailTitleTextBox.Height = Math.Clamp(
+            _detailTitleResizeStartHeight + currentY - _detailTitleResizeStartY,
+            36,
+            maxHeight);
+        e.Handled = true;
+    }
+
+    private void DetailTitleResizeHandle_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        _isResizingDetailTitle = false;
+        if (sender is FrameworkElement handle)
+        {
+            handle.ReleasePointerCapture(e.Pointer);
+        }
+
+        e.Handled = true;
+    }
+
+    private void DetailTitleResizeHandle_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        _isResizingDetailTitle = false;
+    }
+
+    private async void DetailAddFileButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel?.SelectedDetailItem is not { } item)
+        {
+            return;
+        }
+
+        try
+        {
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.Desktop
+            };
+            picker.FileTypeFilter.Add("*");
+            IntPtr foreground = Win32Helper.GetForegroundWindow();
+            IntPtr owner = Win32Helper.GetAncestor(foreground, Win32Helper.GA_ROOT);
+            InitializeWithWindow.Initialize(picker, owner == IntPtr.Zero ? foreground : owner);
+
+            IReadOnlyList<StorageFile> files = await picker.PickMultipleFilesAsync();
+            foreach (StorageFile file in files)
+            {
+                await ViewModel.AddAttachmentAsync(item.Id, file.Path, file.Name, GetAttachmentType(file.FileType));
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Todo] Add attachment failed: {ex}");
+        }
+    }
+
+    private static string GetAttachmentType(string? extension)
+    {
+        return extension?.ToLowerInvariant() switch
+        {
+            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif" or ".heic" or ".heif" => "image",
+            ".pdf" => "pdf",
+            _ => "file"
+        };
+    }
+
+    private async void DetailOpenAttachmentButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: TodoAttachmentViewModel attachment })
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(attachment.FilePath))
+            {
+                StorageFile file = await StorageFile.GetFileFromPathAsync(attachment.FilePath);
+                await Launcher.LaunchFileAsync(file);
+                return;
+            }
+
+            if (Directory.Exists(attachment.FilePath))
+            {
+                StorageFolder folder = await StorageFolder.GetFolderFromPathAsync(attachment.FilePath);
+                await Launcher.LaunchFolderAsync(folder);
+                return;
+            }
+
+            ShowUndoToast(
+                ViewModel?.DetailFileMissingText ?? string.Empty,
+                durationMs: CopyToastMs,
+                clearUndoOnHide: false);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Todo] Open attachment failed: {ex}");
+        }
+    }
+
+    private async void TodoAttachmentPreview_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: TodoAttachmentViewModel attachment })
+        {
+            await attachment.EnsureThumbnailAsync();
+        }
+    }
+
+    private async void DetailRemoveAttachmentButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: TodoAttachmentViewModel attachment } ||
+            ViewModel?.SelectedDetailItem is not { } item)
+        {
+            return;
+        }
+
+        await ViewModel.DeleteAttachmentAsync(item.Id, attachment.Id);
+    }
+
+    private async void DetailDeleteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement anchor || ViewModel?.SelectedDetailItem is not { } item)
+        {
+            return;
+        }
+
+        await SaveDetailEditorsAsync(item);
+        await DeleteItemAsync(item, anchor);
     }
 }

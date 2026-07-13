@@ -200,5 +200,6 @@ public sealed class ThemeService
     {
         ApplyToAllWindows();
         AppearanceChanged?.Invoke();
+        App.ScheduleLightMemoryCleanup();
     }
 }

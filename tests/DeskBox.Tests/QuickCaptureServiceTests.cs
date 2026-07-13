@@ -70,6 +70,93 @@ public sealed class QuickCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AddDetailedItemAsync_PersistsTitleAppearanceAndSource()
+    {
+        var service = CreateService();
+
+        QuickCaptureItem item = await service.AddDetailedItemAsync(
+            "Meeting notes",
+            "Decide the launch date",
+            QuickCaptureAppearancePreset.StickyYellow);
+        var reloaded = CreateService();
+        QuickCaptureStoreData data = await reloaded.GetDataAsync();
+
+        QuickCaptureItem saved = Assert.Single(data.Items);
+        Assert.Equal(item.Id, saved.Id);
+        Assert.Equal("Meeting notes", saved.Title);
+        Assert.Equal("Decide the launch date", saved.Body);
+        Assert.Equal(QuickCaptureAppearancePreset.StickyYellow, saved.AppearancePreset);
+        Assert.Equal(QuickCaptureSourceKind.Manual, saved.SourceKind);
+        Assert.Equal(2, data.Version);
+    }
+
+    [Fact]
+    public async Task UpdateItemDetailsAsync_UpdatesTitleBodyAndAppearance()
+    {
+        var service = CreateService();
+        QuickCaptureItem item = await service.AddItemAsync("old body");
+
+        bool updated = await service.UpdateItemDetailsAsync(
+            item.Id,
+            "New title",
+            "https://example.com/new",
+            QuickCaptureAppearancePreset.Rose);
+        QuickCaptureItem saved = Assert.Single((await service.GetDataAsync()).Items);
+
+        Assert.True(updated);
+        Assert.Equal("New title", saved.Title);
+        Assert.Equal(QuickCaptureItemType.Link, saved.Type);
+        Assert.Equal("https://example.com/new", saved.Url);
+        Assert.Equal(QuickCaptureAppearancePreset.Rose, saved.AppearancePreset);
+    }
+
+    [Fact]
+    public async Task MoveItemAsync_PersistsRecordOrder()
+    {
+        var service = CreateService();
+        QuickCaptureItem first = await service.AddItemAsync("first");
+        await service.AddItemAsync("second");
+        await service.AddItemAsync("third");
+
+        bool moved = await service.MoveItemAsync(first.Id, 0);
+        QuickCaptureStoreData data = await service.GetDataAsync();
+        string[] orderedBodies = data.Items
+            .OrderBy(item => item.SortOrder)
+            .Select(item => item.Body)
+            .ToArray();
+
+        Assert.True(moved);
+        Assert.Equal(["first", "third", "second"], orderedBodies);
+    }
+
+    [Fact]
+    public async Task Store_NormalizesClipboardItemsToDefaultAppearance()
+    {
+        var store = new QuickCaptureStore(_storeRoot);
+        await store.SaveAsync(new QuickCaptureStoreData
+        {
+            Version = 1,
+            RecentItems =
+            [
+                new QuickCaptureItem
+                {
+                    Body = "clipboard text",
+                    AppearancePreset = QuickCaptureAppearancePreset.Mint,
+                    SourceKind = QuickCaptureSourceKind.Manual
+                }
+            ]
+        });
+
+        QuickCaptureStoreData data = await store.LoadAsync();
+        QuickCaptureItem recent = Assert.Single(data.RecentItems);
+
+        Assert.Equal(2, data.Version);
+        Assert.Equal(QuickCaptureAppearancePreset.Default, recent.AppearancePreset);
+        Assert.Equal(QuickCaptureSourceKind.Clipboard, recent.SourceKind);
+        Assert.True(recent.IsRecent);
+    }
+
+    [Fact]
     public async Task SetPinnedAsync_PersistsPinnedState()
     {
         var service = CreateService();
@@ -113,6 +200,41 @@ public sealed class QuickCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SetPinnedAsync_BatchUpdatesSelectedItemsWithSingleOrder()
+    {
+        var service = CreateService();
+        var first = await service.AddItemAsync("first");
+        var second = await service.AddItemAsync("second");
+        var third = await service.AddItemAsync("third");
+
+        int updated = await service.SetPinnedAsync([first.Id, third.Id], true);
+        var data = await service.GetDataAsync();
+
+        Assert.Equal(2, updated);
+        Assert.Equal(
+            new[] { third.Id, first.Id },
+            data.Items.Where(item => item.IsPinned).OrderBy(item => item.PinnedSortOrder).Select(item => item.Id));
+        Assert.False(data.Items.Single(item => item.Id == second.Id).IsPinned);
+    }
+
+    [Fact]
+    public async Task SetAppearanceAsync_BatchUpdatesSelectedItemsOnly()
+    {
+        var service = CreateService();
+        var first = await service.AddItemAsync("first");
+        var second = await service.AddItemAsync("second");
+        var third = await service.AddItemAsync("third");
+
+        int updated = await service.SetAppearanceAsync([first.Id, third.Id], QuickCaptureAppearancePreset.Mint);
+        var data = await service.GetDataAsync();
+
+        Assert.Equal(2, updated);
+        Assert.Equal(QuickCaptureAppearancePreset.Mint, data.Items.Single(item => item.Id == first.Id).AppearancePreset);
+        Assert.Equal(QuickCaptureAppearancePreset.Default, data.Items.Single(item => item.Id == second.Id).AppearancePreset);
+        Assert.Equal(QuickCaptureAppearancePreset.Mint, data.Items.Single(item => item.Id == third.Id).AppearancePreset);
+    }
+
+    [Fact]
     public async Task MovePinnedItemAsync_ReordersPinnedItemsWithoutChangingRecordSortOrder()
     {
         var service = CreateService();
@@ -147,6 +269,29 @@ public sealed class QuickCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MovePinnedItemToIndexAsync_PersistsPinnedOrderWithoutChangingRecordOrder()
+    {
+        var service = CreateService();
+        var first = await service.AddItemAsync("first");
+        var second = await service.AddItemAsync("second");
+        var third = await service.AddItemAsync("third");
+
+        await service.SetPinnedAsync(first.Id, true);
+        await service.SetPinnedAsync(second.Id, true);
+        await service.SetPinnedAsync(third.Id, true);
+        bool moved = await service.MovePinnedItemToIndexAsync(first.Id, 0);
+        var data = await service.GetDataAsync();
+
+        Assert.True(moved);
+        Assert.Equal(
+            new[] { third.Id, second.Id, first.Id },
+            data.Items.OrderBy(item => item.SortOrder).Select(item => item.Id));
+        Assert.Equal(
+            new[] { first.Id, third.Id, second.Id },
+            data.Items.OrderBy(item => item.PinnedSortOrder).Select(item => item.Id));
+    }
+
+    [Fact]
     public async Task DeleteItemAsync_RemovesMatchingItemOnly()
     {
         var service = CreateService();
@@ -161,6 +306,23 @@ public sealed class QuickCaptureServiceTests : IDisposable
         Assert.False(deleted.IsRecent);
         var item = Assert.Single(data.Items);
         Assert.Equal(first.Id, item.Id);
+    }
+
+    [Fact]
+    public async Task DeleteItemsAsync_RemovesSelectedRecordsAndNormalizesOrder()
+    {
+        var service = CreateService();
+        var first = await service.AddItemAsync("first");
+        var second = await service.AddItemAsync("second");
+        var third = await service.AddItemAsync("third");
+
+        var deleted = await service.DeleteItemsAsync([first.Id, third.Id], isRecent: false);
+        var data = await service.GetDataAsync();
+
+        Assert.Equal(2, deleted.Count);
+        var remaining = Assert.Single(data.Items);
+        Assert.Equal(second.Id, remaining.Id);
+        Assert.Equal(0, remaining.SortOrder);
     }
 
     [Fact]
@@ -447,6 +609,52 @@ public sealed class QuickCaptureServiceTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(thumbnailPath));
         Assert.True(File.Exists(thumbnailPath));
         Assert.StartsWith(Path.Combine(_storeRoot, "thumbnails"), thumbnailPath!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UpdateImageItemDetailsAsync_PreservesImageAndAddsBodyText()
+    {
+        var service = CreateService();
+        string sourceImagePath = Path.Combine(_tempRoot, "image-with-text.png");
+        await File.WriteAllBytesAsync(sourceImagePath, [1, 2, 3, 4]);
+        var item = await service.AddImageFileItemAsync(sourceImagePath);
+
+        bool updated = await service.UpdateItemDetailsAsync(
+            item!.Id,
+            title: null,
+            body: "图片说明",
+            appearancePreset: QuickCaptureAppearancePreset.Default);
+        var saved = Assert.Single((await service.GetDataAsync()).Items);
+
+        Assert.True(updated);
+        Assert.Equal(QuickCaptureItemType.Image, saved.Type);
+        Assert.Equal(item.ImagePath, saved.ImagePath);
+        Assert.Equal("图片说明", saved.Body);
+    }
+
+    [Fact]
+    public async Task ReplaceItemImageAsync_PreservesTextAndReplacesCachedImage()
+    {
+        var service = CreateService();
+        string firstPath = Path.Combine(_tempRoot, "first.png");
+        string replacementPath = Path.Combine(_tempRoot, "replacement.png");
+        await File.WriteAllBytesAsync(firstPath, [1, 2, 3, 4]);
+        await File.WriteAllBytesAsync(replacementPath, [5, 6, 7, 8]);
+        var item = await service.AddImageFileItemAsync(firstPath);
+        await service.UpdateItemDetailsAsync(
+            item!.Id,
+            title: null,
+            body: "保留的文字",
+            appearancePreset: QuickCaptureAppearancePreset.Default);
+
+        QuickCaptureItem? replaced = await service.ReplaceItemImageAsync(item.Id, replacementPath);
+        var saved = Assert.Single((await service.GetDataAsync()).Items);
+
+        Assert.NotNull(replaced);
+        Assert.NotEqual(item.ImagePath, saved.ImagePath);
+        Assert.Equal("保留的文字", saved.Body);
+        Assert.Equal([5, 6, 7, 8], await File.ReadAllBytesAsync(saved.ImagePath!));
+        Assert.False(File.Exists(item.ImagePath));
     }
 
     [Fact]

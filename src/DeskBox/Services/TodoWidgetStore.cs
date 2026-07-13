@@ -83,7 +83,7 @@ public sealed class TodoWidgetStore
     private static TodoWidgetData Normalize(TodoWidgetData? data)
     {
         data ??= new TodoWidgetData();
-        data.Version = Math.Max(2, data.Version);
+        data.Version = Math.Max(3, data.Version);
         data.Items ??= [];
 
         int fallbackSortOrder = 0;
@@ -98,6 +98,11 @@ public sealed class TodoWidgetStore
             item.ColorMarker = TodoItem.NormalizeColorMarker(item.ColorMarker);
             item.Recurrence = TodoRecurrence.Normalize(item.Recurrence, item.DueDate);
             item.RecurrenceSeriesId = TodoRecurrenceService.NormalizeSeriesId(item.RecurrenceSeriesId);
+            item.Notes = string.IsNullOrWhiteSpace(item.Notes) ? null : item.Notes.Trim();
+            item.Steps ??= [];
+            item.Attachments ??= [];
+            NormalizeSteps(item.Steps);
+            NormalizeAttachments(item.Attachments);
             item.ReminderOffsetMinutes = TodoReminderOptions.NormalizeOffsetMinutes(item.ReminderOffsetMinutes);
             item.GeneratedNextItemId = string.IsNullOrWhiteSpace(item.GeneratedNextItemId)
                 ? null
@@ -173,6 +178,46 @@ public sealed class TodoWidgetStore
         NormalizeRecurrenceSeriesIds(data.Items);
         NormalizeSortOrders(data.Items);
         return data;
+    }
+
+    public Task ClearAsync()
+    {
+        return SaveAsync(new TodoWidgetData());
+    }
+
+    private static void NormalizeSteps(List<TodoStep> steps)
+    {
+        int sortOrder = 0;
+        foreach (TodoStep step in steps.Where(step => step is not null))
+        {
+            step.Id = string.IsNullOrWhiteSpace(step.Id) ? Guid.NewGuid().ToString("N") : step.Id.Trim();
+            step.Text = step.Text?.Trim() ?? string.Empty;
+            step.SortOrder = sortOrder++;
+        }
+
+        steps.RemoveAll(step => step is null || string.IsNullOrWhiteSpace(step.Text));
+        for (int index = 0; index < steps.Count; index++)
+        {
+            steps[index].SortOrder = index;
+        }
+    }
+
+    private static void NormalizeAttachments(List<TodoAttachment> attachments)
+    {
+        foreach (TodoAttachment attachment in attachments.Where(attachment => attachment is not null))
+        {
+            attachment.Id = string.IsNullOrWhiteSpace(attachment.Id)
+                ? Guid.NewGuid().ToString("N")
+                : attachment.Id.Trim();
+            attachment.FilePath = attachment.FilePath?.Trim() ?? string.Empty;
+            attachment.DisplayName = string.IsNullOrWhiteSpace(attachment.DisplayName)
+                ? Path.GetFileName(attachment.FilePath)
+                : attachment.DisplayName.Trim();
+            attachment.Type = string.IsNullOrWhiteSpace(attachment.Type) ? "file" : attachment.Type.Trim();
+            attachment.AddedAt = attachment.AddedAt == default ? DateTimeOffset.UtcNow : attachment.AddedAt;
+        }
+
+        attachments.RemoveAll(attachment => attachment is null || string.IsNullOrWhiteSpace(attachment.FilePath));
     }
 
     private static void NormalizeRecurrenceSeriesIds(List<TodoItem> items)

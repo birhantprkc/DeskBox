@@ -99,6 +99,7 @@
                     Padding="0"
                     Background="Transparent"
                     RightTapped="TitleBarGrid_RightTapped"
+                    DoubleTapped="TitleText_DoubleTapped"
                     PointerPressed="TitleBarGrid_PointerPressed"
                     PointerMoved="TitleBarGrid_PointerMoved"
                     PointerReleased="TitleBarGrid_PointerReleased"
@@ -139,8 +140,7 @@
                                 Text="{Binding Name}"
                                 TextAlignment="Left"
                                 TextTrimming="CharacterEllipsis"
-                                VerticalAlignment="Center"
-                                DoubleTapped="TitleText_DoubleTapped" />
+                                VerticalAlignment="Center" />
 
                             <TextBox
                                 x:Name="TitleEditBox"

@@ -58,17 +58,20 @@ public class AppSettings
     /// <summary>Maximum number of recent clipboard text/link entries kept by Quick Capture.</summary>
     public int QuickCaptureRecentLimit { get; set; } = 30;
 
+    /// <summary>Whether Quick Capture cards show their creation time.</summary>
+    public bool QuickCaptureShowCreatedTime { get; set; } = true;
+
     /// <summary>Default Quick Capture view used when the widget opens. Valid values: <c>"Records"</c>, <c>"Pinned"</c>, <c>"Recent"</c>.</summary>
     public string QuickCaptureDefaultView { get; set; } = "Records";
 
     /// <summary>Quick Capture tab style. Valid values: <c>"Pivot"</c>, <c>"Button"</c>.</summary>
-    public string QuickCaptureTabStyle { get; set; } = "Pivot";
+    public string QuickCaptureTabStyle { get; set; } = "Button";
 
     /// <summary>Where newly added Todo tasks are inserted. Valid values: <c>"Top"</c>, <c>"Bottom"</c>.</summary>
     public string TodoNewTaskPosition { get; set; } = "Top";
 
     /// <summary>Todo tab style. Valid values: <c>"Pivot"</c>, <c>"Button"</c>.</summary>
-    public string TodoTabStyle { get; set; } = "Pivot";
+    public string TodoTabStyle { get; set; } = "Button";
 
     /// <summary>Default Todo filter used when the widget opens. Valid values: <c>"All"</c>, <c>"Today"</c>, <c>"Important"</c>, <c>"Completed"</c>.</summary>
     public string TodoDefaultFilter { get; set; } = "All";
@@ -77,7 +80,7 @@ public class AppSettings
     public bool TodoShowCompletedTasks { get; set; } = true;
 
     /// <summary>Whether the Todo footer item count is visible.</summary>
-    public bool TodoShowFooterStats { get; set; } = true;
+    public bool TodoShowFooterStats { get; set; }
 
     /// <summary>Whether the Todo footer clear-completed command is visible.</summary>
     public bool TodoShowClearCompletedButton { get; set; } = true;
@@ -93,12 +96,6 @@ public class AppSettings
 
     /// <summary>Whether the Music widget uses album artwork color as a soft backdrop.</summary>
     public bool MusicUseArtworkBackdrop { get; set; } = true;
-
-    /// <summary>Whether the Music widget shows playback rhythm bars.</summary>
-    public bool MusicShowRhythmBars { get; set; } = true;
-
-    /// <summary>Music widget playback rhythm visual style. Valid values: <c>"SoftWave"</c>, <c>"GlassSpectrum"</c>, <c>"DotPulse"</c>, <c>"LineSpectrum"</c>, <c>"StackedEqualizer"</c>.</summary>
-    public string MusicRhythmStyle { get; set; } = "SoftWave";
 
     /// <summary>Whether the Music widget album cover reacts lightly to pointer hover.</summary>
     public bool MusicEnableCoverHoverMotion { get; set; } = true;
@@ -139,7 +136,7 @@ public class AppSettings
     /// Border style for widget windows.
     /// Valid values: <c>"None"</c>, <c>"Thin"</c>, <c>"Medium"</c>, <c>"Thick"</c>.
     /// </summary>
-    public string WidgetBorderStyle { get; set; } = "Medium";
+    public string WidgetBorderStyle { get; set; } = "Thin";
 
     /// <summary>
     /// Native DWM corner style for widget windows.

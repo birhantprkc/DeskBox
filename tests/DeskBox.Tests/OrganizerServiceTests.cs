@@ -64,6 +64,23 @@ public sealed class OrganizerServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task OrganizeDropAsync_DoesNotBroadcastGlobalSettingsChanged()
+    {
+        string sourceDirectory = Directory.CreateDirectory(Path.Combine(_tempRoot, "source-notify")).FullName;
+        string targetDirectory = Directory.CreateDirectory(Path.Combine(_tempRoot, "widget-notify")).FullName;
+        string sourcePath = Path.Combine(sourceDirectory, "note.txt");
+        File.WriteAllText(sourcePath, "content");
+        var widget = CreateWidget(targetDirectory);
+        int settingsChangedCount = 0;
+        _settingsService.SettingsChanged += () => settingsChangedCount++;
+
+        await _organizerService.OrganizeDropAsync(widget, "Widget", [sourcePath], move: false);
+
+        Assert.Equal(0, settingsChangedCount);
+        Assert.Single(_settingsService.Settings.RecentOrganizationHistory);
+    }
+
+    [Fact]
     public async Task UndoLatestAsync_RestoresMovedFileAndMarksHistoryUndone()
     {
         string sourceDirectory = Directory.CreateDirectory(Path.Combine(_tempRoot, "source")).FullName;

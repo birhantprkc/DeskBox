@@ -22,7 +22,7 @@ public sealed class TodoWidgetStoreTests : IDisposable
 
         var data = await store.LoadAsync();
 
-        Assert.Equal(2, data.Version);
+        Assert.Equal(3, data.Version);
         Assert.Empty(data.Items);
         Assert.EndsWith(Path.Combine("todo-widget", "todo.json"), store.StorePath);
     }
@@ -91,7 +91,7 @@ public sealed class TodoWidgetStoreTests : IDisposable
 
         var data = await store.LoadAsync();
 
-        Assert.Equal(2, data.Version);
+        Assert.Equal(3, data.Version);
         Assert.Empty(data.Items);
     }
 
@@ -139,7 +139,7 @@ public sealed class TodoWidgetStoreTests : IDisposable
 
         var data = await store.LoadAsync();
 
-        Assert.Equal(2, data.Version);
+        Assert.Equal(3, data.Version);
         Assert.Equal(2, data.Items.Count);
         Assert.Equal("duplicate", data.Items[0].Id);
         Assert.Equal("keep", data.Items[0].Text);
@@ -171,6 +171,20 @@ public sealed class TodoWidgetStoreTests : IDisposable
 
         Assert.Equal("first-item", Assert.Single(first.Items).Id);
         Assert.Equal("second-item", Assert.Single(second.Items).Id);
+    }
+
+    [Fact]
+    public async Task ClearAsync_RemovesAllItems()
+    {
+        var store = CreateStore("todo-widget");
+        await store.SaveAsync(new TodoWidgetData
+        {
+            Items = [new TodoItem { Id = "item", Text = "task" }]
+        });
+
+        await store.ClearAsync();
+
+        Assert.Empty((await store.LoadAsync()).Items);
     }
 
     [Fact]
@@ -304,6 +318,54 @@ public sealed class TodoWidgetStoreTests : IDisposable
 
         Assert.False(string.IsNullOrWhiteSpace(first.RecurrenceSeriesId));
         Assert.Equal(first.RecurrenceSeriesId, second.RecurrenceSeriesId);
+    }
+
+    [Fact]
+    public async Task SaveAsync_MigratesAndNormalizesDetailData()
+    {
+        var store = CreateStore("todo-widget");
+        await store.SaveAsync(new TodoWidgetData
+        {
+            Version = 2,
+            Items =
+            [
+                new TodoItem
+                {
+                    Id = "detail-item",
+                    Text = "task",
+                    Notes = "  useful note  ",
+                    Steps =
+                    [
+                        new TodoStep { Id = "", Text = " second ", SortOrder = 8 },
+                        new TodoStep { Text = "   ", SortOrder = 9 }
+                    ],
+                    Attachments =
+                    [
+                        new TodoAttachment
+                        {
+                            Id = "",
+                            FilePath = " C:\\Temp\\spec.pdf ",
+                            DisplayName = "",
+                            Type = "pdf"
+                        }
+                    ]
+                }
+            ]
+        });
+
+        TodoWidgetData data = await store.LoadAsync();
+        TodoItem item = Assert.Single(data.Items);
+
+        Assert.Equal(3, data.Version);
+        Assert.Equal("useful note", item.Notes);
+        TodoStep step = Assert.Single(item.Steps);
+        Assert.False(string.IsNullOrWhiteSpace(step.Id));
+        Assert.Equal("second", step.Text);
+        Assert.Equal(0, step.SortOrder);
+        TodoAttachment attachment = Assert.Single(item.Attachments);
+        Assert.False(string.IsNullOrWhiteSpace(attachment.Id));
+        Assert.Equal("spec.pdf", attachment.DisplayName);
+        Assert.Equal("pdf", attachment.Type);
     }
 
     public void Dispose()

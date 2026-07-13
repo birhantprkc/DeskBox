@@ -23,7 +23,9 @@ public enum TodoColorFilter
     Yellow,
     Green,
     Blue,
-    Purple
+    Purple,
+    Teal,
+    Pink
 }
 
 public enum TodoDuePreset
@@ -31,6 +33,7 @@ public enum TodoDuePreset
     Today,
     Tomorrow,
     ThisWeek,
+    NextMonday,
     Clear
 }
 
@@ -49,11 +52,15 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     private string _inputText = string.Empty;
     private double _textSize = SettingsService.DefaultTextSize;
     private string _newTaskPosition = SettingsService.TodoNewTaskPositionTop;
-    private string _tabStyle = SettingsService.WidgetTabStylePivot;
+    private string _tabStyle = SettingsService.WidgetTabStyleButton;
     private bool _showCompletedTasks = true;
     private bool _showFooterStats = true;
     private bool _showClearCompletedButton = true;
     private bool _confirmBeforeDelete;
+    private bool _draftImportant;
+    private DateTimeOffset? _draftDueDate;
+    private TodoItemViewModel? _selectedDetailItem;
+    private bool _isCreatingDetailItem;
     private TodoUndoSnapshot? _undoSnapshot;
     private bool _isInitialized;
     private bool _isDisposed;
@@ -100,6 +107,89 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public bool CanAddInput => !string.IsNullOrWhiteSpace(InputText);
 
+    public bool DraftImportant
+    {
+        get => _draftImportant;
+        set
+        {
+            if (SetProperty(ref _draftImportant, value))
+            {
+                OnPropertyChanged(nameof(DraftImportantGlyph));
+            }
+        }
+    }
+
+    public DateTimeOffset? DraftDueDate
+    {
+        get => _draftDueDate;
+        set
+        {
+            if (SetProperty(ref _draftDueDate, value))
+            {
+                OnPropertyChanged(nameof(DraftDueDateText));
+                OnPropertyChanged(nameof(DraftDueDateActive));
+            }
+        }
+    }
+
+    public string DraftImportantGlyph => _draftImportant ? "\uE735" : "\uE734";
+
+    public string DraftDueDateText
+    {
+        get
+        {
+            if (_draftDueDate is not { } dueDate)
+            {
+                return _localizationService.T("Todo.Menu.DueDate");
+            }
+
+            DateTimeOffset local = dueDate.ToLocalTime();
+            var today = DateTimeOffset.Now.Date;
+            if (local.Date == today)
+            {
+                return _localizationService.T("Todo.Due.Today");
+            }
+
+            if (local.Date == today.AddDays(1))
+            {
+                return _localizationService.T("Todo.Due.Tomorrow");
+            }
+
+            bool isEndOfDay = local.Hour == 23 && local.Minute == 59;
+            return isEndOfDay
+                ? $"{local.Month}/{local.Day}"
+                : $"{local.Month}/{local.Day} {local:HH:mm}";
+        }
+    }
+
+    public bool DraftDueDateActive => _draftDueDate is not null;
+
+    public TodoItemViewModel? SelectedDetailItem
+    {
+        get => _selectedDetailItem;
+        private set
+        {
+            if (SetProperty(ref _selectedDetailItem, value))
+            {
+                OnPropertyChanged(nameof(IsDetailPageOpen));
+                OnPropertyChanged(nameof(ListPageVisibility));
+                OnPropertyChanged(nameof(DetailPageVisibility));
+            }
+        }
+    }
+
+    public bool IsDetailPageOpen => SelectedDetailItem is not null;
+
+    public bool IsCreatingDetailItem
+    {
+        get => _isCreatingDetailItem;
+        private set => SetProperty(ref _isCreatingDetailItem, value);
+    }
+
+    public Visibility ListPageVisibility => IsDetailPageOpen ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility DetailPageVisibility => IsDetailPageOpen ? Visibility.Visible : Visibility.Collapsed;
+
     public TodoFilter SelectedFilter
     {
         get => _selectedFilter;
@@ -108,6 +198,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _selectedFilter, value))
             {
                 RefreshVisibleItems();
+                OnPropertyChanged(nameof(IsAllTasksCompletedEmptyState));
+                OnPropertyChanged(nameof(EmptyStateTitle));
                 OnPropertyChanged(nameof(EmptyStateText));
                 OnPropertyChanged(nameof(IsAllFilterSelected));
                 OnPropertyChanged(nameof(IsActiveFilterSelected));
@@ -126,6 +218,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _selectedColorFilter, value))
             {
                 RefreshVisibleItems();
+                OnPropertyChanged(nameof(IsAllTasksCompletedEmptyState));
+                OnPropertyChanged(nameof(EmptyStateTitle));
                 OnPropertyChanged(nameof(EmptyStateText));
                 OnPropertyChanged(nameof(IsRedColorFilterSelected));
                 OnPropertyChanged(nameof(IsOrangeColorFilterSelected));
@@ -133,6 +227,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsGreenColorFilterSelected));
                 OnPropertyChanged(nameof(IsBlueColorFilterSelected));
                 OnPropertyChanged(nameof(IsPurpleColorFilterSelected));
+                OnPropertyChanged(nameof(IsTealColorFilterSelected));
+                OnPropertyChanged(nameof(IsPinkColorFilterSelected));
                 OnPropertyChanged(nameof(ColorFilterVisibility));
                 RefreshColorFilterVisibilityProperties();
             }
@@ -162,6 +258,10 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     public int BlueColorFilterCount => GetColorFilterCount(TodoItem.BlueColorMarker);
 
     public int PurpleColorFilterCount => GetColorFilterCount(TodoItem.PurpleColorMarker);
+
+    public int TealColorFilterCount => GetColorFilterCount(TodoItem.TealColorMarker);
+
+    public int PinkColorFilterCount => GetColorFilterCount(TodoItem.PinkColorMarker);
 
     public int AnyColorFilterCount => Items.Count(item => item.HasColorMarker && ShouldCountInNonCompletedFilter(item));
 
@@ -197,6 +297,10 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public Visibility PurpleColorFilterVisibility => Visibility.Visible;
 
+    public Visibility TealColorFilterVisibility => Visibility.Visible;
+
+    public Visibility PinkColorFilterVisibility => Visibility.Visible;
+
     public string AddPlaceholderText => _localizationService.T("Todo.AddPlaceholder");
 
     public string ExpandInputTooltipText => _localizationService.T("QuickCapture.ExpandInput");
@@ -211,7 +315,46 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public string CompletedFilterText => FormatFilterText("Todo.Filter.Completed", CompletedCount);
 
-    public string EmptyStateTitle => _localizationService.T("Todo.Empty.Title");
+    public string ListHeaderText => _localizationService.Format("Todo.List.Header", VisibleItems.Count);
+
+    public string DetailBackText => _localizationService.T("Todo.Detail.Back");
+
+    public string DetailAddFileText => _localizationService.T("Todo.Detail.AddFile");
+
+    public string DetailRemoveAttachmentText => _localizationService.T("Todo.Detail.RemoveAttachment");
+
+    public string DetailFileMissingText => _localizationService.T("Todo.Detail.FileMissing");
+
+    public string DeleteText => _localizationService.T("Common.Delete");
+
+    public string ColorMarkerText => _localizationService.T("Todo.Menu.ColorMarker");
+
+    public string RedColorText => _localizationService.T("Todo.Color.Red");
+
+    public string OrangeColorText => _localizationService.T("Todo.Color.Orange");
+
+    public string YellowColorText => _localizationService.T("Todo.Color.Yellow");
+
+    public string GreenColorText => _localizationService.T("Todo.Color.Green");
+
+    public string BlueColorText => _localizationService.T("Todo.Color.Blue");
+
+    public string PurpleColorText => _localizationService.T("Todo.Color.Purple");
+
+    public string TealColorText => _localizationService.T("Todo.Color.Teal");
+
+    public string PinkColorText => _localizationService.T("Todo.Color.Pink");
+
+    public bool IsAllTasksCompletedEmptyState =>
+        !HasVisibleItems &&
+        TotalCount > 0 &&
+        ActiveCount == 0 &&
+        SelectedFilter == TodoFilter.All &&
+        SelectedColorFilter == TodoColorFilter.All;
+
+    public string EmptyStateTitle => IsAllTasksCompletedEmptyState
+        ? _localizationService.T("Todo.Empty.AllCompleted")
+        : _localizationService.T("Todo.Empty.Title");
 
     public string EmptyStateText => SelectedFilter switch
     {
@@ -220,6 +363,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         TodoFilter.Today => _localizationService.T("Todo.Empty.Today"),
         TodoFilter.Important => _localizationService.T("Todo.Empty.Important"),
         TodoFilter.Completed => _localizationService.T("Todo.Empty.Completed"),
+        _ when IsAllTasksCompletedEmptyState
+            => _localizationService.T("Todo.Empty.AllCompletedDesc"),
         _ => _localizationService.T("Todo.Empty.All")
     };
 
@@ -252,6 +397,10 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     public bool IsBlueColorFilterSelected => SelectedColorFilter == TodoColorFilter.Blue;
 
     public bool IsPurpleColorFilterSelected => SelectedColorFilter == TodoColorFilter.Purple;
+
+    public bool IsTealColorFilterSelected => SelectedColorFilter == TodoColorFilter.Teal;
+
+    public bool IsPinkColorFilterSelected => SelectedColorFilter == TodoColorFilter.Pink;
 
     public string TabStyle
     {
@@ -330,13 +479,17 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(InputActionIconSize));
                 OnPropertyChanged(nameof(InputPadding));
                 OnPropertyChanged(nameof(ItemTextLineHeight));
+                OnPropertyChanged(nameof(SmallIconSize));
+                OnPropertyChanged(nameof(StandardIconSize));
+                OnPropertyChanged(nameof(PrimaryIconSize));
+                OnPropertyChanged(nameof(CompletionIndicatorSize));
             }
         }
     }
 
-    public double SecondaryTextSize => Math.Max(SettingsService.MinTextSize - 1, TextSize - 2);
+    public double SecondaryTextSize => Math.Max(SettingsService.MinTextSize, TextSize - 1);
 
-    public double TitleTextSize => Math.Min(SettingsService.MaxTextSize + 2, TextSize + 3);
+    public double TitleTextSize => Math.Min(SettingsService.MaxTextSize + 1, TextSize + 1);
 
     public double FilterTextSize => Math.Max(SettingsService.MinTextSize, TextSize);
 
@@ -354,7 +507,15 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public Thickness InputPadding => WidgetInputMetrics.Create(TextSize).Padding;
 
-    public double ItemTextLineHeight => Math.Round(TextSize * 1.26);
+    public double ItemTextLineHeight => Math.Round(TextSize + 4);
+
+    public double SmallIconSize => Math.Round(Math.Clamp(TextSize + 1, 11, 15));
+
+    public double StandardIconSize => Math.Round(Math.Clamp(TextSize + 3, 14, 18));
+
+    public double PrimaryIconSize => Math.Round(Math.Clamp(TextSize + 5, 16, 20));
+
+    public double CompletionIndicatorSize => Math.Round(Math.Clamp(TextSize + 7, 18, 22));
 
     public bool IsInitialized
     {
@@ -366,6 +527,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     {
         var data = await _store.LoadAsync();
 
+        SelectedDetailItem = null;
+        IsCreatingDetailItem = false;
         Items.Clear();
         foreach (var item in data.Items.OrderBy(item => item.SortOrder).ThenByDescending(item => item.UpdatedAt))
         {
@@ -381,16 +544,18 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public async Task<TodoItemViewModel?> AddInputAsync()
     {
-        var item = await AddItemAsync(InputText);
+        var item = await AddItemAsync(InputText, _draftImportant, _draftDueDate);
         if (item is not null)
         {
             InputText = string.Empty;
+            DraftImportant = false;
+            DraftDueDate = null;
         }
 
         return item;
     }
 
-    public async Task<TodoItemViewModel?> AddItemAsync(string? text)
+    public async Task<TodoItemViewModel?> AddItemAsync(string? text, bool isImportant = false, DateTimeOffset? dueDate = null)
     {
         string normalizedText = NormalizeText(text);
         if (string.IsNullOrWhiteSpace(normalizedText))
@@ -403,6 +568,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         {
             Id = Guid.NewGuid().ToString("N"),
             Text = normalizedText,
+            IsImportant = isImportant,
+            DueDate = NormalizeDueDate(dueDate),
             CreatedAt = now,
             UpdatedAt = now,
             SortOrder = 0
@@ -551,6 +718,41 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    public async Task<int> SetColorMarkerAsync(IEnumerable<string> itemIds, string? colorMarker)
+    {
+        var selectedIds = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (selectedIds.Count == 0)
+        {
+            return 0;
+        }
+
+        string? normalizedColorMarker = TodoItem.NormalizeColorMarker(colorMarker);
+        var now = DateTimeOffset.UtcNow;
+        int updatedCount = 0;
+        foreach (var item in Items.Where(item => selectedIds.Contains(item.Id)))
+        {
+            if (string.Equals(item.ColorMarker, normalizedColorMarker, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            item.ColorMarker = normalizedColorMarker;
+            item.UpdatedAt = now;
+            updatedCount++;
+        }
+
+        if (updatedCount > 0)
+        {
+            RefreshVisibleItems();
+            RefreshCountProperties();
+            await SaveAsync();
+        }
+
+        return updatedCount;
+    }
+
     public async Task<bool> SetDueDateAsync(string itemId, DateTimeOffset? dueDate)
     {
         var item = FindItem(itemId);
@@ -569,13 +771,18 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         }
 
         if (Nullable.Equals(item.DueDate, normalizedDueDate) &&
-            AreRecurrenceEqual(item.Recurrence, updatedRecurrence))
+            AreRecurrenceEqual(item.Recurrence, updatedRecurrence) &&
+            (normalizedDueDate is not null || item.ReminderOffsetMinutes is null))
         {
             return true;
         }
 
         item.DueDate = normalizedDueDate;
         item.Recurrence = updatedRecurrence;
+        if (normalizedDueDate is null)
+        {
+            item.ReminderOffsetMinutes = null;
+        }
         if (updatedRecurrence is null)
         {
             item.RecurrenceSeriesId = null;
@@ -590,6 +797,65 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         RefreshCountProperties();
         await SaveAsync();
         return true;
+    }
+
+    public async Task<int> SetDueDateAsync(IEnumerable<string> itemIds, DateTimeOffset? dueDate)
+    {
+        var selectedIds = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (selectedIds.Count == 0)
+        {
+            return 0;
+        }
+
+        DateTimeOffset? normalizedDueDate = NormalizeDueDate(dueDate);
+        var now = DateTimeOffset.UtcNow;
+        int updatedCount = 0;
+        foreach (var item in Items.Where(item => selectedIds.Contains(item.Id)))
+        {
+            TodoRecurrence? updatedRecurrence = normalizedDueDate is null
+                ? null
+                : item.Recurrence?.Clone();
+            if (updatedRecurrence is not null)
+            {
+                updatedRecurrence.AnchorDueDate = normalizedDueDate;
+            }
+
+            if (Nullable.Equals(item.DueDate, normalizedDueDate) &&
+                AreRecurrenceEqual(item.Recurrence, updatedRecurrence) &&
+                (normalizedDueDate is not null || item.ReminderOffsetMinutes is null))
+            {
+                continue;
+            }
+
+            item.DueDate = normalizedDueDate;
+            item.Recurrence = updatedRecurrence;
+            if (normalizedDueDate is null)
+            {
+                item.ReminderOffsetMinutes = null;
+            }
+            if (updatedRecurrence is null)
+            {
+                item.RecurrenceSeriesId = null;
+                item.Item.GeneratedNextItemId = null;
+            }
+            item.Item.ReminderLastNotifiedAt = null;
+            item.Item.ReminderDismissedForDueDate = null;
+            item.SnoozedUntil = null;
+            item.Item.SnoozeLastNotifiedAt = null;
+            item.UpdatedAt = now;
+            updatedCount++;
+        }
+
+        if (updatedCount > 0)
+        {
+            RefreshVisibleItems();
+            RefreshCountProperties();
+            await SaveAsync();
+        }
+
+        return updatedCount;
     }
 
     public async Task<bool> SetRecurrenceAsync(string itemId, string? mode)
@@ -628,10 +894,59 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    public async Task<int> SetRecurrenceAsync(IEnumerable<string> itemIds, string? mode)
+    {
+        var selectedIds = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (selectedIds.Count == 0)
+        {
+            return 0;
+        }
+
+        string normalizedMode = TodoRecurrenceMode.Normalize(mode);
+        var now = DateTimeOffset.UtcNow;
+        int updatedCount = 0;
+        foreach (var item in Items.Where(item => selectedIds.Contains(item.Id)))
+        {
+            TodoRecurrence? recurrence = TodoRecurrenceService.CreateRecurrence(normalizedMode, item.DueDate);
+            if (item.DueDate is null && recurrence is not null)
+            {
+                continue;
+            }
+
+            if (AreRecurrenceEqual(item.Recurrence, recurrence))
+            {
+                continue;
+            }
+
+            item.Recurrence = recurrence;
+            item.RecurrenceSeriesId = recurrence is null
+                ? null
+                : item.RecurrenceSeriesId ?? Guid.NewGuid().ToString("N");
+            item.Item.GeneratedNextItemId = null;
+            item.Item.ReminderLastNotifiedAt = null;
+            item.Item.ReminderDismissedForDueDate = null;
+            item.SnoozedUntil = null;
+            item.Item.SnoozeLastNotifiedAt = null;
+            item.UpdatedAt = now;
+            updatedCount++;
+        }
+
+        if (updatedCount > 0)
+        {
+            RefreshVisibleItems();
+            RefreshCountProperties();
+            await SaveAsync();
+        }
+
+        return updatedCount;
+    }
+
     public async Task<bool> SetReminderOffsetAsync(string itemId, int? offsetMinutes)
     {
         var item = FindItem(itemId);
-        if (item is null)
+        if (item is null || item.DueDate is null)
         {
             return false;
         }
@@ -656,6 +971,49 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         RefreshCountProperties();
         await SaveAsync();
         return true;
+    }
+
+    public async Task<int> SetReminderOffsetAsync(IEnumerable<string> itemIds, int? offsetMinutes)
+    {
+        var selectedIds = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (selectedIds.Count == 0)
+        {
+            return 0;
+        }
+
+        int? normalizedOffset = TodoReminderOptions.NormalizeOffsetMinutes(offsetMinutes);
+        var now = DateTimeOffset.UtcNow;
+        int updatedCount = 0;
+        foreach (var item in Items.Where(item => selectedIds.Contains(item.Id) && item.DueDate is not null))
+        {
+            if (Nullable.Equals(item.ReminderOffsetMinutes, normalizedOffset))
+            {
+                continue;
+            }
+
+            item.ReminderOffsetMinutes = normalizedOffset;
+            item.Item.ReminderLastNotifiedAt = null;
+            item.Item.ReminderDismissedForDueDate = null;
+            if (TodoReminderOptions.IsReminderOff(normalizedOffset))
+            {
+                item.SnoozedUntil = null;
+                item.Item.SnoozeLastNotifiedAt = null;
+            }
+
+            item.UpdatedAt = now;
+            updatedCount++;
+        }
+
+        if (updatedCount > 0)
+        {
+            RefreshVisibleItems();
+            RefreshCountProperties();
+            await SaveAsync();
+        }
+
+        return updatedCount;
     }
 
     public async Task<bool> SnoozeReminderAsync(string itemId, TimeSpan snoozeFor)
@@ -722,16 +1080,46 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     {
         DateTimeOffset today = new(DateTime.Now.Date);
         int daysUntilSunday = ((int)DayOfWeek.Sunday - (int)today.DayOfWeek + 7) % 7;
+        int daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
+        if (daysUntilMonday == 0)
+        {
+            daysUntilMonday = 7;
+        }
+
         DateTimeOffset? dueDate = preset switch
         {
             TodoDuePreset.Today => WithEndOfDay(today),
             TodoDuePreset.Tomorrow => WithEndOfDay(today.AddDays(1)),
             TodoDuePreset.ThisWeek => WithEndOfDay(today.AddDays(daysUntilSunday)),
+            TodoDuePreset.NextMonday => WithEndOfDay(today.AddDays(daysUntilMonday)),
             TodoDuePreset.Clear => null,
             _ => null
         };
 
         return await SetDueDateAsync(itemId, dueDate);
+    }
+
+    public Task<int> SetDueDatePresetAsync(IEnumerable<string> itemIds, TodoDuePreset preset)
+    {
+        DateTimeOffset today = new(DateTime.Now.Date);
+        int daysUntilSunday = ((int)DayOfWeek.Sunday - (int)today.DayOfWeek + 7) % 7;
+        int daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
+        if (daysUntilMonday == 0)
+        {
+            daysUntilMonday = 7;
+        }
+
+        DateTimeOffset? dueDate = preset switch
+        {
+            TodoDuePreset.Today => WithEndOfDay(today),
+            TodoDuePreset.Tomorrow => WithEndOfDay(today.AddDays(1)),
+            TodoDuePreset.ThisWeek => WithEndOfDay(today.AddDays(daysUntilSunday)),
+            TodoDuePreset.NextMonday => WithEndOfDay(today.AddDays(daysUntilMonday)),
+            TodoDuePreset.Clear => null,
+            _ => null
+        };
+
+        return SetDueDateAsync(itemIds, dueDate);
     }
 
     public void BeginEdit(string itemId)
@@ -780,13 +1168,57 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        if (IsCreatingDetailItem &&
+            string.Equals(SelectedDetailItem?.Id, itemId, StringComparison.Ordinal))
+        {
+            item.CancelEdit();
+            SelectedDetailItem = null;
+            IsCreatingDetailItem = false;
+            return true;
+        }
+
         CaptureUndoSnapshot(_localizationService.T("Todo.Undo.Deleted"));
+        if (string.Equals(SelectedDetailItem?.Id, itemId, StringComparison.Ordinal))
+        {
+            SelectedDetailItem = null;
+        }
         Items.Remove(item);
         NormalizeSortOrders();
         RefreshVisibleItems();
         RefreshCountProperties();
         await SaveAsync();
         return true;
+    }
+
+    public async Task<int> DeleteItemsAsync(IEnumerable<string> itemIds)
+    {
+        var selectedIds = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        var itemsToDelete = Items
+            .Where(item => selectedIds.Contains(item.Id))
+            .ToList();
+        if (itemsToDelete.Count == 0)
+        {
+            return 0;
+        }
+
+        CaptureUndoSnapshot(_localizationService.Format("Todo.Undo.DeletedSelected", itemsToDelete.Count));
+        if (SelectedDetailItem is not null && selectedIds.Contains(SelectedDetailItem.Id))
+        {
+            SelectedDetailItem = null;
+        }
+
+        foreach (var item in itemsToDelete)
+        {
+            Items.Remove(item);
+        }
+
+        NormalizeSortOrders();
+        RefreshVisibleItems();
+        RefreshCountProperties();
+        await SaveAsync();
+        return itemsToDelete.Count;
     }
 
     public async Task<int> ClearCompletedAsync()
@@ -898,9 +1330,316 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         SelectedFilter = filter;
     }
 
+    public void SetDraftDueDatePreset(TodoDuePreset preset)
+    {
+        DateTimeOffset today = new(DateTime.Now.Date);
+        int daysUntilSunday = ((int)DayOfWeek.Sunday - (int)today.DayOfWeek + 7) % 7;
+        int daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
+        if (daysUntilMonday == 0)
+        {
+            daysUntilMonday = 7;
+        }
+
+        DraftDueDate = preset switch
+        {
+            TodoDuePreset.Today => WithEndOfDay(today),
+            TodoDuePreset.Tomorrow => WithEndOfDay(today.AddDays(1)),
+            TodoDuePreset.ThisWeek => WithEndOfDay(today.AddDays(daysUntilSunday)),
+            TodoDuePreset.NextMonday => WithEndOfDay(today.AddDays(daysUntilMonday)),
+            TodoDuePreset.Clear => null,
+            _ => null
+        };
+    }
+
     public void SetColorFilter(TodoColorFilter filter)
     {
         SelectedColorFilter = filter;
+    }
+
+    public TodoItemViewModel? OpenDetail(string itemId)
+    {
+        TodoItemViewModel? item = FindItem(itemId);
+        if (item is null)
+        {
+            return null;
+        }
+
+        foreach (TodoItemViewModel entry in Items)
+        {
+            entry.CancelEdit();
+        }
+
+        item.BeginEdit();
+        IsCreatingDetailItem = false;
+        SelectedDetailItem = item;
+        return item;
+    }
+
+    public TodoItemViewModel OpenNewDetail()
+    {
+        CloseDetail();
+        foreach (TodoItemViewModel entry in Items)
+        {
+            entry.CancelEdit();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var item = new TodoItem
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Text = string.Empty,
+            CreatedAt = now,
+            UpdatedAt = now,
+            SortOrder = NewTaskPosition == SettingsService.TodoNewTaskPositionBottom
+                ? Items.Count
+                : 0
+        };
+        var viewModel = new TodoItemViewModel(item, _localizationService);
+        viewModel.BeginEdit();
+        IsCreatingDetailItem = true;
+        SelectedDetailItem = viewModel;
+        return viewModel;
+    }
+
+    public async Task<TodoItemViewModel?> FinalizeDetailAsync(string? title)
+    {
+        TodoItemViewModel? item = SelectedDetailItem;
+        if (item is null)
+        {
+            return null;
+        }
+
+        string normalizedTitle = NormalizeText(title);
+        if (!IsCreatingDetailItem)
+        {
+            if (!string.IsNullOrWhiteSpace(normalizedTitle))
+            {
+                await UpdateItemTextAsync(item.Id, normalizedTitle);
+            }
+
+            item.CancelEdit();
+            SelectedDetailItem = null;
+            return item;
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedTitle))
+        {
+            item.CancelEdit();
+            SelectedDetailItem = null;
+            IsCreatingDetailItem = false;
+            return null;
+        }
+
+        item.Text = normalizedTitle;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.CancelEdit();
+        if (NewTaskPosition == SettingsService.TodoNewTaskPositionBottom)
+        {
+            Items.Add(item);
+        }
+        else
+        {
+            Items.Insert(0, item);
+        }
+
+        IsCreatingDetailItem = false;
+        SelectedDetailItem = null;
+        NormalizeSortOrders();
+        RefreshVisibleItems();
+        RefreshCountProperties();
+        await SaveAsync();
+        return item;
+    }
+
+    public void CloseDetail()
+    {
+        SelectedDetailItem?.CancelEdit();
+        SelectedDetailItem = null;
+        IsCreatingDetailItem = false;
+    }
+
+    public async Task<TodoStepViewModel?> AddStepAsync(string itemId, string? text)
+    {
+        TodoItemViewModel? item = FindItem(itemId);
+        string normalizedText = NormalizeText(text);
+        if (item is null || string.IsNullOrWhiteSpace(normalizedText))
+        {
+            return null;
+        }
+
+        var step = new TodoStep
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Text = normalizedText,
+            SortOrder = item.Steps.Count
+        };
+        var stepViewModel = new TodoStepViewModel(step);
+        item.Item.Steps.Add(step);
+        item.Steps.Add(stepViewModel);
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.RefreshDetailProperties();
+        await SaveAsync();
+        return stepViewModel;
+    }
+
+    public async Task<bool> SetStepCompletedAsync(string itemId, string stepId, bool isCompleted)
+    {
+        TodoItemViewModel? item = FindItem(itemId);
+        TodoStepViewModel? step = item?.Steps.FirstOrDefault(entry => string.Equals(entry.Id, stepId, StringComparison.Ordinal));
+        if (item is null || step is null)
+        {
+            return false;
+        }
+
+        step.IsCompleted = isCompleted;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.RefreshDetailProperties();
+        await SaveAsync();
+        return true;
+    }
+
+    public async Task<bool> UpdateStepTextAsync(string itemId, string stepId, string? text)
+    {
+        TodoItemViewModel? item = FindItem(itemId);
+        TodoStepViewModel? step = item?.Steps.FirstOrDefault(entry => string.Equals(entry.Id, stepId, StringComparison.Ordinal));
+        string normalizedText = NormalizeText(text);
+        if (item is null || step is null || string.IsNullOrWhiteSpace(normalizedText))
+        {
+            return false;
+        }
+
+        step.Text = normalizedText;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        await SaveAsync();
+        return true;
+    }
+
+    public async Task<bool> DeleteStepAsync(string itemId, string stepId)
+    {
+        TodoItemViewModel? item = FindItem(itemId);
+        TodoStepViewModel? step = item?.Steps.FirstOrDefault(entry => string.Equals(entry.Id, stepId, StringComparison.Ordinal));
+        if (item is null || step is null)
+        {
+            return false;
+        }
+
+        item.Steps.Remove(step);
+        item.Item.Steps.RemoveAll(entry => string.Equals(entry.Id, stepId, StringComparison.Ordinal));
+        for (int index = 0; index < item.Steps.Count; index++)
+        {
+            item.Steps[index].SortOrder = index;
+        }
+
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.RefreshDetailProperties();
+        await SaveAsync();
+        return true;
+    }
+
+    public async Task<bool> UpdateNotesAsync(string itemId, string? notes)
+    {
+        TodoItemViewModel? item = FindItem(itemId);
+        if (item is null)
+        {
+            return false;
+        }
+
+        string? normalizedNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        if (string.Equals(item.Item.Notes, normalizedNotes, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        item.Item.Notes = normalizedNotes;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.RefreshDetailProperties();
+        await SaveAsync();
+        return true;
+    }
+
+    public async Task<TodoAttachmentViewModel?> AddAttachmentAsync(
+        string itemId,
+        string filePath,
+        string displayName,
+        string type)
+    {
+        TodoItemViewModel? item = FindItem(itemId);
+        if (item is null || string.IsNullOrWhiteSpace(filePath))
+        {
+            return null;
+        }
+
+        var attachment = new TodoAttachment
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            FilePath = filePath.Trim(),
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? Path.GetFileName(filePath) : displayName.Trim(),
+            Type = string.IsNullOrWhiteSpace(type) ? "file" : type.Trim(),
+            AddedAt = DateTimeOffset.UtcNow
+        };
+        var attachmentViewModel = new TodoAttachmentViewModel(attachment);
+        item.Item.Attachments.Add(attachment);
+        item.Attachments.Add(attachmentViewModel);
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.RefreshDetailProperties();
+        await SaveAsync();
+        return attachmentViewModel;
+    }
+
+    public async Task<bool> DeleteAttachmentAsync(string itemId, string attachmentId)
+    {
+        TodoItemViewModel? item = FindItem(itemId);
+        TodoAttachmentViewModel? attachment = item?.Attachments.FirstOrDefault(entry =>
+            string.Equals(entry.Id, attachmentId, StringComparison.Ordinal));
+        if (item is null || attachment is null)
+        {
+            return false;
+        }
+
+        item.Attachments.Remove(attachment);
+        item.Item.Attachments.RemoveAll(entry => string.Equals(entry.Id, attachmentId, StringComparison.Ordinal));
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.RefreshDetailProperties();
+        await SaveAsync();
+        return true;
+    }
+
+    public void ToggleExpanded(string itemId)
+    {
+        var item = FindItem(itemId);
+        if (item is null)
+        {
+            return;
+        }
+
+        if (item.IsExpanded)
+        {
+            item.IsExpanded = false;
+            return;
+        }
+
+        foreach (var other in Items)
+        {
+            if (!string.Equals(other.Id, itemId, StringComparison.Ordinal))
+            {
+                other.IsExpanded = false;
+                other.CancelEdit();
+            }
+        }
+
+        item.IsExpanded = true;
+    }
+
+    public void CollapseAllExpanded()
+    {
+        foreach (var item in Items)
+        {
+            if (item.IsExpanded)
+            {
+                item.CancelEdit();
+                item.IsExpanded = false;
+            }
+        }
     }
 
     public TodoItemViewModel? FocusReminderItem(string? itemId, bool preferTodayFilter)
@@ -958,7 +1697,17 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     private TodoItemViewModel? FindItem(string itemId)
     {
-        return Items.FirstOrDefault(item => string.Equals(item.Id, itemId, StringComparison.Ordinal));
+        TodoItemViewModel? item = Items.FirstOrDefault(entry =>
+            string.Equals(entry.Id, itemId, StringComparison.Ordinal));
+        if (item is not null)
+        {
+            return item;
+        }
+
+        return IsCreatingDetailItem &&
+               string.Equals(SelectedDetailItem?.Id, itemId, StringComparison.Ordinal)
+            ? SelectedDetailItem
+            : null;
     }
 
     private TodoItemViewModel? FindGeneratedOccurrence(TodoItemViewModel item)
@@ -1122,6 +1871,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(GreenColorFilterCount));
         OnPropertyChanged(nameof(BlueColorFilterCount));
         OnPropertyChanged(nameof(PurpleColorFilterCount));
+        OnPropertyChanged(nameof(TealColorFilterCount));
+        OnPropertyChanged(nameof(PinkColorFilterCount));
         OnPropertyChanged(nameof(AnyColorFilterCount));
         OnPropertyChanged(nameof(HasCompletedItems));
         OnPropertyChanged(nameof(HasItems));
@@ -1136,6 +1887,10 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         RefreshColorFilterVisibilityProperties();
         OnPropertyChanged(nameof(ListVisibility));
         OnPropertyChanged(nameof(EmptyStateVisibility));
+        OnPropertyChanged(nameof(IsAllTasksCompletedEmptyState));
+        OnPropertyChanged(nameof(EmptyStateTitle));
+        OnPropertyChanged(nameof(EmptyStateText));
+        OnPropertyChanged(nameof(ListHeaderText));
     }
 
     private void RefreshVisibleStateProperties()
@@ -1162,6 +1917,21 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ClearCompletedText));
         OnPropertyChanged(nameof(ItemsLeftText));
         OnPropertyChanged(nameof(UndoActionText));
+        OnPropertyChanged(nameof(ListHeaderText));
+        OnPropertyChanged(nameof(DetailBackText));
+        OnPropertyChanged(nameof(DetailAddFileText));
+        OnPropertyChanged(nameof(DetailRemoveAttachmentText));
+        OnPropertyChanged(nameof(DetailFileMissingText));
+        OnPropertyChanged(nameof(DeleteText));
+        OnPropertyChanged(nameof(ColorMarkerText));
+        OnPropertyChanged(nameof(RedColorText));
+        OnPropertyChanged(nameof(OrangeColorText));
+        OnPropertyChanged(nameof(YellowColorText));
+        OnPropertyChanged(nameof(GreenColorText));
+        OnPropertyChanged(nameof(BlueColorText));
+        OnPropertyChanged(nameof(PurpleColorText));
+        OnPropertyChanged(nameof(TealColorText));
+        OnPropertyChanged(nameof(PinkColorText));
         foreach (var item in Items)
         {
             item.RefreshLocalizedText();
@@ -1170,18 +1940,28 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     private void ApplyTodoSettings(AppSettings settings, bool updateFilter)
     {
-        NewTaskPosition = settings.TodoNewTaskPosition;
+        string normalizedNewTaskPosition = NormalizeNewTaskPosition(settings.TodoNewTaskPosition);
+        bool newTaskPositionChanged = !string.Equals(
+            NewTaskPosition,
+            normalizedNewTaskPosition,
+            StringComparison.Ordinal);
+
+        NewTaskPosition = normalizedNewTaskPosition;
         TabStyle = settings.TodoTabStyle;
         ShowCompletedTasks = settings.TodoShowCompletedTasks;
         ShowFooterStats = settings.TodoShowFooterStats;
         ShowClearCompletedButton = settings.TodoShowClearCompletedButton;
         ConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
 
+        bool filterChanged = false;
         if (updateFilter)
         {
-            SelectedFilter = MapDefaultFilter(settings.TodoDefaultFilter);
+            TodoFilter defaultFilter = MapDefaultFilter(settings.TodoDefaultFilter);
+            filterChanged = SelectedFilter != defaultFilter;
+            SelectedFilter = defaultFilter;
         }
-        else
+
+        if (newTaskPositionChanged && !filterChanged)
         {
             RefreshVisibleItems();
             RefreshCountProperties();
@@ -1272,6 +2052,11 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
                 : left.SortOrder.CompareTo(right.SortOrder);
         }
 
+        if (left.IsImportant != right.IsImportant)
+        {
+            return left.IsImportant ? -1 : 1;
+        }
+
         int dueCompare = (left.DueDate ?? DateTimeOffset.MaxValue)
             .CompareTo(right.DueDate ?? DateTimeOffset.MaxValue);
         if (dueCompare != 0)
@@ -1305,6 +2090,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(GreenColorFilterVisibility));
         OnPropertyChanged(nameof(BlueColorFilterVisibility));
         OnPropertyChanged(nameof(PurpleColorFilterVisibility));
+        OnPropertyChanged(nameof(TealColorFilterVisibility));
+        OnPropertyChanged(nameof(PinkColorFilterVisibility));
     }
 
     private static string? MapColorFilterToMarker(TodoColorFilter filter)
@@ -1317,6 +2104,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
             TodoColorFilter.Green => TodoItem.GreenColorMarker,
             TodoColorFilter.Blue => TodoItem.BlueColorMarker,
             TodoColorFilter.Purple => TodoItem.PurpleColorMarker,
+            TodoColorFilter.Teal => TodoItem.TealColorMarker,
+            TodoColorFilter.Pink => TodoItem.PinkColorMarker,
             _ => null
         };
     }
@@ -1411,6 +2200,22 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
             ColorMarker = item.ColorMarker,
             DueDate = item.DueDate,
             Recurrence = item.Recurrence?.Clone(),
+            Steps = item.Steps.Select(step => new TodoStep
+            {
+                Id = step.Id,
+                Text = step.Text,
+                IsCompleted = step.IsCompleted,
+                SortOrder = step.SortOrder
+            }).ToList(),
+            Notes = item.Notes,
+            Attachments = item.Attachments.Select(attachment => new TodoAttachment
+            {
+                Id = attachment.Id,
+                FilePath = attachment.FilePath,
+                DisplayName = attachment.DisplayName,
+                Type = attachment.Type,
+                AddedAt = attachment.AddedAt
+            }).ToList(),
             CompletedAt = item.CompletedAt,
             ReminderLastNotifiedAt = item.ReminderLastNotifiedAt,
             ReminderDismissedForDueDate = item.ReminderDismissedForDueDate,

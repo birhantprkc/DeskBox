@@ -18,7 +18,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
             <Setter Property="UseSystemFocusVisuals" Value="False" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -39,7 +39,7 @@
             <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="6" />
         </Style>
     </UserControl.Resources>
 
@@ -107,12 +107,13 @@
         <!-- ─── Mini Layout (compact, single-column centered) ─── -->
         <Grid
             x:Name="MiniLayout"
-            Padding="10,8"
+            Padding="8,6"
             RowSpacing="2"
             Visibility="{Binding MiniLayoutVisibility}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -124,7 +125,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock
                     Grid.Column="0"
-                    FontSize="10"
+                    FontSize="{Binding CaptionTextSize}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="{Binding LocationDisplay}"
                     TextTrimming="CharacterEllipsis"
@@ -135,9 +136,12 @@
                     Grid.Column="1"
                     Click="RefreshButton_Click"
                     Style="{StaticResource WeatherIconButtonStyle}"
-                    Width="22" Height="22"
+                    Width="20"
+                    Height="20"
+                    MinWidth="20"
+                    MinHeight="20"
                     ToolTipService.ToolTip="{Binding RefreshTooltip}">
-                    <FontIcon FontSize="9" Glyph="&#xE72C;" />
+                    <FontIcon FontSize="10" Glyph="&#xE72C;" />
                 </Button>
             </Grid>
 
@@ -146,47 +150,54 @@
                 Grid.Row="1"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Orientation="Vertical"
-                Spacing="1">
+                Orientation="Horizontal"
+                Spacing="6">
                 <TextBlock
-                    HorizontalAlignment="Center"
                     FontSize="{Binding CurrentEmojiSize}"
-                    Text="{Binding CurrentEmoji}" />
+                    Text="{Binding CurrentEmoji}"
+                    VerticalAlignment="Center" />
                 <TextBlock
-                    HorizontalAlignment="Center"
                     FontSize="{Binding TemperatureTextSize}"
                     FontWeight="SemiBold"
-                    Text="{Binding CurrentTemperatureText}" />
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    FontSize="10"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="{Binding CurrentDescription}"
-                    TextTrimming="CharacterEllipsis"
-                    TextWrapping="NoWrap"
-                    Visibility="{Binding MiniDescriptionVisibility}" />
+                    Text="{Binding CurrentTemperatureText}"
+                    VerticalAlignment="Center" />
             </StackPanel>
 
-            <!-- Bottom: inline metrics without borders -->
-            <StackPanel
+            <TextBlock
                 Grid.Row="2"
                 HorizontalAlignment="Center"
+                FontSize="{Binding CaptionTextSize}"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{Binding CurrentDescription}"
+                TextTrimming="CharacterEllipsis"
+                TextWrapping="NoWrap"
+                Visibility="{Binding MiniDescriptionVisibility}" />
+
+            <StackPanel
+                Grid.Row="3"
+                HorizontalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="8">
+                Spacing="6">
                 <TextBlock
                     FontSize="9"
                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                     Text="{Binding MiniHumidityText}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap"
                     Visibility="{Binding MiniHumidityVisibility}" />
                 <TextBlock
                     FontSize="9"
                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                     Text="{Binding MiniWindText}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap"
                     Visibility="{Binding MiniWindVisibility}" />
                 <TextBlock
                     FontSize="9"
                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                     Text="{Binding MiniPrecipText}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap"
                     Visibility="{Binding MiniPrecipVisibility}" />
             </StackPanel>
         </Grid>
@@ -194,13 +205,12 @@
         <!-- ─── Compact Layout ─── -->
         <Grid
             x:Name="CompactLayout"
-            Padding="12,10"
-            RowSpacing="6"
+            Padding="10,8"
+            RowSpacing="4"
             Visibility="{Binding CompactLayoutVisibility}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -209,9 +219,9 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                     <FontIcon
-                        FontSize="{Binding CaptionTextSize}"
+                        FontSize="10"
                         Glyph="&#xE81D;"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                     <TextBlock
@@ -226,68 +236,91 @@
                     Grid.Column="1"
                     Click="RefreshButton_Click"
                     Style="{StaticResource WeatherIconButtonStyle}"
-                    Width="24" Height="24"
+                    Width="24"
+                    Height="24"
+                    MinWidth="24"
+                    MinHeight="24"
                     ToolTipService.ToolTip="{Binding RefreshTooltip}">
                     <FontIcon FontSize="11" Glyph="&#xE72C;" />
                 </Button>
             </Grid>
 
-            <StackPanel
+            <Grid
                 Grid.Row="1"
-                HorizontalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="8"
+                ColumnSpacing="8"
                 VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
                 <TextBlock
+                    Grid.Column="0"
                     FontSize="{Binding CurrentEmojiSize}"
                     Text="{Binding CurrentEmoji}"
                     VerticalAlignment="Center" />
-                <TextBlock
-                    FontSize="{Binding TemperatureTextSize}"
-                    FontWeight="SemiBold"
-                    Text="{Binding CurrentTemperatureText}"
-                    VerticalAlignment="Center" />
-            </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="0" VerticalAlignment="Center">
+                    <TextBlock
+                        FontSize="{Binding TemperatureTextSize}"
+                        FontWeight="SemiBold"
+                        Text="{Binding CurrentTemperatureText}"
+                        TextWrapping="NoWrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock
+                            FontSize="{Binding CaptionTextSize}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding CurrentDescription}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="NoWrap" />
+                        <TextBlock
+                            FontSize="{Binding CaptionTextSize}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="{Binding ApparentTemperatureText}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="NoWrap" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
 
-            <StackPanel
+            <Border
                 Grid.Row="2"
-                HorizontalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="6">
-                <TextBlock
-                    FontSize="{Binding CaptionTextSize}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="{Binding CurrentDescription}"
-                    TextWrapping="NoWrap"
-                    TextTrimming="CharacterEllipsis" />
-                <TextBlock
-                    FontSize="{Binding CaptionTextSize}"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    Text="{Binding ApparentTemperatureText}" />
-            </StackPanel>
-
-            <!-- Detail items (borderless) -->
-            <StackPanel
-                Grid.Row="3"
-                HorizontalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="8">
-                <TextBlock
-                    FontSize="{Binding CaptionTextSize}"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    Text="{Binding HumidityText}"
-                    Visibility="{Binding HumidityVisibility}" />
-                <TextBlock
-                    FontSize="{Binding CaptionTextSize}"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    Text="{Binding WindText}"
-                    Visibility="{Binding WindVisibility}" />
-                <TextBlock
-                    FontSize="{Binding CaptionTextSize}"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    Text="{Binding PrecipitationText}"
-                    Visibility="{Binding PrecipitationVisibility}" />
-            </StackPanel>
+                Padding="0,5,0,0"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0">
+                <Grid ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Grid.Column="0"
+                        HorizontalAlignment="Center"
+                        FontSize="{Binding CaptionTextSize}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{Binding HumidityText}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="NoWrap"
+                        Visibility="{Binding HumidityVisibility}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        HorizontalAlignment="Center"
+                        FontSize="{Binding CaptionTextSize}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{Binding WindText}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="NoWrap"
+                        Visibility="{Binding WindVisibility}" />
+                    <TextBlock
+                        Grid.Column="2"
+                        HorizontalAlignment="Center"
+                        FontSize="{Binding CaptionTextSize}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{Binding PrecipitationText}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="NoWrap"
+                        Visibility="{Binding PrecipitationVisibility}" />
+                </Grid>
+            </Border>
         </Grid>
 
         <!-- ─── Standard Layout ─── -->

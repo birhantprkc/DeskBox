@@ -12,6 +12,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using System.Runtime.CompilerServices;
 using Windows.Graphics;
 using WinRT;
 using WinRT.Interop;
@@ -30,6 +31,9 @@ public abstract class WidgetWindowBase : Window
     private const int MinHeight = (int)SettingsService.MinWidgetHeight;
 
     private static readonly int[] BackdropRefreshDelays = [80, 240, 580];
+    private static readonly TimeSpan InactiveBackdropControllerRetention = TimeSpan.FromSeconds(3);
+    private static readonly ConditionalWeakTable<SolidColorBrush, object> MutableBrushes = new();
+    private static readonly object MutableBrushMarker = new();
 
     // ── Protected state: window identity & services ────────────
     // Set by derived classes in their constructors before calling ConfigureWindowCore().
@@ -43,12 +47,15 @@ public abstract class WidgetWindowBase : Window
     // ── Protected state: backdrop controllers ──────────────────
     protected DesktopAcrylicController? AcrylicController;
     protected MicaController? MicaController;
+    protected bool AcrylicControllerAttached;
+    protected bool MicaControllerAttached;
     protected SystemBackdropConfiguration? BackdropConfiguration;
     protected ICompositionSupportsSystemBackdrop? BackdropTarget;
 
     // ── Protected state: backdrop refresh ──────────────────────
     protected long BackdropRefreshGeneration;
     private DispatcherQueueTimer? _backdropRefreshTimer;
+    private DispatcherQueueTimer? _inactiveBackdropCleanupTimer;
     private int _backdropRefreshStage;
     private bool _isTrackedForDiagnostics;
 
@@ -428,8 +435,8 @@ public abstract class WidgetWindowBase : Window
             }
             else if (materialType is SettingsService.WidgetMaterialTypeSolid)
             {
-                DisposeAcrylicController();
-                DisposeMicaController();
+                DetachAcrylicControllerTarget();
+                DetachMicaControllerTarget();
                 backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.DwmSetWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
                 Win32Helper.DisableAccentPolicy(HWnd);
@@ -438,8 +445,8 @@ public abstract class WidgetWindowBase : Window
             {
                 backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
                 Win32Helper.DwmSetWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
-                DisposeAcrylicController();
-                DisposeMicaController();
+                DetachAcrylicControllerTarget();
+                DetachMicaControllerTarget();
                 Win32Helper.ApplyAccentBlur(HWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
             }
 
@@ -448,6 +455,8 @@ public abstract class WidgetWindowBase : Window
                 $"opacity={surfaceOpacity:F3} tint=#{tintColor.A:X2}{tintColor.R:X2}{tintColor.G:X2}{tintColor.B:X2} " +
                 $"dwmBackdropType={backdropType} " +
                 $"acrylicController={AcrylicController is not null} micaController={MicaController is not null}");
+
+            ScheduleInactiveBackdropControllerCleanup(materialType);
         }
         catch (Exception ex)
         {
@@ -458,6 +467,81 @@ public abstract class WidgetWindowBase : Window
         }
 
         ApplySurfaceStyle();
+    }
+
+    protected static SolidColorBrush GetOrUpdateSolidColorBrush(Brush? current, Windows.UI.Color color)
+    {
+        if (current is SolidColorBrush brush && MutableBrushes.TryGetValue(brush, out _))
+        {
+            try
+            {
+                if (!brush.Color.Equals(color))
+                {
+                    brush.Color = color;
+                }
+
+                return brush;
+            }
+            catch (Exception)
+            {
+                MutableBrushes.Remove(brush);
+            }
+        }
+
+        var replacement = new SolidColorBrush(color);
+        MutableBrushes.Add(replacement, MutableBrushMarker);
+        return replacement;
+    }
+
+    protected void ScheduleInactiveBackdropControllerCleanup(string materialType)
+    {
+        bool hasInactiveController = materialType switch
+        {
+            SettingsService.WidgetMaterialTypeMica => AcrylicController is not null,
+            SettingsService.WidgetMaterialTypeAcrylic => MicaController is not null,
+            _ => AcrylicController is not null || MicaController is not null
+        };
+
+        if (!hasInactiveController)
+        {
+            _inactiveBackdropCleanupTimer?.Stop();
+            return;
+        }
+
+        if (_inactiveBackdropCleanupTimer is null)
+        {
+            _inactiveBackdropCleanupTimer = DispatcherQueue.CreateTimer();
+            _inactiveBackdropCleanupTimer.IsRepeating = false;
+            _inactiveBackdropCleanupTimer.Tick += InactiveBackdropCleanupTimer_Tick;
+        }
+
+        _inactiveBackdropCleanupTimer.Stop();
+        _inactiveBackdropCleanupTimer.Interval = InactiveBackdropControllerRetention;
+        _inactiveBackdropCleanupTimer.Start();
+    }
+
+    private void InactiveBackdropCleanupTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        string materialType = SettingsService.Settings.WidgetMaterialType;
+        bool releasedController = false;
+
+        if (materialType != SettingsService.WidgetMaterialTypeAcrylic && AcrylicController is not null)
+        {
+            DisposeAcrylicController();
+            releasedController = true;
+        }
+
+        if (materialType != SettingsService.WidgetMaterialTypeMica && MicaController is not null)
+        {
+            DisposeMicaController();
+            releasedController = true;
+        }
+
+        if (releasedController)
+        {
+            App.ScheduleLightMemoryCleanup();
+        }
     }
 
     protected bool ApplyMicaController(
@@ -478,21 +562,23 @@ public abstract class WidgetWindowBase : Window
 
         if (MicaController is null)
         {
-            DisposeAcrylicController();
+            DetachAcrylicControllerTarget();
             MicaController = new MicaController { Kind = MicaKind.Base };
+        }
 
+        DetachAcrylicControllerTarget();
+        if (!MicaControllerAttached)
+        {
             if (!MicaController.AddSystemBackdropTarget(BackdropTarget))
             {
                 DisposeMicaController();
                 return false;
             }
-        }
-        else
-        {
-            DisposeAcrylicController();
+
+            MicaControllerAttached = true;
+            MicaController.SetSystemBackdropConfiguration(BackdropConfiguration);
         }
 
-        MicaController.SetSystemBackdropConfiguration(BackdropConfiguration);
         MicaController.Kind = MicaKind.Base;
         MicaController.TintColor = tintColor;
         MicaController.FallbackColor = isDark
@@ -520,6 +606,27 @@ public abstract class WidgetWindowBase : Window
         finally
         {
             MicaController = null;
+            MicaControllerAttached = false;
+        }
+    }
+
+    protected void DetachMicaControllerTarget()
+    {
+        if (MicaController is null || !MicaControllerAttached)
+        {
+            return;
+        }
+
+        try
+        {
+            MicaController.RemoveAllSystemBackdropTargets();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            MicaControllerAttached = false;
         }
     }
 
@@ -544,24 +651,26 @@ public abstract class WidgetWindowBase : Window
 
         if (AcrylicController is null || AcrylicController.IsClosed)
         {
-            DisposeMicaController();
+            DetachMicaControllerTarget();
             AcrylicController = new DesktopAcrylicController
             {
                 Kind = DesktopAcrylicKind.Thin
             };
+        }
 
+        DetachMicaControllerTarget();
+        if (!AcrylicControllerAttached)
+        {
             if (!AcrylicController.AddSystemBackdropTarget(BackdropTarget))
             {
                 DisposeAcrylicController();
                 return false;
             }
-        }
-        else
-        {
-            DisposeMicaController();
+
+            AcrylicControllerAttached = true;
+            AcrylicController.SetSystemBackdropConfiguration(BackdropConfiguration);
         }
 
-        AcrylicController.SetSystemBackdropConfiguration(BackdropConfiguration);
         AcrylicController.Kind = DesktopAcrylicKind.Thin;
         AcrylicController.TintColor = tintColor;
         AcrylicController.FallbackColor = tintColor;
@@ -596,14 +705,21 @@ public abstract class WidgetWindowBase : Window
                 Kind = DesktopAcrylicKind.Thin
             };
 
+        }
+
+        DetachMicaControllerTarget();
+        if (!AcrylicControllerAttached)
+        {
             if (!AcrylicController.AddSystemBackdropTarget(BackdropTarget))
             {
                 DisposeAcrylicController();
                 return false;
             }
+
+            AcrylicControllerAttached = true;
+            AcrylicController.SetSystemBackdropConfiguration(BackdropConfiguration);
         }
 
-        AcrylicController.SetSystemBackdropConfiguration(BackdropConfiguration);
         AcrylicController.Kind = DesktopAcrylicKind.Thin;
         AcrylicController.TintColor = isDark
             ? ColorHelper.FromArgb(0x01, 0x20, 0x22, 0x26)
@@ -614,7 +730,6 @@ public abstract class WidgetWindowBase : Window
         AcrylicController.TintOpacity = 0.0f;
         AcrylicController.LuminosityOpacity = 0.0f;
 
-        DisposeMicaController();
         return true;
     }
 
@@ -636,6 +751,27 @@ public abstract class WidgetWindowBase : Window
         finally
         {
             AcrylicController = null;
+            AcrylicControllerAttached = false;
+        }
+    }
+
+    protected void DetachAcrylicControllerTarget()
+    {
+        if (AcrylicController is null || !AcrylicControllerAttached)
+        {
+            return;
+        }
+
+        try
+        {
+            AcrylicController.RemoveAllSystemBackdropTargets();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            AcrylicControllerAttached = false;
         }
     }
 
@@ -728,7 +864,6 @@ public abstract class WidgetWindowBase : Window
 
         LastElevateForInteractionUtc = DateTime.UtcNow;
         HoldTemporaryTopMost();
-        App.Current.WidgetManager?.BringAllVisibleWidgetsToFront(HWnd);
         OnElevated();
     }
 
@@ -754,6 +889,12 @@ public abstract class WidgetWindowBase : Window
 
     protected void StartTopMostSafetyTimer()
     {
+        if (!Win32Helper.IsWindowTopMost(HWnd))
+        {
+            TopMostSafetyTimer?.Stop();
+            return;
+        }
+
         if (TopMostSafetyTimer is null)
         {
             TopMostSafetyTimer = DispatcherQueue.CreateTimer();
@@ -762,9 +903,16 @@ public abstract class WidgetWindowBase : Window
             TopMostSafetyTimer.Tick += (_, _) =>
             {
                 TopMostSafetyTimer?.Stop();
-                if (!IsAtDesktopLayer && !IsDragging && !IsResizing &&
+                if (!IsAtDesktopLayer &&
                     App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
                 {
+                    if (ShouldDeferDesktopLayerRestore())
+                    {
+                        App.LogVerbose($"[ZOrder] {LogPrefix} safety timer: defer restore hwnd=0x{HWnd.ToInt64():X}");
+                        TopMostSafetyTimer?.Start();
+                        return;
+                    }
+
                     App.Log($"[ZOrder] {LogPrefix} safety timer: force restore hwnd=0x{HWnd.ToInt64():X}");
                     RestoreDesktopLayer(force: true);
                 }
@@ -775,6 +923,26 @@ public abstract class WidgetWindowBase : Window
             TopMostSafetyTimer.Stop();
         }
         TopMostSafetyTimer.Start();
+    }
+
+    protected bool ShouldDeferDesktopLayerRestore()
+    {
+        if (IsDragging ||
+            IsResizing ||
+            HasBlockingFlyoutOpen() ||
+            App.Current.WidgetManager is { IsWidgetInteractionActive: true })
+        {
+            return true;
+        }
+
+        IntPtr foregroundWindow = Win32Helper.GetForegroundWindow();
+        if (foregroundWindow == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        return foregroundWindow == HWnd ||
+               Win32Helper.GetAncestor(foregroundWindow, Win32Helper.GA_ROOTOWNER) == HWnd;
     }
 
     protected void RestoreDesktopLayer(bool force = false)
@@ -1077,6 +1245,12 @@ public abstract class WidgetWindowBase : Window
     protected void CleanupBase()
     {
         StopBackdropRefreshTimer();
+        if (_inactiveBackdropCleanupTimer is not null)
+        {
+            _inactiveBackdropCleanupTimer.Stop();
+            _inactiveBackdropCleanupTimer.Tick -= InactiveBackdropCleanupTimer_Tick;
+            _inactiveBackdropCleanupTimer = null;
+        }
         TopMostSafetyTimer?.Stop();
         TopMostSafetyTimer = null;
         DisplayChangeWatcher?.Dispose();

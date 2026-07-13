@@ -247,8 +247,8 @@ public sealed partial class WidgetManager
         }
 
         App.LogVerbose(
-            $"[TrayBatch] ToggleDecision=hide reason=visible-widgets-exist hwnd=0x{foregroundWindow.ToInt64():X}");
-        return true;
+            $"[TrayBatch] ToggleDecision=raise reason=visible-widgets-behind hwnd=0x{foregroundWindow.ToInt64():X}");
+        return false;
     }
 
     public WidgetManager(
@@ -306,7 +306,6 @@ public sealed partial class WidgetManager
         _themeService = themeService;
         _quickCaptureService = quickCaptureService;
         _localizationService = localizationService ?? new LocalizationService(settingsService);
-        _mouseHookProc = TrayLayerMouseHookProc;
         _desktopPathProvider = desktopPathProvider;
         _recycleManagedFolderDeletes = recycleManagedFolderDeletes;
         _widgetRegistry = WidgetRegistry.Default;
@@ -1324,7 +1323,7 @@ public sealed partial class WidgetManager
                 Math.Max(_settingsService.Settings.DefaultWidgetWidth, 320),
                 Math.Max(_settingsService.Settings.DefaultWidgetHeight, 420)),
             WidgetKind.Music => (380, 190),
-            WidgetKind.Weather => (260, 230),
+            WidgetKind.Weather => (200, 200),
             _ => (
                 _settingsService.Settings.DefaultWidgetWidth,
                 _settingsService.Settings.DefaultWidgetHeight)

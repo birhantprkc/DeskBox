@@ -56,6 +56,28 @@
             </Style>
 
             <Style x:Key="QuickCaptureConfirmCommandButtonStyle" TargetType="Button" BasedOn="{StaticResource WidgetConfirmCommandButtonStyle}" />
+
+            <Style x:Key="QuickCaptureDetailIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                <Setter Property="Width" Value="30" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="MinWidth" Value="30" />
+                <Setter Property="MinHeight" Value="30" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="4" />
+            </Style>
+
+            <Style x:Key="QuickCaptureMaterialButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="24" />
+                <Setter Property="MinWidth" Value="28" />
+                <Setter Property="MinHeight" Value="24" />
+                <Setter Property="Padding" Value="3" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="4" />
+            </Style>
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -91,15 +113,18 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="2" ColumnSpacing="6"
-                Visibility="{Binding InputAreaVisibility}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <Grid x:Name="ListPage" Grid.RowSpan="4" RowSpacing="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+            <Grid Grid.Row="2" Visibility="{Binding InputAreaVisibility}">
                 <TextBox
                     x:Name="InputTextBox"
-                    Grid.Column="0"
+                    Visibility="Collapsed"
                     Height="{Binding InputHeight}"
                     MinHeight="{Binding InputHeight}"
                     Padding="{Binding InputPadding}"
@@ -110,7 +135,7 @@
                     KeyDown="InputTextBox_KeyDown" />
                 <Button
                     x:Name="ExpandInputButton"
-                    Grid.Column="1"
+                    Visibility="Collapsed"
                     Click="ExpandInputButton_Click"
                     Width="{Binding InputButtonSize}"
                     Height="{Binding InputButtonSize}"
@@ -122,7 +147,7 @@
                 </Button>
             </Grid>
 
-            <Border Grid.Row="1" Height="1" Margin="0,2"
+            <Border Grid.Row="1" Height="1" Margin="0,1"
                 Visibility="{Binding InputAreaVisibility}" />
 
             <Grid Grid.Row="0" ColumnSpacing="5">
@@ -283,11 +308,15 @@
                 </Grid>
 
                 <ListView
-                                        x:Name="ItemsListView"
+                    x:Name="ItemsListView"
+                    AllowDrop="True"
+                    CanDragItems="True"
+                    CanReorderItems="True"
                     Background="Transparent"
-                    DoubleTapped="ItemsListView_DoubleTapped"
                     HorizontalContentAlignment="Stretch"
                     ItemsSource="{Binding Items}"
+                    DragItemsCompleted="ItemsListView_DragItemsCompleted"
+                    DragItemsStarting="ItemsListView_DragItemsStarting"
                     KeyDown="ItemsListView_KeyDown"
                     PointerPressed="ItemsListView_PointerPressed"
                     PointerMoved="ItemsListView_PointerMoved"
@@ -299,13 +328,45 @@
                     SelectionMode="Single"
                     SelectionChanged="ItemsListView_SelectionChanged"
                     Visibility="{Binding ListVisibility}">
-                    <ListView.ItemContainerTransitions>
-                        <TransitionCollection />
-                    </ListView.ItemContainerTransitions>
+                    <ListView.Header>
+                        <Button
+                            x:Name="AddNoteCardButton"
+                            Margin="0,0,0,6"
+                            MinHeight="48"
+                            Padding="8,5"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Click="AddNoteCardButton_Click"
+                            CornerRadius="4"
+                            Visibility="{Binding InputAreaVisibility}">
+                            <Grid ColumnSpacing="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="32" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="{Binding PrimaryIconSize}"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Glyph="&#xE710;" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    FontSize="{Binding TextSize}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding AddNoteText}" />
+                            </Grid>
+                        </Button>
+                    </ListView.Header>
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
                             <Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,0,4" />
+                            <Setter Property="Margin" Value="0,0,0,5" />
                             <Setter Property="MinHeight" Value="0" />
                             <Setter Property="UseSystemFocusVisuals" Value="False" />
                             <Setter Property="Background" Value="Transparent" />
@@ -314,15 +375,12 @@
                             <Setter Property="HorizontalAlignment" Value="Stretch" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="VerticalContentAlignment" Value="Stretch" />
-                            <Setter Property="Template">
+                            <Setter Property="Transitions">
                                 <Setter.Value>
-                                    <ControlTemplate TargetType="ListViewItem">
-                                        <ContentPresenter
-                                            Content="{TemplateBinding Content}"
-                                            ContentTemplate="{TemplateBinding ContentTemplate}"
-                                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                                    </ControlTemplate>
+                                    <TransitionCollection>
+                                        <AddDeleteThemeTransition />
+                                        <ReorderThemeTransition />
+                                    </TransitionCollection>
                                 </Setter.Value>
                             </Setter>
                         </Style>
@@ -332,41 +390,50 @@
                             <Grid
                                 x:Name="QuickCaptureItemRoot"
                                 HorizontalAlignment="Stretch"
-                                Padding="8,5,4,5"
+                                Padding="10,6,6,6"
                                 Background="Transparent"
-                                CanDrag="True"
                                 DataContextChanged="QuickCaptureItem_DataContextChanged"
-                                DragStarting="QuickCaptureItem_DragStarting"
                                 PointerEntered="QuickCaptureItem_PointerEntered"
                                 PointerExited="QuickCaptureItem_PointerExited"
                                 RightTapped="QuickCaptureItem_RightTapped"
                                 Tapped="QuickCaptureItem_Tapped">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="28" />
                                 </Grid.ColumnDefinitions>
+                                <Border
+                                    x:Name="ItemMaterialBackground"
+                                    Grid.ColumnSpan="2"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderThickness="0"
+                                    CornerRadius="4"
+                                    Margin="-10,-6,-6,-6" />
                                 <Border
                                     x:Name="ItemHoverBackground"
                                     Grid.ColumnSpan="2"
+                                    Margin="-10,-6,-6,-6"
                                     Style="{StaticResource WidgetRowHoverBackgroundStyle}" />
                                 <Border
                                     Grid.ColumnSpan="2"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                    CornerRadius="6"
+                                    CornerRadius="4"
+                                    Margin="-10,-6,-6,-6"
                                     Opacity="0.18"
                                     Visibility="{Binding CopySelectionVisibility}" />
-                                <FontIcon
-                                    Grid.Column="0"
-                                    Margin="0,2,8,0"
-                                    FontSize="{Binding TypeIconSize}"
-                                    Glyph="{Binding TypeGlyph}"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     <StackPanel
                                         x:Name="ItemContentHost"
-                                        Grid.Column="1"
+                                        Grid.Column="0"
                                         Margin="0"
                                         MinWidth="0"
-                                        Spacing="2">
+                                        Spacing="0"
+                                        VerticalAlignment="Center">
+                                    <TextBlock
+                                        FontSize="{Binding TextSize}"
+                                        FontWeight="SemiBold"
+                                        MaxLines="1"
+                                        Text="{Binding Title}"
+                                        TextTrimming="CharacterEllipsis"
+                                        Visibility="Collapsed" />
                                     <Border
                                         x:Name="ImagePreviewBorder"
                                         Width="116"
@@ -389,7 +456,7 @@
                                         CharacterSpacing="8"
                                         LineHeight="{Binding ElementName=ItemsListView, Path=DataContext.ItemTextLineHeight}"
                                         LineStackingStrategy="BlockLineHeight"
-                                        MaxLines="2"
+                                        MaxLines="10"
                                         Text="{Binding DisplayText}"
                                         TextTrimming="CharacterEllipsis"
                                         TextWrapping="Wrap"
@@ -399,18 +466,34 @@
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         LineHeight="{Binding ElementName=ItemsListView, Path=DataContext.ItemMetaLineHeight}"
                                         LineStackingStrategy="BlockLineHeight"
-                                        Text="{Binding UpdatedAtText}" />
-                                </StackPanel>
+                                        Text="{Binding CreatedAtText}"
+                                        Visibility="{Binding ElementName=ItemsListView, Path=DataContext.CreatedTimeVisibility}" />
+                                    </StackPanel>
+                                <Button
+                                    x:Name="CopyItemButton"
+                                    Grid.Column="1"
+                                    Width="28"
+                                    Height="28"
+                                    MinWidth="28"
+                                    MinHeight="28"
+                                    Padding="0"
+                                    Click="CopyItemButton_Click"
+                                    Style="{StaticResource SubtleButtonStyle}"
+                                    Tag="{Binding}"
+                                    VerticalAlignment="Center">
+                                    <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE8C8;" />
+                                </Button>
                                 <Border
                                     x:Name="ItemActionHost"
                                     Grid.ColumnSpan="2"
                                     Canvas.ZIndex="2"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                     BorderThickness="1"
-                                    Margin="0,0,6,0"
+                                    Margin="0,0,34,0"
                                     HorizontalAlignment="Right"
                                     Style="{StaticResource WidgetHoverActionHostStyle}"
-                                    VerticalAlignment="Center">
+                                    VerticalAlignment="Center"
+                                    Visibility="Collapsed">
                                     <StackPanel
                                         x:Name="ItemActionButtons"
                                         HorizontalAlignment="Right"
@@ -501,6 +584,195 @@
                             IsActive="{Binding IsSwitchingView}" />
                     </Border>
                 </Grid>
+            </Grid>
+            </Grid>
+
+            <Grid
+                x:Name="DetailPage"
+                Grid.RowSpan="4"
+                Canvas.ZIndex="8"
+                Background="Transparent"
+                Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    Grid.Row="0"
+                    Margin="-10,-6,-6,0"
+                    MinHeight="40"
+                    Padding="8,4"
+                    Background="Transparent"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1">
+                    <Grid MinHeight="32" ColumnSpacing="3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="30" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="30" />
+                            <ColumnDefinition Width="30" />
+                            <ColumnDefinition Width="30" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            Click="DetailBackButton_Click"
+                            Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
+                            ToolTipService.ToolTip="{Binding DetailBackText}"
+                            VerticalAlignment="Center">
+                            <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE72B;" />
+                        </Button>
+                        <TextBox
+                            x:Name="DetailTitleTextBox"
+                            Grid.Column="1"
+                            Visibility="Collapsed" />
+                        <TextBlock
+                            x:Name="DetailTimestampText"
+                            Grid.Column="1"
+                            Margin="4,0"
+                            VerticalAlignment="Center"
+                            FontSize="{Binding SecondaryTextSize}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            MaxLines="1"
+                            TextTrimming="CharacterEllipsis"
+                            Visibility="{Binding CreatedTimeVisibility}" />
+                        <Button
+                            x:Name="DetailPinButton"
+                            Grid.Column="2"
+                            Click="DetailPinButton_Click"
+                            Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
+                            VerticalAlignment="Center">
+                            <Grid Width="18" Height="18">
+                                <FontIcon x:Name="DetailPinIcon" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ActionIconSize}" Glyph="&#xE718;" />
+                                <Border
+                                    x:Name="DetailUnpinSlash"
+                                    Width="15"
+                                    Height="1.4"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource TextFillColorPrimaryBrush}"
+                                    CornerRadius="1"
+                                    RenderTransformOrigin="0.5,0.5"
+                                    Visibility="Collapsed">
+                                    <Border.RenderTransform>
+                                        <RotateTransform Angle="-45" />
+                                    </Border.RenderTransform>
+                                </Border>
+                            </Grid>
+                        </Button>
+                        <Button
+                            Grid.Column="3"
+                            Click="DetailCopyButton_Click"
+                            Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
+                            ToolTipService.ToolTip="{Binding DetailCopyText}"
+                            VerticalAlignment="Center">
+                            <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE8C8;" />
+                        </Button>
+                        <Button
+                            Grid.Column="4"
+                            Click="DetailDeleteButton_Click"
+                            Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
+                            ToolTipService.ToolTip="{Binding DetailDeleteText}"
+                            VerticalAlignment="Center">
+                            <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE74D;" />
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="1" Margin="0,0,0,7" RowSpacing="7">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border
+                        x:Name="DetailMaterialSurface"
+                        Grid.Row="0"
+                        MinHeight="132"
+                        Padding="10,2,10,8"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4">
+                        <Grid RowSpacing="3">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Border
+                                x:Name="DetailImagePreviewBorder"
+                                Grid.Row="0"
+                                Height="120"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Visibility="Collapsed">
+                                <Grid>
+                                    <Image x:Name="DetailImagePreview" Stretch="Uniform" />
+                                    <Button
+                                        Margin="4"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Click="DetailImageCopyButton_Click"
+                                        Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
+                                        ToolTipService.ToolTip="{Binding DetailCopyImageText}">
+                                        <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE8C8;" />
+                                    </Button>
+                                    <Button
+                                        Margin="4"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        Click="DetailReplaceImageButton_Click"
+                                        Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
+                                        ToolTipService.ToolTip="{Binding DetailReplaceImageText}">
+                                        <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE72C;" />
+                                    </Button>
+                                </Grid>
+                            </Border>
+                            <TextBox
+                                x:Name="DetailBodyTextBox"
+                                Grid.Row="2"
+                                MinHeight="80"
+                                AcceptsReturn="True"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="0"
+                                FontSize="{Binding TextSize}"
+                                FontWeight="Normal"
+                                Padding="8,6"
+                                PlaceholderText="{Binding DetailBodyPlaceholderText}"
+                                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                Style="{StaticResource WidgetBorderlessInputTextBoxStyle}"
+                                TextWrapping="Wrap"
+                                VerticalContentAlignment="Top" />
+                            <Button
+                                x:Name="DetailAddImageButton"
+                                Grid.Row="1"
+                                MinHeight="32"
+                                Padding="6,3"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                Click="DetailAddImageButton_Click"
+                                Style="{StaticResource SubtleButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xEB9F;" />
+                                    <TextBlock VerticalAlignment="Center" FontSize="{Binding TextSize}" Text="{Binding AddImageText}" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Margin="2,0,0,0" Orientation="Horizontal" Spacing="5">
+                            <Button x:Name="DefaultMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="Default" ToolTipService.ToolTip="{Binding MaterialDefaultText}"><Border Width="18" Height="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="3" /></Button>
+                            <Button x:Name="PaperMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="Paper" ToolTipService.ToolTip="{Binding MaterialPaperText}"><Border Width="18" Height="12" Background="#FFF4EEE2" CornerRadius="3" /></Button>
+                            <Button x:Name="YellowMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="StickyYellow" ToolTipService.ToolTip="{Binding MaterialYellowText}"><Border Width="18" Height="12" Background="#FFFFD96A" CornerRadius="3" /></Button>
+                            <Button x:Name="RoseMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="Rose" ToolTipService.ToolTip="{Binding MaterialRoseText}"><Border Width="18" Height="12" Background="#FFF2A7B8" CornerRadius="3" /></Button>
+                            <Button x:Name="MintMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="Mint" ToolTipService.ToolTip="{Binding MaterialMintText}"><Border Width="18" Height="12" Background="#FFA8D8B5" CornerRadius="3" /></Button>
+                            <Button x:Name="BlueMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="MistBlue" ToolTipService.ToolTip="{Binding MaterialBlueText}"><Border Width="18" Height="12" Background="#FFA9C7E8" CornerRadius="3" /></Button>
+                    </StackPanel>
+                </Grid>
+
             </Grid>
                 </Grid>
             </controls:WidgetShell.ShellContent>

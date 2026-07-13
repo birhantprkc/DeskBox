@@ -15,23 +15,8 @@ namespace DeskBox.ViewModels;
 
 public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 {
+    private const int MaxTransientEmptyInfoRetries = 4;
     private const int ProgressRefreshMs = 1000;
-    private const int VisualizerRefreshMs = 200;
-    private const int VisualizerTransitionRefreshMs = 33;
-    private const double VisualizerTransitionDurationMs = 900;
-    private const int MinVisualizerBarCount = 28;
-    private const int MaxVisualizerBarCount = 128;
-    private static readonly double[] s_visualizerSeeds =
-    [
-        0.28, 0.52, 0.36, 0.68, 0.44, 0.58, 0.32, 0.74,
-        0.40, 0.62, 0.48, 0.82, 0.34, 0.56, 0.70, 0.46,
-        0.30, 0.64, 0.42, 0.76, 0.50, 0.60, 0.38, 0.86,
-        0.54, 0.72, 0.36, 0.66, 0.44, 0.80, 0.32, 0.58,
-        0.46, 0.68, 0.40, 0.78, 0.52, 0.62, 0.34, 0.84,
-        0.48, 0.70, 0.42, 0.60, 0.30, 0.74, 0.56, 0.88,
-        0.38, 0.64, 0.50, 0.76, 0.44, 0.58, 0.36, 0.82,
-        0.54, 0.72, 0.40, 0.66, 0.32, 0.78, 0.46, 0.60
-    ];
 
     private readonly MusicSessionService _musicSessionService;
     private readonly MusicVolumeService _musicVolumeService;
@@ -40,9 +25,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private readonly WidgetConfig _config;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer? _progressTimer;
-    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer? _visualizerTimer;
-    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer? _visualizerTransitionTimer;
-    private readonly Random _random = new();
 
     private string? _preferredSessionId;
     private string _title = string.Empty;
@@ -68,6 +50,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private string? _lastCoverSignature;
     private string? _coverRetrySignature;
     private int _coverRetryCount;
+    private int _transientEmptyInfoRetryCount;
+    private int _transientEmptyInfoGeneration;
     private bool _fullRefreshPending;
     private bool _isWindowVisible;
     private bool _isSeeking;
@@ -78,21 +62,14 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private double? _pendingSystemVolume;
     private double? _pendingSessionVolume;
     private bool _isDisposed;
-    private DateTimeOffset _visualizerTransitionStartedAt;
     private DateTimeOffset _lastPositionSyncAt;
     private TimeSpan _lastSyncedPosition;
-    private double _lastVisualizerAvailableWidth;
-    private double[] _visualizerTransitionStartHeights = [];
-    private double[] _visualizerTransitionStartDotSizes = [];
-    private double[] _visualizerTransitionStartOpacities = [];
     private double _textSize = SettingsService.DefaultTextSize;
     private double _seekValue;
     private double _systemVolume = 0.5;
     private double _sessionVolume = 0.5;
     private bool _hasSessionVolume;
     private bool _useArtworkBackdrop = true;
-    private bool _showRhythmBars = true;
-    private string _rhythmStyle = SettingsService.MusicRhythmStyleSoftWave;
     private bool _enableCoverHoverMotion = true;
     private Color _artworkColor = AccentColorHelper.DefaultAccentColor;
     private bool _hasArtworkColor;
@@ -129,18 +106,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             _progressTimer.IsRepeating = true;
             _progressTimer.Tick += ProgressTimer_Tick;
 
-            _visualizerTimer = _dispatcherQueue.CreateTimer();
-            _visualizerTimer.Interval = TimeSpan.FromMilliseconds(VisualizerRefreshMs);
-            _visualizerTimer.IsRepeating = true;
-            _visualizerTimer.Tick += VisualizerTimer_Tick;
-
-            _visualizerTransitionTimer = _dispatcherQueue.CreateTimer();
-            _visualizerTransitionTimer.Interval = TimeSpan.FromMilliseconds(VisualizerTransitionRefreshMs);
-            _visualizerTransitionTimer.IsRepeating = true;
-            _visualizerTransitionTimer.Tick += VisualizerTransitionTimer_Tick;
         }
-
-        EnsureVisualizerBarCount(MinVisualizerBarCount);
 
         AttachServiceEvents();
     }
@@ -156,8 +122,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             return null;
         }
     }
-
-    public ObservableCollection<MusicBarViewModel> VisualizerBars { get; } = [];
 
     public ObservableCollection<string> SessionDisplayNames { get; } = [];
 
@@ -208,44 +172,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool ShowRhythmBars
-    {
-        get => _showRhythmBars;
-        private set
-        {
-            if (SetProperty(ref _showRhythmBars, value))
-            {
-                OnPropertyChanged(nameof(RhythmBarsVisibility));
-                OnPropertyChanged(nameof(SoftWaveVisibility));
-                OnPropertyChanged(nameof(GlassSpectrumVisibility));
-                OnPropertyChanged(nameof(DotPulseVisibility));
-                OnPropertyChanged(nameof(LineSpectrumVisibility));
-                OnPropertyChanged(nameof(StackedEqualizerVisibility));
-                OnPropertyChanged(nameof(RhythmBarsOpacity));
-                UpdateVisualizerTimer();
-            }
-        }
-    }
-
-    public string RhythmStyle
-    {
-        get => _rhythmStyle;
-        private set
-        {
-            string normalizedValue = SettingsService.NormalizeMusicRhythmStyle(value);
-            if (SetProperty(ref _rhythmStyle, normalizedValue))
-            {
-                OnPropertyChanged(nameof(SoftWaveVisibility));
-                OnPropertyChanged(nameof(GlassSpectrumVisibility));
-                OnPropertyChanged(nameof(DotPulseVisibility));
-                OnPropertyChanged(nameof(LineSpectrumVisibility));
-                OnPropertyChanged(nameof(StackedEqualizerVisibility));
-                UpdateVisualizerWidth(_lastVisualizerAvailableWidth);
-                UpdateVisualizerTimer();
-            }
-        }
-    }
-
     public bool EnableCoverHoverMotion
     {
         get => _enableCoverHoverMotion;
@@ -265,8 +191,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(PauseIconVisibility));
                 OnPropertyChanged(nameof(PlayPauseTooltip));
                 OnPropertyChanged(nameof(StatusText));
-                OnPropertyChanged(nameof(RhythmBarsOpacity));
-                UpdateVisualizerTimer();
             }
         }
     }
@@ -336,6 +260,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _textSize, value))
             {
                 OnPropertyChanged(nameof(TitleTextSize));
+                OnPropertyChanged(nameof(MinimalTitleTextSize));
                 OnPropertyChanged(nameof(SecondaryTextSize));
                 OnPropertyChanged(nameof(CaptionTextSize));
             }
@@ -343,6 +268,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     }
 
     public double TitleTextSize => Math.Min(SettingsService.MaxTextSize + 3, TextSize + 4);
+
+    public double MinimalTitleTextSize => Math.Min(SettingsService.MaxTextSize + 1, TextSize + 1.5);
 
     public double SecondaryTextSize => Math.Max(SettingsService.MinTextSize, TextSize - 1);
 
@@ -458,32 +385,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     public Visibility ArtworkBackdropVisibility => UseArtworkBackdrop ? Visibility.Visible : Visibility.Collapsed;
 
     public CornerRadius ArtworkBackdropCornerRadius => new(GetArtworkBackdropCornerRadius());
-
-    public Visibility RhythmBarsVisibility => ShowRhythmBars ? Visibility.Visible : Visibility.Collapsed;
-
-    public Visibility SoftWaveVisibility => ShowRhythmBars && RhythmStyle == SettingsService.MusicRhythmStyleSoftWave
-        ? Visibility.Visible
-        : Visibility.Collapsed;
-
-    public Visibility GlassSpectrumVisibility => ShowRhythmBars && RhythmStyle == SettingsService.MusicRhythmStyleGlassSpectrum
-        ? Visibility.Visible
-        : Visibility.Collapsed;
-
-    public Visibility DotPulseVisibility => ShowRhythmBars && RhythmStyle == SettingsService.MusicRhythmStyleDotPulse
-        ? Visibility.Visible
-        : Visibility.Collapsed;
-
-    public Visibility LineSpectrumVisibility => ShowRhythmBars && RhythmStyle == SettingsService.MusicRhythmStyleLineSpectrum
-        ? Visibility.Visible
-        : Visibility.Collapsed;
-
-    public Visibility StackedEqualizerVisibility => ShowRhythmBars && RhythmStyle == SettingsService.MusicRhythmStyleStackedEqualizer
-        ? Visibility.Visible
-        : Visibility.Collapsed;
-
-    public double RhythmBarsOpacity => ShowRhythmBars
-        ? IsPlaying ? 0.92 : 0.48
-        : 0.0;
 
     public Color ArtworkBackdropStartColor => Color.FromArgb(0x5A, _artworkColor.R, _artworkColor.G, _artworkColor.B);
 
@@ -624,7 +525,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         if (_isWindowVisible)
         {
             _progressTimer?.Start();
-            UpdateVisualizerTimer();
         }
         UpdateMusicTimerDiagnostics();
     }
@@ -957,20 +857,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         RaiseMusicAccentPropertiesChanged();
     }
 
-    public void UpdateVisualizerWidth(double availableWidth)
-    {
-        if (!double.IsFinite(availableWidth) || availableWidth <= 0)
-        {
-            return;
-        }
-
-        _lastVisualizerAvailableWidth = availableWidth;
-        var (itemWidth, spacing) = GetVisualizerMetrics(RhythmStyle);
-        int targetCount = (int)Math.Floor((availableWidth + spacing) / (itemWidth + spacing));
-        targetCount = Math.Clamp(targetCount, MinVisualizerBarCount, MaxVisualizerBarCount);
-        EnsureVisualizerBarCount(targetCount);
-    }
-
     public void OnActivated()
     {
         if (_isDisposed)
@@ -981,7 +867,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         if (_isWindowVisible)
         {
             _progressTimer?.Start();
-            UpdateVisualizerTimer();
             UpdateMusicTimerDiagnostics();
         }
         _ = RefreshAsync();
@@ -989,10 +874,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     public void OnDeactivated()
     {
-        // Keep all timers running so the rhythm bars continue animating
-        // even when the widget is not activated (e.g., user clicked elsewhere).
-        // The visualizer timer is controlled by UpdateVisualizerTimer based on
-        // playback state, so it only runs when music is actually playing.
     }
 
     /// <summary>
@@ -1011,14 +892,11 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         if (visible)
         {
             _progressTimer?.Start();
-            UpdateVisualizerTimer();
             _ = RefreshAsync();
         }
         else
         {
             _progressTimer?.Stop();
-            _visualizerTimer?.Stop();
-            _visualizerTransitionTimer?.Stop();
         }
         UpdateMusicTimerDiagnostics();
     }
@@ -1033,6 +911,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         _isDisposed = true;
         _fullRefreshPending = false;
         ++_coverGeneration;
+        ++_transientEmptyInfoGeneration;
         ++_timelineRefreshGeneration;
         ++_playbackRefreshGeneration;
         DetachServiceEvents();
@@ -1042,17 +921,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             _progressTimer.Tick -= ProgressTimer_Tick;
         }
 
-        if (_visualizerTimer is not null)
-        {
-            _visualizerTimer.Stop();
-            _visualizerTimer.Tick -= VisualizerTimer_Tick;
-        }
-
-        if (_visualizerTransitionTimer is not null)
-        {
-            _visualizerTransitionTimer.Stop();
-            _visualizerTransitionTimer.Tick -= VisualizerTransitionTimer_Tick;
-        }
         _localizationService.LanguageChanged -= OnLanguageChanged;
         if (_settingsService is not null)
         {
@@ -1060,10 +928,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
 
         _musicSessionService.Dispose();
-
-        // Clear VisualizerBars so all MusicBarViewModel instances (and their
-        // 10 EqualizerSegments each) become eligible for GC immediately.
-        VisualizerBars.Clear();
 
         // Release the thumbnail BitmapImage reference so the native WIC
         // texture can be reclaimed by GC rather than lingering until gen2.
@@ -1074,6 +938,13 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private async Task ApplyInfoAsync(MusicSessionInfo? info)
     {
+        if (ShouldDeferEmptyInfo(info))
+        {
+            ScheduleTransientEmptyInfoRetry();
+            return;
+        }
+
+        ResetTransientEmptyInfoRetry();
         if (info is null)
         {
             Title = string.Empty;
@@ -1134,10 +1005,11 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             var (cover, artworkColor) = await LoadThumbnailAndColorAsync(info);
             if (_isDisposed || gen != _coverGeneration) return;
 
-            ThumbnailImage = cover;
-            SetArtworkColor(artworkColor ?? AccentColorHelper.DefaultAccentColor, artworkColor.HasValue);
             if (cover is not null)
             {
+                ThumbnailImage = cover;
+                SetArtworkColor(artworkColor ?? AccentColorHelper.DefaultAccentColor, artworkColor.HasValue);
+                App.ScheduleLightMemoryCleanup();
                 _lastCoverSignature = coverSig;
                 _coverRetrySignature = null;
                 _coverRetryCount = 0;
@@ -1145,11 +1017,54 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             else
             {
                 _lastCoverSignature = null;
-                ScheduleCoverRetry(coverSig, gen);
+                if (!ScheduleCoverRetry(coverSig, gen))
+                {
+                    ThumbnailImage = null;
+                    SetArtworkColor(AccentColorHelper.DefaultAccentColor, hasArtworkColor: false);
+                    App.ScheduleLightMemoryCleanup();
+                }
             }
         }
 
         RaiseDisplayPropertiesChanged();
+    }
+
+    private bool ShouldDeferEmptyInfo(MusicSessionInfo? info)
+    {
+        bool incomingInfoIsEmpty = info is null || string.IsNullOrWhiteSpace(info.Title);
+        bool hasStableDisplay = !string.IsNullOrWhiteSpace(_title) || ThumbnailImage is not null;
+        return incomingInfoIsEmpty &&
+               hasStableDisplay &&
+               _transientEmptyInfoRetryCount < MaxTransientEmptyInfoRetries;
+    }
+
+    private void ScheduleTransientEmptyInfoRetry()
+    {
+        if (_transientEmptyInfoRetryCount == 0)
+        {
+            ++_transientEmptyInfoGeneration;
+        }
+
+        int generation = _transientEmptyInfoGeneration;
+        int retryNumber = ++_transientEmptyInfoRetryCount;
+        _ = RetryTransientEmptyInfoAsync(generation, retryNumber);
+    }
+
+    private async Task RetryTransientEmptyInfoAsync(int generation, int retryNumber)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(80 + retryNumber * 60));
+        if (_isDisposed || generation != _transientEmptyInfoGeneration)
+        {
+            return;
+        }
+
+        ScheduleFullRefresh();
+    }
+
+    private void ResetTransientEmptyInfoRetry()
+    {
+        _transientEmptyInfoRetryCount = 0;
+        ++_transientEmptyInfoGeneration;
     }
 
     private void SetArtworkColor(Color value, bool hasArtworkColor)
@@ -1195,19 +1110,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(MusicAccentBrush));
         OnPropertyChanged(nameof(PlayPauseButtonBackgroundBrush));
-        ApplyVisualizerAccentColor();
-    }
-
-    private void ApplyVisualizerAccentColor()
-    {
-        Color accentColor = GetMusicAccentColor();
-        int barCount = VisualizerBars.Count;
-        for (int i = 0; i < barCount; i++)
-        {
-            var bar = VisualizerBars[i];
-            bar.ApplyAccentColor(accentColor);
-            bar.ReapplyEqualizerFrame(i, barCount, accentColor, IsPlaying);
-        }
     }
 
     /// <summary>
@@ -1215,7 +1117,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     /// stream pass, avoiding the double OpenReadAsync that the previous separate
     /// methods incurred. Uses DecodePixelWidth to cap memory for large artwork.
     /// </summary>
-    private const int CoverDecodePixelWidth = 300;
+    private const int CoverDecodePixelWidth = 192;
     private const int MaxCoverRetryCount = 3;
 
     private static async Task<(BitmapImage? image, Color? color)> LoadThumbnailAndColorAsync(MusicSessionInfo info)
@@ -1249,7 +1151,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void ScheduleCoverRetry(string coverSignature, int generation)
+    private bool ScheduleCoverRetry(string coverSignature, int generation)
     {
         if (!string.Equals(_coverRetrySignature, coverSignature, StringComparison.Ordinal))
         {
@@ -1259,11 +1161,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
         if (_coverRetryCount >= MaxCoverRetryCount)
         {
-            return;
+            return false;
         }
 
         int retryNumber = ++_coverRetryCount;
         _ = RetryCoverAsync(coverSignature, generation, retryNumber);
+        return true;
     }
 
     private async Task RetryCoverAsync(string coverSignature, int generation, int retryNumber)
@@ -1509,137 +1412,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void VisualizerTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        Color accentColor = GetMusicAccentColor();
-        int barCount = VisualizerBars.Count;
-        for (int i = 0; i < barCount; i++)
-        {
-            double seed = s_visualizerSeeds[i % s_visualizerSeeds.Length];
-            double jitter = _random.NextDouble() * 0.28;
-            double value = Math.Clamp(seed + jitter - 0.1, 0.12, 1.0);
-            var bar = VisualizerBars[i];
-            bar.Height = ScaleBar(value);
-            bar.DotSize = ScaleDot(value);
-            // Round opacity to 2 decimal places to reduce unique values.
-            // The visual difference is imperceptible but it cuts binding
-            // pipeline invocations by ~70%.
-            bar.Opacity = Math.Round(0.68 + _random.NextDouble() * 0.32, 2);
-            bar.ApplyEqualizerFrame(value, i, barCount, accentColor, isPlaying: true);
-        }
-
-        UpdateCurveAndRipple(barCount, isPlaying: true);
-    }
-
-    private void UpdateVisualizerTimer()
-    {
-        if (!_isWindowVisible)
-        {
-            _visualizerTimer?.Stop();
-            _visualizerTransitionTimer?.Stop();
-            UpdateMusicTimerDiagnostics();
-            return;
-        }
-
-        if (IsPlaying && ShowRhythmBars)
-        {
-            _visualizerTransitionTimer?.Stop();
-            _visualizerTimer?.Start();
-            UpdateMusicTimerDiagnostics();
-            return;
-        }
-
-        _visualizerTimer?.Stop();
-        if (!ShowRhythmBars)
-        {
-            _visualizerTransitionTimer?.Stop();
-            UpdateMusicTimerDiagnostics();
-            return;
-        }
-
-        StartVisualizerTransitionToIdle();
-        UpdateMusicTimerDiagnostics();
-    }
-
-    private void StartVisualizerTransitionToIdle()
-    {
-        if (VisualizerBars.Count == 0)
-        {
-            return;
-        }
-
-        _visualizerTransitionStartHeights = VisualizerBars.Select(bar => bar.Height).ToArray();
-        _visualizerTransitionStartDotSizes = VisualizerBars.Select(bar => bar.DotSize).ToArray();
-        _visualizerTransitionStartOpacities = VisualizerBars.Select(bar => bar.Opacity).ToArray();
-        _visualizerTransitionStartedAt = DateTimeOffset.UtcNow;
-        _visualizerTransitionTimer?.Start();
-        ApplyVisualizerTransitionFrame(0);
-        UpdateMusicTimerDiagnostics();
-    }
-
-    private void VisualizerTransitionTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        double elapsedMs = (DateTimeOffset.UtcNow - _visualizerTransitionStartedAt).TotalMilliseconds;
-        double progress = Math.Clamp(elapsedMs / VisualizerTransitionDurationMs, 0.0, 1.0);
-        double easedProgress = 1 - Math.Pow(1 - progress, 3);
-        ApplyVisualizerTransitionFrame(easedProgress);
-
-        if (progress >= 1.0)
-        {
-            sender.Stop();
-            UpdateMusicTimerDiagnostics();
-        }
-    }
-
     private void UpdateMusicTimerDiagnostics()
     {
-        int activeCount = 0;
-        if (_progressTimer?.IsRunning == true) activeCount++;
-        if (_visualizerTimer?.IsRunning == true) activeCount++;
-        if (_visualizerTransitionTimer?.IsRunning == true) activeCount++;
-        PerformanceLogger.ActiveMusicTimerCount = activeCount;
-    }
-
-    private void ApplyVisualizerTransitionFrame(double progress)
-    {
-        Color accentColor = GetMusicAccentColor();
-        int barCount = VisualizerBars.Count;
-        for (int i = 0; i < barCount; i++)
-        {
-            double targetValue = s_visualizerSeeds[i % s_visualizerSeeds.Length] * 0.45;
-            double targetHeight = ScaleBar(targetValue);
-            double targetDotSize = ScaleDot(targetValue);
-            const double targetOpacity = 0.54;
-
-            double startHeight = i < _visualizerTransitionStartHeights.Length
-                ? _visualizerTransitionStartHeights[i]
-                : targetHeight;
-            double startDotSize = i < _visualizerTransitionStartDotSizes.Length
-                ? _visualizerTransitionStartDotSizes[i]
-                : targetDotSize;
-            double startOpacity = i < _visualizerTransitionStartOpacities.Length
-                ? _visualizerTransitionStartOpacities[i]
-                : targetOpacity;
-
-            double startValue = Math.Clamp((startHeight - 3) / 22, 0.0, 1.0);
-            var bar = VisualizerBars[i];
-            bar.Height = Lerp(startHeight, targetHeight, progress);
-            bar.DotSize = Lerp(startDotSize, targetDotSize, progress);
-            bar.Opacity = Lerp(startOpacity, targetOpacity, progress);
-            bar.ApplyEqualizerFrame(Lerp(startValue, targetValue, progress), i, barCount, accentColor, isPlaying: false);
-        }
-
-        UpdateCurveAndRipple(barCount, isPlaying: false);
+        PerformanceLogger.ActiveMusicTimerCount = _progressTimer?.IsRunning == true ? 1 : 0;
     }
 
     private void OnLanguageChanged()
@@ -1679,8 +1454,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private void ApplyMusicSettings(AppSettings settings)
     {
         UseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
-        ShowRhythmBars = settings.MusicShowRhythmBars;
-        RhythmStyle = SettingsService.NormalizeMusicRhythmStyle(settings.MusicRhythmStyle);
         EnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
         OnPropertyChanged(nameof(ArtworkBackdropCornerRadius));
     }
@@ -1725,13 +1498,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(PlayPauseButtonBackgroundBrush));
         OnPropertyChanged(nameof(HasSeekableTimeline));
         OnPropertyChanged(nameof(CanInteractWithProgress));
-        OnPropertyChanged(nameof(RhythmBarsVisibility));
-        OnPropertyChanged(nameof(SoftWaveVisibility));
-        OnPropertyChanged(nameof(GlassSpectrumVisibility));
-        OnPropertyChanged(nameof(DotPulseVisibility));
-        OnPropertyChanged(nameof(LineSpectrumVisibility));
-        OnPropertyChanged(nameof(StackedEqualizerVisibility));
-        OnPropertyChanged(nameof(RhythmBarsOpacity));
     }
 
     private MusicPlaybackMode GetNextPlaybackMode()
@@ -1745,72 +1511,6 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             MusicPlaybackMode.Repeat => MusicPlaybackMode.Normal,
             _ => MusicPlaybackMode.Normal
         };
-    }
-
-    private static (double ItemWidth, double Spacing) GetVisualizerMetrics(string rhythmStyle)
-    {
-        return SettingsService.NormalizeMusicRhythmStyle(rhythmStyle) switch
-        {
-            SettingsService.MusicRhythmStyleGlassSpectrum => (3.0, 2.0),
-            SettingsService.MusicRhythmStyleDotPulse => (4.2, 2.0),
-            SettingsService.MusicRhythmStyleLineSpectrum => (2.0, 2.0),
-            SettingsService.MusicRhythmStyleStackedEqualizer => (5.0, 2.0),
-            _ => (4.0, 2.0)
-        };
-    }
-
-    private void UpdateCurveAndRipple(int barCount, bool isPlaying)
-    {
-        // No-op: new visualizer styles were removed.
-    }
-
-    private static double ScaleBar(double value)
-    {
-        return Math.Round(3 + value * 22);
-    }
-
-    private void EnsureVisualizerBarCount(int targetCount)
-    {
-        int normalizedCount = Math.Clamp(targetCount, MinVisualizerBarCount, MaxVisualizerBarCount);
-        bool didChangeCount = VisualizerBars.Count != normalizedCount;
-        Color accentColor = GetMusicAccentColor();
-        while (VisualizerBars.Count < normalizedCount)
-        {
-            int index = VisualizerBars.Count;
-            double seed = s_visualizerSeeds[index % s_visualizerSeeds.Length];
-            var bar = new MusicBarViewModel(ScaleBar(seed * (IsPlaying ? 0.9 : 0.45)))
-            {
-                DotSize = ScaleDot(seed),
-                Opacity = IsPlaying ? 0.72 : 0.54
-            };
-            double value = seed * (IsPlaying ? 0.9 : 0.45);
-            bar.ApplyAccentColor(accentColor);
-            bar.ApplyEqualizerFrame(value, index, normalizedCount, accentColor, IsPlaying);
-            VisualizerBars.Add(bar);
-        }
-
-        while (VisualizerBars.Count > normalizedCount)
-        {
-            VisualizerBars.RemoveAt(VisualizerBars.Count - 1);
-        }
-
-        if (didChangeCount)
-        {
-            for (int i = 0; i < VisualizerBars.Count; i++)
-            {
-                VisualizerBars[i].ReapplyEqualizerFrame(i, VisualizerBars.Count, accentColor, IsPlaying);
-            }
-        }
-    }
-
-    private static double ScaleDot(double value)
-    {
-        return Math.Round(2.2 + value * 2.8);
-    }
-
-    private static double Lerp(double start, double end, double progress)
-    {
-        return start + (end - start) * Math.Clamp(progress, 0.0, 1.0);
     }
 
     private static byte ClampByte(double value)

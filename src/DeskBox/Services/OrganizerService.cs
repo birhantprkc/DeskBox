@@ -219,13 +219,13 @@ public sealed class OrganizerService
             historyEntry.Items[index].DestinationPath = plans[index].DestinationPath;
         }
 
-        await _settingsService.SaveAsync();
+        await _settingsService.SaveAsync(notifySubscribers: false);
     }
 
     private async Task AddHistoryEntryAsync(OrganizationHistoryEntry entry)
     {
         _settingsService.Settings.RecentOrganizationHistory.Insert(0, entry);
-        await _settingsService.SaveAsync();
+        await _settingsService.SaveAsync(notifySubscribers: false);
     }
 
     private static OrganizationHistoryEntry CreateHistoryEntry(

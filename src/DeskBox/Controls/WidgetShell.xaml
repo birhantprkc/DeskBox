@@ -51,8 +51,10 @@
                     x:Name="TitleIdentityHost"
                     Grid.Column="0"
                     VerticalAlignment="Center"
+                    IsDoubleTapEnabled="{x:Bind IsTitleEditable, Mode=OneWay}"
                     Orientation="Horizontal"
-                    Spacing="8">
+                    Spacing="8"
+                    DoubleTapped="TitleText_DoubleTapped">
                     <controls:WidgetTitleIcon
                         x:Name="TitleIcon"
                         AccentColor="{x:Bind TitleIconAccentColor, Mode=OneWay}"
@@ -64,11 +66,9 @@
                     <TextBlock
                         x:Name="TitleText"
                         FontSize="{Binding TitleTextSize}"
-                        IsDoubleTapEnabled="{x:Bind IsTitleEditable, Mode=OneWay}"
                         Text="{Binding DisplayName}"
                         TextTrimming="CharacterEllipsis"
-                        VerticalAlignment="Center"
-                        DoubleTapped="TitleText_DoubleTapped" />
+                        VerticalAlignment="Center" />
                     <ContentPresenter
                         x:Name="TitleEditorPresenter"
                         Content="{x:Bind TitleEditorContent, Mode=OneWay}"

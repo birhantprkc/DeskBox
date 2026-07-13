@@ -320,13 +320,14 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     public double CaptionTextSize => Math.Max(SettingsService.MinTextSize - 1, TextSize - 2);
     public double TemperatureTextSize => _layoutMode switch
     {
-        "Mini" => 26,
+        "Mini" => Math.Min(26, TextSize + 14),
+        "Compact" => Math.Min(34, TextSize + 21),
         "Detailed" => Math.Min(50, TextSize + 30),
         _ => Math.Min(38, TextSize + 24)
     };
 
     // Emoji font size scales with layout
-    public double CurrentEmojiSize => _layoutMode == "Mini" ? 32 : _layoutMode == "Compact" ? 22 : _layoutMode == "Detailed" ? 40 : 30;
+    public double CurrentEmojiSize => _layoutMode == "Mini" ? 26 : _layoutMode == "Compact" ? 30 : _layoutMode == "Detailed" ? 40 : 32;
     public double ForecastEmojiSize => _layoutMode == "Detailed" ? 18 : 14;
     public double ForecastHourTextSize => Math.Max(9, TextSize - 3);
     public double ForecastTempTextSize => Math.Max(10, TextSize - 1);
@@ -620,7 +621,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         _lastAvailableWidth = width;
         _lastAvailableHeight = height;
 
-        string newLayout = DetermineLayoutMode(width, height);
+        string newLayout = DetermineLayoutMode(width, height, _layoutMode);
         if (!string.Equals(newLayout, _layoutMode, StringComparison.Ordinal))
         {
             LayoutMode = newLayout;
@@ -646,16 +647,18 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     /// threshold. This prevents flickering and the "almost fits" problem where
     /// a few pixels short would unnecessarily downgrade to a smaller layout.
     /// </summary>
-    private string DetermineLayoutMode(double width, double height)
+    internal static string DetermineLayoutMode(double width, double height, string currentLayout)
     {
-        const double miniUpgradeW = 215, miniUpgradeH = 175;
-        const double miniDowngradeW = 200, miniDowngradeH = 165;
+        // The content area excludes the standard 46px title row. These thresholds
+        // therefore map a 180x180 widget to Compact while keeping 150x150 in Mini.
+        const double miniUpgradeW = 178, miniUpgradeH = 126;
+        const double miniDowngradeW = 168, miniDowngradeH = 116;
 
-        const double compactUpgradeW = 250, compactUpgradeH = 215;
-        const double compactDowngradeW = 230, compactDowngradeH = 200;
+        const double compactUpgradeW = 250, compactUpgradeH = 169;
+        const double compactDowngradeW = 230, compactDowngradeH = 154;
 
-        const double detailedUpgradeW = 280, detailedUpgradeH = 280;
-        const double detailedDowngradeW = 260, detailedDowngradeH = 250;
+        const double detailedUpgradeW = 280, detailedUpgradeH = 234;
+        const double detailedDowngradeW = 260, detailedDowngradeH = 204;
 
         // Mini is always forced for very small sizes regardless of hysteresis
         if (width <= miniDowngradeW || height <= miniDowngradeH)
@@ -663,7 +666,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
             return "Mini";
         }
 
-        switch (_layoutMode)
+        switch (currentLayout)
         {
             case "Mini":
                 // Upgrade to Compact when enough room

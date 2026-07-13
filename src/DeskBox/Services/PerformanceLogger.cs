@@ -40,7 +40,7 @@ public static class PerformanceLogger
     /// <summary>Music cover decode count since launch.</summary>
     public static int MusicCoverDecodeCount => Volatile.Read(ref s_musicCoverDecodeCount);
 
-    /// <summary>Active music timer count (progress + visualizer + transition).</summary>
+    /// <summary>Active music progress timer count.</summary>
     public static int ActiveMusicTimerCount { get; set; }
 
     private static int s_musicCoverDecodeCount;

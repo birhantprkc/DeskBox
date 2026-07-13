@@ -39,11 +39,15 @@ public static class WidgetLayerService
             return Win32Helper.GetForegroundWindow();
         }
 
-        DetachFromDesktopIconLayerIfNeeded(windowHandle);
-        Win32Helper.ClearWindowTopMost(windowHandle);
-
         IntPtr foreground = Win32Helper.GetForegroundWindow();
-        if (foreground != IntPtr.Zero && foreground != windowHandle)
+        DetachFromDesktopIconLayerIfNeeded(windowHandle);
+        bool wasTopMost = Win32Helper.IsWindowTopMost(windowHandle);
+        if (wasTopMost)
+        {
+            Win32Helper.ClearWindowTopMost(windowHandle);
+        }
+
+        if (wasTopMost && foreground != IntPtr.Zero && foreground != windowHandle)
         {
             Win32Helper.BringWindowToFront(foreground);
         }
@@ -80,7 +84,7 @@ public static class WidgetLayerService
         }
 
         DetachFromDesktopIconLayerIfNeeded(windowHandle);
-        Win32Helper.SetWindowTopMost(windowHandle);
+        Win32Helper.BringWindowTemporarilyToFront(windowHandle);
     }
 
     public static void BringToFront(IntPtr windowHandle)
@@ -97,6 +101,43 @@ public static class WidgetLayerService
 
         DetachFromDesktopIconLayerIfNeeded(windowHandle);
         Win32Helper.BringWindowToFront(windowHandle);
+    }
+
+    public static void BringGroupTemporarilyToFront(
+        IReadOnlyList<IntPtr> windowHandles,
+        IntPtr activeWindowHandle)
+    {
+        if (UsesDesktopPinnedMode())
+        {
+            return;
+        }
+
+        var handles = windowHandles
+            .Where(handle => handle != IntPtr.Zero && Win32Helper.IsWindow(handle))
+            .Distinct()
+            .ToList();
+        if (handles.Count == 0)
+        {
+            return;
+        }
+
+        foreach (IntPtr handle in handles)
+        {
+            DetachFromDesktopIconLayerIfNeeded(handle);
+            Win32Helper.SetWindowTopMost(handle);
+        }
+
+        foreach (IntPtr handle in handles.Where(handle => handle != activeWindowHandle))
+        {
+            Win32Helper.ClearWindowTopMost(handle);
+        }
+
+        IntPtr activeHandle = handles.Contains(activeWindowHandle)
+            ? activeWindowHandle
+            : handles[^1];
+        Win32Helper.ClearWindowTopMost(activeHandle);
+        Win32Helper.BringWindowToFront(activeHandle);
+        Win32Helper.SetForegroundWindow(activeHandle);
     }
 
     public static void ReleaseWindow(IntPtr windowHandle)

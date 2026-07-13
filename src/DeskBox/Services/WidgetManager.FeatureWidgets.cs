@@ -594,7 +594,6 @@ public sealed partial class WidgetManager
             return;
         }
 
-        bool isEnabled = GetFeatureWidgetEnabledState(kind);
         var suppressedClosedIds = _settingsService.Settings.Widgets
             .Where(widget => widget.WidgetKind == kind)
             .Select(widget => widget.Id)
@@ -611,6 +610,20 @@ public sealed partial class WidgetManager
             var configs = _settingsService.Settings.Widgets
                 .Where(widget => widget.WidgetKind == kind)
                 .ToList();
+
+            if (kind == WidgetKind.QuickCapture)
+            {
+                await _quickCaptureService.ClearAsync();
+            }
+            else if (kind == WidgetKind.Todo)
+            {
+                foreach (var todoConfig in configs)
+                {
+                    await new TodoWidgetStore(todoConfig.Id).ClearAsync();
+                }
+            }
+
+            SetFeatureWidgetEnabledState(kind, false);
             var config = configs.FirstOrDefault(widget => !IsDeleted(widget.Id)) ??
                          configs.FirstOrDefault();
 
@@ -628,12 +641,12 @@ public sealed partial class WidgetManager
 
             if (config is null)
             {
-                config = CreateDefaultFeatureWidgetConfig(kind, isEnabled);
+                config = CreateDefaultFeatureWidgetConfig(kind, isEnabled: false);
                 _settingsService.Settings.Widgets.Add(config);
             }
             else
             {
-                ResetFeatureWidgetConfig(config, kind, isEnabled);
+                ResetFeatureWidgetConfig(config, kind, isEnabled: false);
             }
 
             _settingsService.Settings.DeletedWidgetIds.RemoveAll(id =>
@@ -641,34 +654,7 @@ public sealed partial class WidgetManager
             _deletedWidgetIds.Remove(config.Id);
 
             await _settingsService.SaveAsync();
-            App.Log($"[WidgetManager] ResetFeatureWidget kind={kind} enabled={isEnabled} id={config.Id}");
-
-            // For Weather: turn off the toggle after reset so user can manually re-enable
-            if (kind == WidgetKind.Weather && isEnabled)
-            {
-                SetFeatureWidgetEnabledState(kind, false);
-                await _settingsService.SaveAsync();
-                return;
-            }
-
-            if (!isEnabled)
-            {
-                return;
-            }
-
-            switch (kind)
-            {
-                case WidgetKind.QuickCapture:
-                    await _quickCaptureService.ClearAsync();
-                    var quickCaptureWindow = await CreateQuickCaptureWidgetFromConfigAsync(config);
-                    quickCaptureWindow.RevealFromTray(autoRestore: false);
-                    break;
-                case WidgetKind.Todo:
-                case WidgetKind.Music:
-                case WidgetKind.Weather:
-                    await CreateContentWidgetFromConfigAsync(config, revealAfterCreate: true);
-                    break;
-            }
+            App.Log($"[WidgetManager] ResetFeatureWidget kind={kind} enabled=false id={config.Id}");
         }
         finally
         {
@@ -701,6 +687,7 @@ public sealed partial class WidgetManager
         config.PositionMarginY = 0;
         config.PositionMonitorKey = null;
         config.PositionMonitorDeviceName = null;
+        config.PositionMonitorWasPrimary = null;
         config.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
         (config.Width, config.Height) = GetDefaultFeatureWidgetSize(kind);
         config.ViewMode = ViewMode.Icon;

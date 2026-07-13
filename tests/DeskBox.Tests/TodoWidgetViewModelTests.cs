@@ -358,6 +358,70 @@ public sealed class TodoWidgetViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task BatchActions_UpdateAndDeleteSelectedItemsOnly()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        var first = await viewModel.AddItemAsync("first");
+        var second = await viewModel.AddItemAsync("second");
+        var third = await viewModel.AddItemAsync("third");
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.NotNull(third);
+        await viewModel.SetDueDateAsync(first.Id, DateTimeOffset.Now.AddDays(1));
+
+        int colored = await viewModel.SetColorMarkerAsync([first.Id, third.Id], TodoItem.BlueColorMarker);
+        int reminded = await viewModel.SetReminderOffsetAsync([first.Id, third.Id], 60);
+        int deleted = await viewModel.DeleteItemsAsync([first.Id, third.Id]);
+
+        Assert.Equal(2, colored);
+        Assert.Equal(1, reminded);
+        Assert.Equal(2, deleted);
+        Assert.Equal(second.Id, Assert.Single(viewModel.Items).Id);
+
+        var reloaded = CreateViewModel("todo-widget");
+        await reloaded.InitializeAsync();
+        Assert.Equal(second.Id, Assert.Single(reloaded.Items).Id);
+    }
+
+    [Fact]
+    public async Task BatchDueDateAndRecurrence_UpdateSelectedItemsOnly()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        var first = await viewModel.AddItemAsync("first");
+        var second = await viewModel.AddItemAsync("second");
+        var third = await viewModel.AddItemAsync("third");
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.NotNull(third);
+
+        int dated = await viewModel.SetDueDatePresetAsync(
+            [first.Id, third.Id],
+            TodoDuePreset.Tomorrow);
+        int repeated = await viewModel.SetRecurrenceAsync(
+            [first.Id, third.Id],
+            TodoRecurrenceMode.Weekly);
+
+        Assert.Equal(2, dated);
+        Assert.Equal(2, repeated);
+        Assert.NotNull(first.DueDate);
+        Assert.NotNull(third.DueDate);
+        Assert.Null(second.DueDate);
+        Assert.Equal(TodoRecurrenceMode.Weekly, first.RecurrenceMode);
+        Assert.Equal(TodoRecurrenceMode.Weekly, third.RecurrenceMode);
+        Assert.Equal(TodoRecurrenceMode.None, second.RecurrenceMode);
+
+        Assert.Equal(2, await viewModel.SetDueDatePresetAsync(
+            [first.Id, third.Id],
+            TodoDuePreset.Clear));
+        Assert.Null(first.DueDate);
+        Assert.Null(first.Recurrence);
+        Assert.Null(third.DueDate);
+        Assert.Null(third.Recurrence);
+    }
+
+    [Fact]
     public async Task ClearCompletedAsync_RemovesOnlyCompletedItems()
     {
         var viewModel = CreateViewModel("todo-widget");
@@ -480,11 +544,25 @@ public sealed class TodoWidgetViewModelTests : IDisposable
 
         Assert.True(await viewModel.SetDueDateAsync(item.Id, dueDate));
         Assert.True(await viewModel.SetRecurrenceAsync(item.Id, TodoRecurrenceMode.Weekly));
+        Assert.True(await viewModel.SetReminderOffsetAsync(item.Id, 30));
         Assert.True(await viewModel.SetDueDateAsync(item.Id, null));
 
         Assert.Null(item.DueDate);
         Assert.Null(item.Recurrence);
+        Assert.Null(item.ReminderOffsetMinutes);
         Assert.Equal(string.Empty, item.DueStatusText);
+    }
+
+    [Fact]
+    public async Task SetReminderOffsetAsync_RejectsTaskWithoutDueDate()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        var item = await viewModel.AddItemAsync("no due date");
+        Assert.NotNull(item);
+
+        Assert.False(await viewModel.SetReminderOffsetAsync(item.Id, 30));
+        Assert.Null(item.ReminderOffsetMinutes);
     }
 
     [Fact]
@@ -722,6 +800,189 @@ public sealed class TodoWidgetViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task AddInputAsync_AppliesAndResetsDraftMetadata()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        DateTimeOffset dueDate = DateTimeOffset.Now.AddDays(1);
+        viewModel.InputText = "task with metadata";
+        viewModel.DraftImportant = true;
+        viewModel.DraftDueDate = dueDate;
+
+        TodoItemViewModel? item = await viewModel.AddInputAsync();
+
+        Assert.NotNull(item);
+        Assert.Equal("task with metadata", item.Text);
+        Assert.True(item.IsImportant);
+        Assert.Equal(dueDate.ToLocalTime().Date, item.DueDate?.ToLocalTime().Date);
+        Assert.Equal(dueDate.ToLocalTime().Hour, item.DueDate?.ToLocalTime().Hour);
+        Assert.Equal(dueDate.ToLocalTime().Minute, item.DueDate?.ToLocalTime().Minute);
+        Assert.Empty(viewModel.InputText);
+        Assert.False(viewModel.DraftImportant);
+        Assert.Null(viewModel.DraftDueDate);
+
+        TodoWidgetData reloaded = await CreateStore("todo-widget").LoadAsync();
+        TodoItem savedItem = Assert.Single(reloaded.Items);
+        Assert.True(savedItem.IsImportant);
+        Assert.Equal(item.DueDate, savedItem.DueDate);
+    }
+
+    [Fact]
+    public async Task ToggleExpanded_KeepsOnlyOneExpandedItemAndCancelsPreviousEdit()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        TodoItemViewModel first = (await viewModel.AddItemAsync("first"))!;
+        TodoItemViewModel second = (await viewModel.AddItemAsync("second"))!;
+
+        viewModel.ToggleExpanded(first.Id);
+        viewModel.BeginEdit(first.Id);
+        viewModel.ToggleExpanded(second.Id);
+
+        Assert.False(first.IsExpanded);
+        Assert.False(first.IsEditing);
+        Assert.True(second.IsExpanded);
+    }
+
+    [Fact]
+    public async Task ImportantItems_AreSortedBeforeOtherActiveItems()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        TodoItemViewModel regular = (await viewModel.AddItemAsync("regular"))!;
+        TodoItemViewModel important = (await viewModel.AddItemAsync("important"))!;
+
+        Assert.True(await viewModel.SetImportantAsync(important.Id, true));
+
+        Assert.Equal(important.Id, viewModel.VisibleItems[0].Id);
+        Assert.Equal(regular.Id, viewModel.VisibleItems[1].Id);
+    }
+
+    [Fact]
+    public async Task AllCompletedEmptyState_IsShownWhenCompletedTasksAreHidden()
+    {
+        var settingsService = new SettingsService();
+        settingsService.Settings.TodoShowCompletedTasks = false;
+        var viewModel = CreateViewModel("todo-widget", settingsService);
+        await viewModel.InitializeAsync();
+        TodoItemViewModel item = (await viewModel.AddItemAsync("task"))!;
+
+        await viewModel.SetCompletedAsync(item.Id, true);
+
+        Assert.True(viewModel.IsAllTasksCompletedEmptyState);
+        Assert.Equal(LocalizationService.DefaultText("Todo.Empty.AllCompleted"), viewModel.EmptyStateTitle);
+        Assert.Equal(LocalizationService.DefaultText("Todo.Empty.AllCompletedDesc"), viewModel.EmptyStateText);
+        Assert.Equal(Visibility.Visible, viewModel.EmptyStateVisibility);
+    }
+
+    [Fact]
+    public async Task DetailNavigation_OpensSelectedTaskAndReturnsToList()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        TodoItemViewModel item = (await viewModel.AddItemAsync("task"))!;
+
+        TodoItemViewModel? opened = viewModel.OpenDetail(item.Id);
+
+        Assert.Same(item, opened);
+        Assert.Same(item, viewModel.SelectedDetailItem);
+        Assert.True(viewModel.IsDetailPageOpen);
+        Assert.Equal(Visibility.Collapsed, viewModel.ListPageVisibility);
+        Assert.Equal(Visibility.Visible, viewModel.DetailPageVisibility);
+
+        viewModel.CloseDetail();
+
+        Assert.Null(viewModel.SelectedDetailItem);
+        Assert.False(viewModel.IsDetailPageOpen);
+        Assert.Equal(Visibility.Visible, viewModel.ListPageVisibility);
+    }
+
+    [Fact]
+    public async Task NewDetail_EmptyTitleDiscardsDraftWithoutPersisting()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+
+        TodoItemViewModel draft = viewModel.OpenNewDetail();
+        Assert.True(viewModel.IsCreatingDetailItem);
+        Assert.Same(draft, viewModel.SelectedDetailItem);
+        Assert.Empty(viewModel.Items);
+        Assert.Empty(viewModel.VisibleItems);
+
+        Assert.NotNull(await viewModel.AddStepAsync(draft.Id, "draft step"));
+        Assert.True(await viewModel.UpdateNotesAsync(draft.Id, "draft note"));
+        Assert.True(await viewModel.SetColorMarkerAsync(draft.Id, TodoItem.BlueColorMarker));
+        Assert.Empty((await CreateStore("todo-widget").LoadAsync()).Items);
+
+        TodoItemViewModel? finalized = await viewModel.FinalizeDetailAsync("   ");
+
+        Assert.Null(finalized);
+        Assert.False(viewModel.IsCreatingDetailItem);
+        Assert.Null(viewModel.SelectedDetailItem);
+        Assert.Empty(viewModel.Items);
+        Assert.Empty((await CreateStore("todo-widget").LoadAsync()).Items);
+    }
+
+    [Fact]
+    public async Task NewDetail_WithTitleFinalizesDraftAndPersistsDetailContent()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        TodoItemViewModel draft = viewModel.OpenNewDetail();
+
+        Assert.NotNull(await viewModel.AddStepAsync(draft.Id, "first step"));
+        Assert.True(await viewModel.UpdateNotesAsync(draft.Id, "detail note"));
+        Assert.True(await viewModel.SetColorMarkerAsync(draft.Id, TodoItem.GreenColorMarker));
+
+        TodoItemViewModel? finalized = await viewModel.FinalizeDetailAsync("  new task  ");
+
+        Assert.Same(draft, finalized);
+        Assert.False(viewModel.IsCreatingDetailItem);
+        Assert.Null(viewModel.SelectedDetailItem);
+        Assert.Same(draft, Assert.Single(viewModel.Items));
+        Assert.Same(draft, Assert.Single(viewModel.VisibleItems));
+        Assert.Equal("new task", draft.Text);
+
+        TodoItem saved = Assert.Single((await CreateStore("todo-widget").LoadAsync()).Items);
+        Assert.Equal("new task", saved.Text);
+        Assert.Equal("first step", Assert.Single(saved.Steps).Text);
+        Assert.Equal("detail note", saved.Notes);
+        Assert.Equal(TodoItem.GreenColorMarker, saved.ColorMarker);
+    }
+
+    [Fact]
+    public async Task DetailContent_PersistsStepsNotesAndAttachments()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        TodoItemViewModel item = (await viewModel.AddItemAsync("task"))!;
+
+        TodoStepViewModel step = (await viewModel.AddStepAsync(item.Id, "first step"))!;
+        Assert.True(await viewModel.SetStepCompletedAsync(item.Id, step.Id, true));
+        Assert.True(await viewModel.UpdateNotesAsync(item.Id, "detail note"));
+        TodoAttachmentViewModel attachment = (await viewModel.AddAttachmentAsync(
+            item.Id,
+            "C:\\Temp\\brief.pdf",
+            "brief.pdf",
+            "pdf"))!;
+
+        Assert.Equal("1/1", item.StepProgressText);
+        Assert.Equal("detail note", item.Notes);
+        Assert.Single(item.Attachments);
+
+        TodoWidgetData saved = await CreateStore("todo-widget").LoadAsync();
+        TodoItem savedItem = Assert.Single(saved.Items);
+        Assert.True(Assert.Single(savedItem.Steps).IsCompleted);
+        Assert.Equal("detail note", savedItem.Notes);
+        Assert.Equal("brief.pdf", Assert.Single(savedItem.Attachments).DisplayName);
+
+        Assert.True(await viewModel.DeleteAttachmentAsync(item.Id, attachment.Id));
+        Assert.True(await viewModel.DeleteStepAsync(item.Id, step.Id));
+        Assert.Empty(item.Attachments);
+        Assert.Empty(item.Steps);
+    }
+
+    [Fact]
     public void ApplyAppearance_UsesGlobalTextSize()
     {
         var settingsService = new SettingsService();
@@ -729,17 +990,42 @@ public sealed class TodoWidgetViewModelTests : IDisposable
         var viewModel = CreateViewModel("todo-widget", settingsService);
 
         Assert.Equal(15, viewModel.TextSize);
-        Assert.Equal(13, viewModel.SecondaryTextSize);
-        Assert.Equal(18, viewModel.TitleTextSize);
+        Assert.Equal(14, viewModel.SecondaryTextSize);
+        Assert.Equal(16, viewModel.TitleTextSize);
         Assert.Equal(15, viewModel.FilterTextSize);
+        Assert.Equal(15, viewModel.SmallIconSize);
+        Assert.Equal(18, viewModel.StandardIconSize);
+        Assert.Equal(20, viewModel.PrimaryIconSize);
+        Assert.Equal(22, viewModel.CompletionIndicatorSize);
 
         settingsService.Settings.TextSize = 12;
         viewModel.ApplyAppearance();
 
         Assert.Equal(12, viewModel.TextSize);
-        Assert.Equal(10, viewModel.SecondaryTextSize);
-        Assert.Equal(15, viewModel.TitleTextSize);
+        Assert.Equal(11, viewModel.SecondaryTextSize);
+        Assert.Equal(13, viewModel.TitleTextSize);
         Assert.Equal(12, viewModel.FilterTextSize);
+        Assert.Equal(13, viewModel.SmallIconSize);
+        Assert.Equal(15, viewModel.StandardIconSize);
+        Assert.Equal(17, viewModel.PrimaryIconSize);
+        Assert.Equal(19, viewModel.CompletionIndicatorSize);
+    }
+
+    [Fact]
+    public async Task ApplyAppearance_DoesNotRebuildVisibleItemsForUnrelatedSettingsChanges()
+    {
+        var settingsService = new SettingsService();
+        var viewModel = CreateViewModel("todo-widget", settingsService);
+        await viewModel.InitializeAsync();
+        TodoItemViewModel item = (await viewModel.AddItemAsync("task"))!;
+        int collectionChangeCount = 0;
+        viewModel.VisibleItems.CollectionChanged += (_, _) => collectionChangeCount++;
+
+        settingsService.Settings.RecentOrganizationHistory.Add(new OrganizationHistoryEntry());
+        viewModel.ApplyAppearance();
+
+        Assert.Equal(0, collectionChangeCount);
+        Assert.Same(item, Assert.Single(viewModel.VisibleItems));
     }
 
     [Fact]

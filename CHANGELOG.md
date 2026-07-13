@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.2.9 - 2026-07-13
+
+### English
+
+- **Todo experience rebuilt**: Replaced the dense single-page workflow with a card-based task list and a dedicated full-widget detail view. The detail title is a resizable multiline field, metadata actions use a compact horizontal toolbar, and task cards display up to ten lines.
+- **Todo scheduling and organization**: Added eight color markers and filters, due date, reminder, recurrence and attachment workflows, recurring-task history handling, and context-menu shortcuts. Reminder and recurrence stay disabled until a due date exists.
+- **Todo selection and batch actions**: Added box selection and batch copy, delete, color, reminder, due-date and recurrence commands. Removed native ListView selection residue after opening or returning from details, including the add-task card focus state.
+- **Quick Capture redesign**: Reworked notes into a spacious card list and body-only full-widget editor. Added paper/material styles, image add and replace actions, thumbnails, image-specific copy controls, pin state feedback, and optional creation-time display.
+- **Quick Capture sorting and batch actions**: Added animated drag sorting for regular and pinned notes while preserving drag-out copy behavior. Added batch copy, delete, pin and paper commands, and fixed stale image previews after returning from details.
+- **Responsive widgets**: Reduced the minimum widget size from 200 x 200 to 150 x 150. Refined Weather layouts for small and medium sizes. Music now switches to an artwork-first layout below 180 px, keeps controls and the title readable, centers artwork cropping, reuses title marquee behavior, and applies a slower nonblank artwork transition.
+- **Music simplification**: Removed all spectrum/rhythm visuals, settings, ViewModel state and related code. Unified solid playback icons, button sizing and rounded-rectangle hover surfaces across minimal and medium layouts.
+- **File and context-menu improvements**: Simplified the native-style vertical menu order, kept Open and Extract text from image, renamed the Explorer command to Open file location, removed Show more options, and placed Delete last. Added file multi-selection actions and ensured commands close their flyouts immediately.
+- **Widget title editing**: Rename commands now enter a focused editor immediately. Double-clicking any widget title starts editing, while clicking the remaining title area commits and exits.
+- **Dynamic Z-order fixes**: Reworked tray and hotkey activation so all widgets raise together without a one-second flash, repeated activation hides them consistently, and subsequent foreground changes are managed naturally by Windows. Clicking a title raises all widgets; clicking content raises the current widget.
+- **Settings and reset behavior**: Global reset now preserves language, startup and feature-widget switches, resets Quick Capture creation-time visibility and resize snapping correctly, clears per-widget title-style overrides, and uses confirmation dialogs for destructive feature-widget resets. Feature-widget menu wording now represents enable/disable rather than deletion.
+- **Default settings updated**: New installs and global reset use Comfortable density, Mica material, Thin border, Round corners, segmented Todo and Quick Capture tabs, and hidden Todo footer counts.
+- **Performance and memory**: Reduced unrelated Todo refreshes caused by organizer history writes, suppressed redundant settings broadcasts for file operations, tightened cancellation-token and event cleanup, removed music spectrum allocation paths, and improved repeated language/material/theme change behavior.
+- **Reliability fixes**: Fixed Quick Capture clearing removing the add-note entry, image-plus-text copy behavior, created-time visibility, image persistence between list and detail views, completed Todo checkmark contrast, overlapping Todo cards, feature-widget reset completeness, and several tray/hotkey layer edge cases.
+- **Tests**: Expanded coverage for Todo recurrence, persistence and batch changes; Quick Capture image, ordering and reset behavior; settings defaults; organizer notification suppression; responsive Music layout; and Weather layout thresholds.
+
+### 中文
+
+- **待办体验重构**：将拥挤的单页操作改为卡片任务列表和格子内完整详情页。详情标题支持多行输入并可拖动调整高度，提醒等元数据改为紧凑横排工具栏，任务卡片最多展示 10 行。
+- **待办时间与整理能力**：增加 8 种颜色标记和筛选、截止日期、提醒、重复、附件、重复任务历史及右键快捷操作。未设置截止日期时，提醒和重复保持禁用。
+- **待办多选与批量操作**：支持拉框多选，以及批量复制、删除、颜色、提醒、截止日期和重复。修复进入详情再返回后的 ListView 选中残留，以及添加任务卡片误显示选中状态。
+- **随记重新设计**：改为更舒展的记录列表和仅保留正文的格子内详情编辑。支持纸张材质、添加/替换图片、缩略图、图片独立复制、固定状态反馈和创建时间显示开关。
+- **随记排序与批量操作**：普通与固定列表均支持带动效的拖动排序，同时保留拖出复制。新增批量复制、删除、固定和纸张操作，修复详情返回后图片列表不及时刷新的问题。
+- **格子自适应布局**：最小尺寸由 200 x 200 降至 150 x 150。优化天气小尺寸和中等尺寸排版。音乐在小于 180 px 时切换为封面优先布局，保留歌名与播放控制，封面始终居中裁剪，复用跑马灯，并使用更慢且不展示空状态的封面过渡。
+- **音乐功能精简**：完整移除频谱/节奏视觉、设置、ViewModel 状态和相关代码。统一最小与中等布局的实心播放图标、按钮尺寸及圆角矩形悬浮背景。
+- **文件与右键菜单**：恢复流畅的竖排菜单并重新整理顺序，保留“打开”和“提取图片文字”，资源管理器命令改为“打开文件路径”，删除“显示更多选项”，删除命令固定在底部。文件格子增加多选操作，菜单命令执行后立即关闭。
+- **格子标题编辑**：点击重命名后立即聚焦编辑；所有格子支持双击标题进入编辑；点击标题剩余空白区域提交并退出。
+- **动态层级修复**：重新整理托盘与快捷键唤起逻辑，确保全部格子同时前置、不再闪烁一秒后置底，再次触发可一致隐藏，之后的前后台层级交还 Windows 管理。点击标题唤起全部格子，点击内容只唤起当前格子。
+- **设置与重置行为**：全局重置保留语言、开机启动和功能格子开关，正确重置随记创建时间显示与调整大小吸附，清除格子标题栏独立覆盖值。功能格子完整重置增加二次确认，标题菜单文案改为开关而非删除。
+- **默认设置调整**：新安装与全局重置默认使用舒适密度、云母材质、细边框、大圆角、待办/随记分段按钮，并关闭待办底部数量。
+- **性能与内存**：减少文件整理历史写入引起的无关待办刷新，文件操作不再广播多余设置变更，完善取消令牌和事件释放，删除音乐频谱分配路径，并优化反复切换语言、材质和明暗模式时的生命周期。
+- **稳定性修复**：修复清空随记后添加入口消失、图文复制失败、创建时间开关不生效、列表与详情图片不同步、待办完成勾选对比度、待办内容偶发重叠、功能格子重置不完整，以及多项托盘/快捷键层级边界问题。
+- **测试**：扩展待办重复与批量变更、随记图片/排序/重置、设置默认值、整理服务通知抑制、音乐响应式布局和天气布局阈值测试。
+
 ## 1.2.8 - 2026-07-11
 
 ### English

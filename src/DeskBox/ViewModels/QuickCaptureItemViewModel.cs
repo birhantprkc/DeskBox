@@ -41,11 +41,25 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public string Body => _model.Body;
 
+    public string CopyText => string.IsNullOrWhiteSpace(Body)
+        ? Title ?? string.Empty
+        : Body;
+
+    public string? Title => _model.Title;
+
+    public Visibility TitleVisibility => string.IsNullOrWhiteSpace(Title)
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
     public string? Url => _model.Url;
 
-    public string DisplayText => Type == QuickCaptureItemType.Image
+    private bool HasDisplayBody => !string.IsNullOrWhiteSpace(CopyText) &&
+                                   !(Type == QuickCaptureItemType.Image &&
+                                     string.Equals(CopyText, "Image", StringComparison.Ordinal));
+
+    public string DisplayText => Type == QuickCaptureItemType.Image && !HasDisplayBody
         ? _localizationService.T("QuickCapture.ImageItem")
-        : _model.Body;
+        : CopyText;
 
     public int HighlightStartIndex => GetHighlightStartIndex();
 
@@ -68,6 +82,12 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public bool IsRecent => _model.IsRecent;
 
+    public QuickCaptureAppearancePreset AppearancePreset => _model.AppearancePreset;
+
+    public QuickCaptureSourceKind SourceKind => _model.SourceKind;
+
+    public IReadOnlyList<string> Tags => _model.Tags ?? [];
+
     public QuickCaptureItemType Type => _model.Type;
 
     public string TypeGlyph => Type switch
@@ -83,9 +103,9 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
             : Visibility.Collapsed;
 
     public Visibility TextPreviewVisibility =>
-        Type == QuickCaptureItemType.Image
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        Type != QuickCaptureItemType.Image || HasDisplayBody
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     public string PinGlyph => IsPinned ? "\uE840" : "\uE718";
 
@@ -119,6 +139,8 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public string UpdatedAtText => FormatUpdatedAt(_model.UpdatedAt);
 
+    public string CreatedAtText => FormatUpdatedAt(_model.CreatedAt);
+
     public double TextSize => _textSize;
 
     public double SecondaryTextSize => Math.Max(SettingsService.MinTextSize - 1, _textSize - 2);
@@ -134,12 +156,17 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         Id = _model.Id,
         Type = _model.Type,
         Body = _model.Body,
+        Title = _model.Title,
         Url = _model.Url,
         ImagePath = _model.ImagePath,
         ContentHash = _model.ContentHash,
         IsPinned = _model.IsPinned,
         IsRecent = _model.IsRecent,
         IsDeleted = _model.IsDeleted,
+        AppearancePreset = _model.AppearancePreset,
+        SourceKind = _model.SourceKind,
+        Tags = _model.Tags is null ? [] : [.. _model.Tags],
+        ArchivedAt = _model.ArchivedAt,
         SortOrder = _model.SortOrder,
         PinnedSortOrder = _model.PinnedSortOrder,
         CreatedAt = _model.CreatedAt,
@@ -154,6 +181,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         if (old.Body != model.Body || old.Type != model.Type)
         {
             OnPropertyChanged(nameof(Body));
+            OnPropertyChanged(nameof(CopyText));
             OnPropertyChanged(nameof(DisplayText));
             OnPropertyChanged(nameof(HighlightStartIndex));
             OnPropertyChanged(nameof(HighlightLength));
@@ -191,9 +219,41 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
             OnPropertyChanged(nameof(TypeGlyph));
         }
 
+        if (old.Title != model.Title)
+        {
+            OnPropertyChanged(nameof(Title));
+            OnPropertyChanged(nameof(TitleVisibility));
+            OnPropertyChanged(nameof(CopyText));
+            OnPropertyChanged(nameof(DisplayText));
+            OnPropertyChanged(nameof(HighlightStartIndex));
+            OnPropertyChanged(nameof(HighlightLength));
+            OnPropertyChanged(nameof(HighlightVisibility));
+            OnPropertyChanged(nameof(TextPreviewVisibility));
+        }
+
+        if (old.AppearancePreset != model.AppearancePreset)
+        {
+            OnPropertyChanged(nameof(AppearancePreset));
+        }
+
+        if (old.SourceKind != model.SourceKind)
+        {
+            OnPropertyChanged(nameof(SourceKind));
+        }
+
+        if (!(old.Tags ?? []).SequenceEqual(model.Tags ?? [], StringComparer.CurrentCultureIgnoreCase))
+        {
+            OnPropertyChanged(nameof(Tags));
+        }
+
         if (old.UpdatedAt != model.UpdatedAt)
         {
             OnPropertyChanged(nameof(UpdatedAtText));
+        }
+
+        if (old.CreatedAt != model.CreatedAt)
+        {
+            OnPropertyChanged(nameof(CreatedAtText));
         }
     }
 
