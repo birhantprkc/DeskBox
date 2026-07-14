@@ -65,3 +65,9 @@ docs/wechat/*.png
 docs/wechat/*.jpg
 docs/wechat/*.jpeg
 docs/wechat/*.webp
+
+# Root-level temporary screenshots
+/*.png
+/*.jpg
+/*.jpeg
+
