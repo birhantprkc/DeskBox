@@ -107,8 +107,8 @@
         DragLeave="ExternalTodoDrag_DragLeave"
         DragOver="RootGrid_DragOver"
         Drop="RootGrid_Drop"
-        Padding="8"
-        RowSpacing="8">
+        Padding="{Binding RootPadding}"
+        RowSpacing="{Binding RootRowSpacing}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -177,9 +177,9 @@
                 ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListView.Header>
                     <Button
-                        Margin="0,0,0,6"
-                        MinHeight="48"
-                        Padding="8,5"
+                        Margin="{Binding AddCardMargin}"
+                        MinHeight="{Binding AddCardMinHeight}"
+                        Padding="{Binding AddCardPadding}"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -212,7 +212,7 @@
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0,0,0,5" />
+                        <Setter Property="Margin" Value="0" />
                         <Setter Property="MinHeight" Value="0" />
                         <Setter Property="IsTabStop" Value="False" />
                         <Setter Property="UseSystemFocusVisuals" Value="False" />
@@ -234,6 +234,9 @@
                         <Border
                             x:Name="TodoItemRoot"
                             AllowDrop="True"
+                            Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemMargin}"
+                            MinHeight="{Binding ElementName=TodoListView, Path=DataContext.ItemMinHeight}"
+                            Padding="{Binding ElementName=TodoListView, Path=DataContext.ItemPadding}"
                             Style="{StaticResource TodoCardBorderStyle}"
                             DataContextChanged="TodoItem_DataContextChanged"
                             DragLeave="TodoItem_DragLeave"
@@ -253,7 +256,7 @@
                                 <Border
                                     x:Name="TodoItemHoverBackground"
                                     Grid.ColumnSpan="4"
-                                    Margin="-8,-5"
+                                    Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
                                     CornerRadius="4"
                                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                     IsHitTestVisible="False"
@@ -261,7 +264,7 @@
 
                                 <Border
                                     Grid.ColumnSpan="4"
-                                    Margin="-8,-5"
+                                    Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
                                     CornerRadius="4"
                                     IsHitTestVisible="False"
@@ -296,7 +299,7 @@
 
                                 <StackPanel
                                     Grid.Column="2"
-                                    Margin="0,2"
+                                    Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemContentMargin}"
                                     VerticalAlignment="Center"
                                     Opacity="{Binding ContentOpacity}"
                                     Spacing="2">

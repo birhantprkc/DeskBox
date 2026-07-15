@@ -335,7 +335,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             return;
         }
 
-        bool useMinimalLayout = ShouldUseMinimalLayout(width, height);
+        bool useMinimalLayout = ShouldUseMinimalLayout(width, height, ViewModel?.DisplayMode);
         if (_isMinimalLayout != useMinimalLayout)
         {
             _isMinimalLayout = useMinimalLayout;
@@ -404,6 +404,16 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     internal static bool ShouldUseMinimalLayout(double width, double height)
     {
         return width < MinimumResponsiveWidth || height < MinimumResponsiveHeight;
+    }
+
+    internal static bool ShouldUseMinimalLayout(double width, double height, string? displayMode)
+    {
+        return SettingsService.NormalizeMusicDisplayMode(displayMode) switch
+        {
+            SettingsService.MusicDisplayModeCover => true,
+            SettingsService.MusicDisplayModeControls => false,
+            _ => ShouldUseMinimalLayout(width, height)
+        };
     }
 
     private void SetAlbumArtSize(double size)
@@ -531,6 +541,11 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         if (e.PropertyName == nameof(MusicWidgetViewModel.ThumbnailImage))
         {
             QueueArtworkTransition();
+        }
+
+        if (e.PropertyName == nameof(MusicWidgetViewModel.DisplayMode))
+        {
+            ApplyResponsiveLayout();
         }
 
     }

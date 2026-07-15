@@ -49,6 +49,8 @@ public abstract class WidgetWindowBase : Window
     protected MicaController? MicaController;
     protected bool AcrylicControllerAttached;
     protected bool MicaControllerAttached;
+    private bool? _acrylicControllerUsesBase;
+    private bool? _micaControllerUsesAlt;
     protected SystemBackdropConfiguration? BackdropConfiguration;
     protected ICompositionSupportsSystemBackdrop? BackdropTarget;
 
@@ -417,14 +419,21 @@ public abstract class WidgetWindowBase : Window
             int backdropType;
             bool controllerApplied = false;
 
-            if (materialType is SettingsService.WidgetMaterialTypeMica)
+            if (SettingsService.IsMicaMaterial(materialType))
             {
-                controllerApplied = ApplyMicaController(isDark, tintColor, surfaceOpacity);
+                controllerApplied = ApplyMicaController(
+                    isDark,
+                    tintColor,
+                    materialType == SettingsService.WidgetMaterialTypeMicaAlt);
             }
 
-            if (!controllerApplied && materialType is SettingsService.WidgetMaterialTypeAcrylic)
+            if (!controllerApplied && SettingsService.IsAcrylicMaterial(materialType))
             {
-                controllerApplied = ApplyAcrylicController(isDark, tintColor, surfaceOpacity);
+                controllerApplied = ApplyAcrylicController(
+                    isDark,
+                    tintColor,
+                    surfaceOpacity,
+                    materialType == SettingsService.WidgetMaterialTypeAcrylicBase);
             }
 
             if (controllerApplied)
@@ -493,12 +502,49 @@ public abstract class WidgetWindowBase : Window
         return replacement;
     }
 
+    protected (double Thickness, Windows.UI.Color BorderColor, Windows.UI.Color DividerColor)
+        GetWidgetBorderVisuals(bool isDark, Windows.UI.Color accentColor)
+    {
+        string borderStyle = SettingsService.Settings.WidgetBorderStyle;
+        string colorMode = SettingsService.Settings.WidgetBorderColorMode;
+        var (thickness, alpha) = borderStyle switch
+        {
+            SettingsService.WidgetBorderStyleMedium => (1.2d, (byte)0x30),
+            SettingsService.WidgetBorderStyleThick => (1.6d, (byte)0x48),
+            SettingsService.WidgetBorderStyleNone => (0d, (byte)0),
+            _ => (0.8d, (byte)0x18)
+        };
+
+        if (colorMode == SettingsService.WidgetBorderColorModeNone)
+        {
+            thickness = 0;
+            alpha = 0;
+        }
+
+        bool useAccent = colorMode == SettingsService.WidgetBorderColorModeAccent;
+        byte borderAlpha = useAccent
+            ? (byte)Math.Clamp(Math.Round(alpha * 1.35), 0, 255)
+            : alpha;
+        byte red = useAccent ? accentColor.R : isDark ? (byte)0xFF : (byte)0x00;
+        byte green = useAccent ? accentColor.G : isDark ? (byte)0xFF : (byte)0x00;
+        byte blue = useAccent ? accentColor.B : isDark ? (byte)0xFF : (byte)0x00;
+        var borderColor = ColorHelper.FromArgb(borderAlpha, red, green, blue);
+        var dividerColor = ColorHelper.FromArgb(
+            (byte)Math.Clamp(Math.Round(borderAlpha * (isDark ? 0.66 : 0.42)), 0, 255),
+            red,
+            green,
+            blue);
+        return (thickness, borderColor, dividerColor);
+    }
+
     protected void ScheduleInactiveBackdropControllerCleanup(string materialType)
     {
         bool hasInactiveController = materialType switch
         {
-            SettingsService.WidgetMaterialTypeMica => AcrylicController is not null,
-            SettingsService.WidgetMaterialTypeAcrylic => MicaController is not null,
+            SettingsService.WidgetMaterialTypeMica or SettingsService.WidgetMaterialTypeMicaAlt =>
+                AcrylicController is not null,
+            SettingsService.WidgetMaterialTypeAcrylic or SettingsService.WidgetMaterialTypeAcrylicBase =>
+                MicaController is not null,
             _ => AcrylicController is not null || MicaController is not null
         };
 
@@ -526,13 +572,13 @@ public abstract class WidgetWindowBase : Window
         string materialType = SettingsService.Settings.WidgetMaterialType;
         bool releasedController = false;
 
-        if (materialType != SettingsService.WidgetMaterialTypeAcrylic && AcrylicController is not null)
+        if (!SettingsService.IsAcrylicMaterial(materialType) && AcrylicController is not null)
         {
             DisposeAcrylicController();
             releasedController = true;
         }
 
-        if (materialType != SettingsService.WidgetMaterialTypeMica && MicaController is not null)
+        if (!SettingsService.IsMicaMaterial(materialType) && MicaController is not null)
         {
             DisposeMicaController();
             releasedController = true;
@@ -544,10 +590,21 @@ public abstract class WidgetWindowBase : Window
         }
     }
 
+    private static double NormalizeMaterialIntensity(double value) =>
+        double.IsFinite(value)
+            ? Math.Clamp(
+                value,
+                SettingsService.MinWidgetMaterialIntensity,
+                SettingsService.MaxWidgetMaterialIntensity)
+            : SettingsService.DefaultWidgetMaterialIntensity;
+
+    private static double LerpMaterialValue(double start, double end, double progress) =>
+        start + ((end - start) * Math.Clamp(progress, 0.0, 1.0));
+
     protected bool ApplyMicaController(
         bool isDark,
         Windows.UI.Color tintColor,
-        double surfaceOpacity)
+        bool useAlt)
     {
         if (!MicaController.IsSupported())
         {
@@ -560,10 +617,19 @@ public abstract class WidgetWindowBase : Window
         BackdropConfiguration.IsInputActive = true;
         BackdropConfiguration.Theme = isDark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
 
+        if (MicaController is not null && _micaControllerUsesAlt != useAlt)
+        {
+            DisposeMicaController();
+        }
+
         if (MicaController is null)
         {
             DetachAcrylicControllerTarget();
-            MicaController = new MicaController { Kind = MicaKind.Base };
+            MicaController = new MicaController
+            {
+                Kind = useAlt ? MicaKind.BaseAlt : MicaKind.Base
+            };
+            _micaControllerUsesAlt = useAlt;
         }
 
         DetachAcrylicControllerTarget();
@@ -579,12 +645,27 @@ public abstract class WidgetWindowBase : Window
             MicaController.SetSystemBackdropConfiguration(BackdropConfiguration);
         }
 
-        MicaController.Kind = MicaKind.Base;
+        MicaController.Kind = useAlt ? MicaKind.BaseAlt : MicaKind.Base;
         MicaController.TintColor = tintColor;
-        MicaController.FallbackColor = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
-            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        MicaController.TintOpacity = (float)Math.Clamp(surfaceOpacity * 0.5, 0.0, 1.0);
+        MicaController.FallbackColor = useAlt
+            ? isDark
+                ? ColorHelper.FromArgb(0xFF, 0x16, 0x18, 0x1D)
+                : ColorHelper.FromArgb(0xFF, 0xE8, 0xEA, 0xEF)
+            : isDark
+                ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
+                : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+
+        double intensity = NormalizeMaterialIntensity(
+            SettingsService.Settings.WidgetMaterialIntensity);
+        double tintOpacity = useAlt
+            ? LerpMaterialValue(0.28, 0.82, intensity)
+            : LerpMaterialValue(0.04, 0.46, intensity);
+        double luminosityOpacity = useAlt
+            ? LerpMaterialValue(isDark ? 0.34 : 0.42, isDark ? 0.72 : 0.76, intensity)
+            : LerpMaterialValue(isDark ? 0.78 : 0.82, isDark ? 0.94 : 0.96, intensity);
+
+        MicaController.TintOpacity = (float)tintOpacity;
+        MicaController.LuminosityOpacity = (float)luminosityOpacity;
         return true;
     }
 
@@ -607,6 +688,7 @@ public abstract class WidgetWindowBase : Window
         {
             MicaController = null;
             MicaControllerAttached = false;
+            _micaControllerUsesAlt = null;
         }
     }
 
@@ -633,7 +715,8 @@ public abstract class WidgetWindowBase : Window
     protected bool ApplyAcrylicController(
         bool isDark,
         Windows.UI.Color tintColor,
-        double surfaceOpacity)
+        double surfaceOpacity,
+        bool useBase)
     {
         if (!DesktopAcrylicController.IsSupported())
         {
@@ -649,13 +732,21 @@ public abstract class WidgetWindowBase : Window
             ? ColorHelper.FromArgb(0xFF, 0x20, 0x20, 0x20)
             : ColorHelper.FromArgb(0xFF, 0xF3, 0xF3, 0xF3);
 
+        if (AcrylicController is not null &&
+            !AcrylicController.IsClosed &&
+            _acrylicControllerUsesBase != useBase)
+        {
+            DisposeAcrylicController();
+        }
+
         if (AcrylicController is null || AcrylicController.IsClosed)
         {
             DetachMicaControllerTarget();
             AcrylicController = new DesktopAcrylicController
             {
-                Kind = DesktopAcrylicKind.Thin
+                Kind = useBase ? DesktopAcrylicKind.Base : DesktopAcrylicKind.Thin
             };
+            _acrylicControllerUsesBase = useBase;
         }
 
         DetachMicaControllerTarget();
@@ -671,17 +762,25 @@ public abstract class WidgetWindowBase : Window
             AcrylicController.SetSystemBackdropConfiguration(BackdropConfiguration);
         }
 
-        AcrylicController.Kind = DesktopAcrylicKind.Thin;
+        AcrylicController.Kind = useBase ? DesktopAcrylicKind.Base : DesktopAcrylicKind.Thin;
         AcrylicController.TintColor = tintColor;
         AcrylicController.FallbackColor = tintColor;
-        double tintOpacity = isDark
-            ? Math.Clamp(0.12 + surfaceOpacity * 0.34, 0.0, 0.52)
-            : Math.Clamp(0.00 + surfaceOpacity * 0.40, 0.0, 0.44);
-        double luminosityOpacity = isDark
-            ? Math.Clamp(0.34 + surfaceOpacity * 0.36, 0.0, 0.82)
-            : Math.Clamp(0.22 + surfaceOpacity * 0.58, 0.0, 0.86);
-        AcrylicController.TintOpacity = (float)tintOpacity;
-        AcrylicController.LuminosityOpacity = (float)luminosityOpacity;
+
+        double intensity = NormalizeMaterialIntensity(
+            SettingsService.Settings.WidgetMaterialIntensity);
+        double surfaceStrength = LerpMaterialValue(0.08, 1.0, Math.Clamp(surfaceOpacity, 0.0, 1.0));
+        double tintOpacity = useBase
+            ? LerpMaterialValue(isDark ? 0.18 : 0.12, isDark ? 0.72 : 0.62, intensity)
+            : LerpMaterialValue(isDark ? 0.04 : 0.02, isDark ? 0.42 : 0.34, intensity);
+        double luminosityOpacity = useBase
+            ? LerpMaterialValue(isDark ? 0.38 : 0.46, isDark ? 0.82 : 0.90, intensity)
+            : LerpMaterialValue(isDark ? 0.16 : 0.22, isDark ? 0.56 : 0.64, intensity);
+
+        AcrylicController.TintOpacity = (float)Math.Clamp(tintOpacity * surfaceStrength, 0.0, 1.0);
+        AcrylicController.LuminosityOpacity = (float)Math.Clamp(
+            luminosityOpacity * surfaceStrength,
+            0.0,
+            1.0);
         return true;
     }
 
@@ -752,6 +851,7 @@ public abstract class WidgetWindowBase : Window
         {
             AcrylicController = null;
             AcrylicControllerAttached = false;
+            _acrylicControllerUsesBase = null;
         }
     }
 

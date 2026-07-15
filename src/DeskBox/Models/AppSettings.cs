@@ -103,6 +103,11 @@ public class AppSettings
     /// <summary>Whether the Music widget album cover reacts lightly to pointer hover.</summary>
     public bool MusicEnableCoverHoverMotion { get; set; } = true;
 
+    /// <summary>
+    /// Music widget layout mode. Valid values: <c>"Auto"</c>, <c>"Cover"</c>, <c>"Controls"</c>.
+    /// </summary>
+    public string MusicDisplayMode { get; set; } = "Auto";
+
     /// <summary>Last file widget used as the target for saving Quick Capture content.</summary>
     public string LastQuickCaptureFileWidgetId { get; set; } = string.Empty;
 
@@ -131,13 +136,23 @@ public class AppSettings
 
     /// <summary>
     /// Material type for widget window backdrops.
-    /// Valid values: <c>"Mica"</c>, <c>"Acrylic"</c>, <c>"Solid"</c>, <c>"Transparent"</c>.
+    /// Valid values: <c>"Mica"</c>, <c>"MicaAlt"</c>, <c>"Acrylic"</c>,
+    /// <c>"AcrylicBase"</c>, <c>"Solid"</c>.
     /// </summary>
     public string WidgetMaterialType { get; set; } = "Mica";
 
+    /// <summary>Independent tint strength for native widget backdrop materials.</summary>
+    public double WidgetMaterialIntensity { get; set; } = 0.65;
+
+    /// <summary>
+    /// Border color mode for widget windows.
+    /// Valid values: <c>"Neutral"</c>, <c>"Accent"</c>, <c>"None"</c>.
+    /// </summary>
+    public string WidgetBorderColorMode { get; set; } = "Neutral";
+
     /// <summary>
     /// Border style for widget windows.
-    /// Valid values: <c>"None"</c>, <c>"Thin"</c>, <c>"Medium"</c>, <c>"Thick"</c>.
+    /// Valid values: <c>"Thin"</c>, <c>"Medium"</c>, <c>"Thick"</c>.
     /// </summary>
     public string WidgetBorderStyle { get; set; } = "Thin";
 
@@ -260,9 +275,10 @@ public class AppSettings
     public double TextSize { get; set; } = 11.5;
 
     /// <summary>
-    /// Layout density for widget content. Valid values: <c>"Comfortable"</c>, <c>"Compact"</c>.
+    /// Layout density preset for widget content.
+    /// Valid values: <c>"Compact"</c>, <c>"Standard"</c>, <c>"Relaxed"</c>, <c>"Custom"</c>.
     /// </summary>
-    public string LayoutDensity { get; set; } = "Comfortable";
+    public string LayoutDensity { get; set; } = "Standard";
 
     /// <summary>
     /// Continuous layout density scale used by widget content.

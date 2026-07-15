@@ -1030,6 +1030,25 @@ public sealed class TodoWidgetViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ApplyAppearance_UsesGlobalLayoutDensity()
+    {
+        var settingsService = new SettingsService();
+        settingsService.Settings.LayoutDensityScale = 0.20;
+        var viewModel = CreateViewModel("todo-widget", settingsService);
+        double compactHeight = viewModel.ItemMinHeight;
+        double compactGap = viewModel.ItemMargin.Bottom;
+        double compactPadding = viewModel.RootPadding.Left;
+
+        settingsService.Settings.LayoutDensityScale = 0.84;
+        viewModel.ApplyAppearance();
+
+        Assert.Equal(0.84, viewModel.LayoutDensityScale, precision: 2);
+        Assert.True(viewModel.ItemMinHeight > compactHeight);
+        Assert.True(viewModel.ItemMargin.Bottom > compactGap);
+        Assert.True(viewModel.RootPadding.Left > compactPadding);
+    }
+
+    [Fact]
     public async Task ApplyAppearance_DoesNotRebuildVisibleItemsForUnrelatedSettingsChanges()
     {
         var settingsService = new SettingsService();

@@ -434,14 +434,26 @@ WeatherSettingsSection.Visibility = sectionTag == "WeatherSettings" ? Visibility
             case "Language":
                 ViewModel.SelectedLanguage = ViewModel.AvailableLanguages[combo.SelectedIndex];
                 break;
+            case "MusicDisplayMode":
+                ViewModel.SelectedMusicDisplayMode = ViewModel.AvailableMusicDisplayModes[combo.SelectedIndex];
+                break;
             case "WidgetCorner":
                 ViewModel.SelectedWidgetCornerPreference = ViewModel.AvailableWidgetCornerPreferences[combo.SelectedIndex];
                 break;
             case "WidgetMaterial":
                 ViewModel.SelectedWidgetMaterialType = ViewModel.AvailableWidgetMaterialTypes[combo.SelectedIndex];
                 break;
+            case "WidgetBorderColor":
+                ViewModel.SelectedWidgetBorderColorMode = ViewModel.AvailableWidgetBorderColorModes[combo.SelectedIndex];
+                break;
             case "WidgetBorder":
                 ViewModel.SelectedWidgetBorderStyle = ViewModel.AvailableWidgetBorderStyles[combo.SelectedIndex];
+                break;
+            case "LayoutDensity":
+                ViewModel.SelectedLayoutDensity = ViewModel.AvailableLayoutDensities[combo.SelectedIndex];
+                break;
+            case "AnimationPreset":
+                ViewModel.SelectedAnimationPreset = ViewModel.AvailableAnimationPresets[combo.SelectedIndex];
                 break;
             case "WidgetAnimationEffect":
                 ViewModel.SelectedWidgetAnimationEffect = ViewModel.AvailableWidgetAnimationEffects[combo.SelectedIndex];
@@ -801,9 +813,13 @@ break;
                 "Theme" => ViewModel.SelectedThemeIndex,
                 "TrayIconStyle" => ViewModel.SelectedTrayIconStyleIndex,
                 "Language" => ViewModel.SelectedLanguageIndex,
+                "MusicDisplayMode" => ViewModel.SelectedMusicDisplayModeIndex,
                 "WidgetCorner" => ViewModel.SelectedWidgetCornerPreferenceIndex,
                 "WidgetMaterial" => ViewModel.SelectedWidgetMaterialTypeIndex,
+                "WidgetBorderColor" => ViewModel.SelectedWidgetBorderColorModeIndex,
                 "WidgetBorder" => ViewModel.SelectedWidgetBorderStyleIndex,
+                "LayoutDensity" => ViewModel.SelectedLayoutDensityIndex,
+                "AnimationPreset" => ViewModel.SelectedAnimationPresetIndex,
                 "WidgetTitleIconMode" => ViewModel.SelectedWidgetTitleIconModeIndex,
                 "WidgetAnimationEffect" => ViewModel.SelectedWidgetAnimationEffectIndex,
                 "WidgetAnimationSpeed" => ViewModel.SelectedWidgetAnimationSpeedIndex,

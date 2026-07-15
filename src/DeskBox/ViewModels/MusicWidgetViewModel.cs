@@ -71,6 +71,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private bool _hasSessionVolume;
     private bool _useArtworkBackdrop = true;
     private bool _enableCoverHoverMotion = true;
+    private string _displayMode = SettingsService.MusicDisplayModeAuto;
     private Color _artworkColor = AccentColorHelper.DefaultAccentColor;
     private bool _hasArtworkColor;
     private MusicPlaybackMode _playbackMode = MusicPlaybackMode.Normal;
@@ -176,6 +177,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     {
         get => _enableCoverHoverMotion;
         private set => SetProperty(ref _enableCoverHoverMotion, value);
+    }
+
+    public string DisplayMode
+    {
+        get => _displayMode;
+        private set => SetProperty(ref _displayMode, SettingsService.NormalizeMusicDisplayMode(value));
     }
 
     public MusicPlaybackState PlaybackState
@@ -1455,6 +1462,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     {
         UseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
         EnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
+        DisplayMode = settings.MusicDisplayMode;
         OnPropertyChanged(nameof(ArtworkBackdropCornerRadius));
     }
 

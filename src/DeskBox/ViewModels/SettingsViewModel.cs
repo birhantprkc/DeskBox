@@ -31,12 +31,22 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string CornerSmall = SettingsService.WidgetCornerPreferenceSmall;
     private const string CornerRound = SettingsService.WidgetCornerPreferenceRound;
     private const string MaterialMica = SettingsService.WidgetMaterialTypeMica;
+    private const string MaterialMicaAlt = SettingsService.WidgetMaterialTypeMicaAlt;
     private const string MaterialAcrylic = SettingsService.WidgetMaterialTypeAcrylic;
+    private const string MaterialAcrylicBase = SettingsService.WidgetMaterialTypeAcrylicBase;
     private const string MaterialSolid = SettingsService.WidgetMaterialTypeSolid;
+    private const string BorderColorNeutral = SettingsService.WidgetBorderColorModeNeutral;
+    private const string BorderColorAccent = SettingsService.WidgetBorderColorModeAccent;
+    private const string BorderColorNone = SettingsService.WidgetBorderColorModeNone;
     private const string BorderNone = SettingsService.WidgetBorderStyleNone;
     private const string BorderThin = SettingsService.WidgetBorderStyleThin;
     private const string BorderMedium = SettingsService.WidgetBorderStyleMedium;
     private const string BorderThick = SettingsService.WidgetBorderStyleThick;
+    private const string AnimationPresetNone = "None";
+    private const string AnimationPresetGentle = "Gentle";
+    private const string AnimationPresetStandard = "Standard";
+    private const string AnimationPresetEmphasized = "Emphasized";
+    private const string AnimationPresetCustom = "Custom";
     private const string RepositoryUrl = "https://github.com/Tianyu199509/DeskBox";
     private const string OfficialWebsiteUrl = "https://deskbox.fun";
 
@@ -59,7 +69,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedLanguage = SettingsService.LanguageSystem;
     private string _selectedWidgetCornerPreference = CornerRound;
     private string _selectedWidgetMaterialType = MaterialMica;
+    private string _selectedWidgetBorderColorMode = BorderColorNeutral;
     private string _selectedWidgetBorderStyle = BorderThin;
+    private string _selectedLayoutDensity = SettingsService.LayoutDensityStandard;
+    private string _selectedAnimationPreset = AnimationPresetStandard;
     private string _selectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade;
     private string _selectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
     private string _selectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
@@ -75,6 +88,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
     private string _selectedTodoTabStyle = SettingsService.WidgetTabStyleButton;
     private int _selectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
+    private string _selectedMusicDisplayMode = SettingsService.MusicDisplayModeAuto;
 private string _selectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
 private string _selectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
 private string _selectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
@@ -97,6 +111,8 @@ private int _selectedWeatherRefreshInterval = 60;
     private bool _canClearQuickCaptureImageCache;
     private bool _isRestoringDefaults;
     private bool _isApplyingSettingsSnapshot;
+    private bool _isApplyingLayoutDensityPreset;
+    private bool _isApplyingAnimationPreset;
     private bool _isUpdatingHoverButtonActionSelection;
 
     private string[]? _cachedTrayIconStyleDisplayNames;
@@ -104,7 +120,10 @@ private int _selectedWeatherRefreshInterval = 60;
     private string[]? _cachedLanguageDisplayNames;
     private string[]? _cachedWidgetCornerPreferenceDisplayNames;
     private string[]? _cachedWidgetMaterialTypeDisplayNames;
+    private string[]? _cachedWidgetBorderColorModeDisplayNames;
     private string[]? _cachedWidgetBorderStyleDisplayNames;
+    private string[]? _cachedLayoutDensityDisplayNames;
+    private string[]? _cachedAnimationPresetDisplayNames;
     private string[]? _cachedWidgetAnimationEffectDisplayNames;
     private string[]? _cachedWidgetAnimationSpeedDisplayNames;
     private string[]? _cachedWidgetAnimationSlideDirectionDisplayNames;
@@ -120,6 +139,7 @@ private int _selectedWeatherRefreshInterval = 60;
     private string[]? _cachedTodoDefaultFilterDisplayNames;
     private string[]? _cachedTodoTabStyleDisplayNames;
     private string[]? _cachedTodoReminderOffsetDisplayNames;
+    private string[]? _cachedMusicDisplayModeDisplayNames;
 private string[]? _cachedWeatherTempUnitDisplayNames;
 private string[]? _cachedWeatherWindUnitDisplayNames;
 private string[]? _cachedWeatherDefaultViewDisplayNames;
@@ -143,6 +163,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     [ObservableProperty] private bool _showListItemDetails;
     [ObservableProperty] private bool _showFileItemPathTooltips = true;
     [ObservableProperty] private double _widgetOpacity = SettingsService.DefaultWidgetOpacity;
+    [ObservableProperty] private double _widgetMaterialIntensity = SettingsService.DefaultWidgetMaterialIntensity;
     [ObservableProperty] private double _iconSize = SettingsService.DefaultIconSize;
     [ObservableProperty] private double _textSize = SettingsService.DefaultTextSize;
     [ObservableProperty] private double _layoutDensityScale = SettingsService.DefaultLayoutDensityScale;
@@ -333,31 +354,79 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
                 return;
             }
 
-            _settingsService.Settings.WidgetMaterialType = value is MaterialMica or MaterialAcrylic or MaterialSolid
+            _settingsService.Settings.WidgetMaterialType = value is
+                MaterialMica or MaterialMicaAlt or MaterialAcrylic or MaterialAcrylicBase or MaterialSolid
                 ? value
                 : SettingsService.WidgetMaterialTypeAcrylic;
 
-            // Force opacity to 100% when Solid is selected
-            if (value is MaterialSolid)
+            bool forcedSolidOpacity =
+                _settingsService.Settings.WidgetMaterialType == MaterialSolid &&
+                Math.Abs(WidgetOpacity - SettingsService.MaxWidgetOpacity) > 0.0001;
+            if (forcedSolidOpacity)
             {
-                WidgetOpacity = 1.0;
+                WidgetOpacity = SettingsService.MaxWidgetOpacity;
+            }
+            else
+            {
+                _settingsService.RequestAppearancePreview();
             }
 
             _settingsService.SaveDebounced();
             OnPropertyChanged(nameof(SelectedWidgetMaterialTypeText));
             OnPropertyChanged(nameof(IsOpacitySliderEnabled));
+            OnPropertyChanged(nameof(WidgetOpacityVisibility));
+            OnPropertyChanged(nameof(MaterialIntensityVisibility));
         }
     }
 
-public string SelectedWidgetMaterialTypeText => GetMaterialTypeDisplayName(SelectedWidgetMaterialType);
-public int SelectedWidgetMaterialTypeIndex => Array.IndexOf(AvailableWidgetMaterialTypes, _selectedWidgetMaterialType);
+    public string SelectedWidgetMaterialTypeText => GetMaterialTypeDisplayName(SelectedWidgetMaterialType);
+    public int SelectedWidgetMaterialTypeIndex => Array.IndexOf(AvailableWidgetMaterialTypes, _selectedWidgetMaterialType);
 
-/// <summary>
-/// Whether the opacity slider is enabled. Disabled for Mica (too subtle to control)
-/// and Solid (always 100% opacity).
-/// </summary>
-public bool IsOpacitySliderEnabled =>
-    _selectedWidgetMaterialType is not MaterialMica and not MaterialSolid;
+    public bool IsOpacitySliderEnabled =>
+        SettingsService.SupportsWidgetOpacity(_selectedWidgetMaterialType);
+
+    public Visibility WidgetOpacityVisibility => IsOpacitySliderEnabled
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility MaterialIntensityVisibility =>
+        SettingsService.SupportsMaterialIntensity(_selectedWidgetMaterialType)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    public string SelectedWidgetBorderColorMode
+    {
+        get => _selectedWidgetBorderColorMode;
+        set
+        {
+            if (!SetProperty(ref _selectedWidgetBorderColorMode, value))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetBorderColorMode = value is
+                BorderColorNeutral or BorderColorAccent or BorderColorNone
+                    ? value
+                    : BorderColorNeutral;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedWidgetBorderColorModeText));
+            OnPropertyChanged(nameof(IsWidgetBorderStyleEnabled));
+        }
+    }
+
+    public string SelectedWidgetBorderColorModeText =>
+        GetBorderColorModeDisplayName(SelectedWidgetBorderColorMode);
+
+    public int SelectedWidgetBorderColorModeIndex =>
+        Array.IndexOf(AvailableWidgetBorderColorModes, _selectedWidgetBorderColorMode);
+
+    public bool IsWidgetBorderStyleEnabled =>
+        _selectedWidgetBorderColorMode != BorderColorNone;
 
     public string SelectedWidgetBorderStyle
     {
@@ -374,7 +443,7 @@ public bool IsOpacitySliderEnabled =>
                 return;
             }
 
-            _settingsService.Settings.WidgetBorderStyle = value is BorderNone or BorderThin or BorderMedium or BorderThick
+            _settingsService.Settings.WidgetBorderStyle = value is BorderThin or BorderMedium or BorderThick
                 ? value
                 : SettingsService.WidgetBorderStyleThin;
             _settingsService.SaveDebounced();
@@ -384,6 +453,76 @@ public bool IsOpacitySliderEnabled =>
 
     public string SelectedWidgetBorderStyleText => GetBorderStyleDisplayName(SelectedWidgetBorderStyle);
     public int SelectedWidgetBorderStyleIndex => Array.IndexOf(AvailableWidgetBorderStyles, _selectedWidgetBorderStyle);
+
+    public string SelectedLayoutDensity
+    {
+        get => _selectedLayoutDensity;
+        set
+        {
+            string normalizedValue = value is
+                SettingsService.LayoutDensityCompact or
+                SettingsService.LayoutDensityStandard or
+                SettingsService.LayoutDensityRelaxed or
+                SettingsService.LayoutDensityCustom
+                    ? value
+                    : SettingsService.LayoutDensityCustom;
+            if (!SetProperty(ref _selectedLayoutDensity, normalizedValue))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(SelectedLayoutDensityText));
+            OnPropertyChanged(nameof(SelectedLayoutDensityIndex));
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            if (normalizedValue == SettingsService.LayoutDensityCustom)
+            {
+                _settingsService.Settings.LayoutDensity = normalizedValue;
+                _settingsService.SaveDebounced();
+                return;
+            }
+
+            ApplyLayoutDensityPreset(normalizedValue);
+        }
+    }
+
+    public string SelectedLayoutDensityText => GetLayoutDensityDisplayName(SelectedLayoutDensity);
+    public int SelectedLayoutDensityIndex => Array.IndexOf(AvailableLayoutDensities, _selectedLayoutDensity);
+
+    public string SelectedAnimationPreset
+    {
+        get => _selectedAnimationPreset;
+        set
+        {
+            string normalizedValue = value is
+                AnimationPresetNone or
+                AnimationPresetGentle or
+                AnimationPresetStandard or
+                AnimationPresetEmphasized or
+                AnimationPresetCustom
+                    ? value
+                    : AnimationPresetCustom;
+            if (!SetProperty(ref _selectedAnimationPreset, normalizedValue))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(SelectedAnimationPresetText));
+            OnPropertyChanged(nameof(SelectedAnimationPresetIndex));
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot || normalizedValue == AnimationPresetCustom)
+            {
+                return;
+            }
+
+            ApplyAnimationPreset(normalizedValue);
+        }
+    }
+
+    public string SelectedAnimationPresetText => GetAnimationPresetDisplayName(SelectedAnimationPreset);
+    public int SelectedAnimationPresetIndex => Array.IndexOf(AvailableAnimationPresets, _selectedAnimationPreset);
 
     public string SelectedWidgetAnimationEffect
     {
@@ -401,11 +540,15 @@ public bool IsOpacitySliderEnabled =>
             }
 
             _settingsService.Settings.WidgetAnimationEffect = _selectedWidgetAnimationEffect;
-            _settingsService.SaveDebounced();
+            if (!_isApplyingAnimationPreset)
+            {
+                _settingsService.SaveDebounced();
+            }
             OnPropertyChanged(nameof(SelectedWidgetAnimationEffectText));
             OnPropertyChanged(nameof(IsDirectionEnabled));
             OnPropertyChanged(nameof(IsEasingEnabled));
             OnPropertyChanged(nameof(IsSpeedEnabled));
+            SyncAnimationPresetSelection();
         }
     }
 
@@ -436,8 +579,12 @@ public bool IsOpacitySliderEnabled =>
             }
 
             _settingsService.Settings.WidgetAnimationSpeed = _selectedWidgetAnimationSpeed;
-            _settingsService.SaveDebounced();
+            if (!_isApplyingAnimationPreset)
+            {
+                _settingsService.SaveDebounced();
+            }
             OnPropertyChanged(nameof(SelectedWidgetAnimationSpeedText));
+            SyncAnimationPresetSelection();
         }
     }
 
@@ -460,8 +607,12 @@ public bool IsOpacitySliderEnabled =>
             }
 
             _settingsService.Settings.WidgetAnimationSlideDirection = _selectedWidgetAnimationSlideDirection;
-            _settingsService.SaveDebounced();
+            if (!_isApplyingAnimationPreset)
+            {
+                _settingsService.SaveDebounced();
+            }
             OnPropertyChanged(nameof(SelectedWidgetAnimationSlideDirectionText));
+            SyncAnimationPresetSelection();
         }
     }
 
@@ -484,8 +635,12 @@ public bool IsOpacitySliderEnabled =>
             }
 
             _settingsService.Settings.WidgetAnimationEasingIntensity = _selectedWidgetAnimationEasingIntensity;
-            _settingsService.SaveDebounced();
+            if (!_isApplyingAnimationPreset)
+            {
+                _settingsService.SaveDebounced();
+            }
             OnPropertyChanged(nameof(SelectedWidgetAnimationEasingIntensityText));
+            SyncAnimationPresetSelection();
         }
     }
 
@@ -849,6 +1004,32 @@ public bool IsOpacitySliderEnabled =>
     public string SelectedTodoReminderOffsetMinutesText => GetTodoReminderOffsetDisplayName(SelectedTodoReminderOffsetMinutes);
     public int SelectedTodoReminderOffsetMinutesIndex => Array.IndexOf(AvailableTodoReminderOffsetMinutes, _selectedTodoReminderOffsetMinutes);
 
+    public string SelectedMusicDisplayMode
+    {
+        get => _selectedMusicDisplayMode;
+        set
+        {
+            string normalizedValue = SettingsService.NormalizeMusicDisplayMode(value);
+            if (!SetProperty(ref _selectedMusicDisplayMode, normalizedValue))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(SelectedMusicDisplayModeText));
+            OnPropertyChanged(nameof(SelectedMusicDisplayModeIndex));
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.MusicDisplayMode = normalizedValue;
+            _settingsService.SaveDebounced();
+        }
+    }
+
+    public string SelectedMusicDisplayModeText => GetMusicDisplayModeDisplayName(SelectedMusicDisplayMode);
+    public int SelectedMusicDisplayModeIndex => Array.IndexOf(AvailableMusicDisplayModes, _selectedMusicDisplayMode);
+
     public string AccentColorHex
     {
         get => _accentColorHex;
@@ -974,6 +1155,7 @@ public bool IsOpacitySliderEnabled =>
 
     public string IconSizeValueText => $"{Math.Round(IconSize):0}px";
     public string WidgetOpacityValueText => $"{Math.Round(WidgetOpacity * 100):0}%";
+    public string WidgetMaterialIntensityValueText => $"{Math.Round(WidgetMaterialIntensity * 100):0}%";
     public string TextSizeValueText => $"{TextSize:0.#}pt";
     public string LayoutDensityValueText => $"{Math.Round(LayoutDensityScale * 100):0}%";
     public string HorizontalSpacingValueText => $"{Math.Round(HorizontalSpacingScale * 100):0}%";
@@ -1252,8 +1434,10 @@ public bool IsOpacitySliderEnabled =>
                 case WidgetKind.Music:
                     MusicUseArtworkBackdrop = true;
                     MusicEnableCoverHoverMotion = true;
+                    SelectedMusicDisplayMode = SettingsService.MusicDisplayModeAuto;
                     _settingsService.Settings.MusicUseArtworkBackdrop = true;
                     _settingsService.Settings.MusicEnableCoverHoverMotion = true;
+                    _settingsService.Settings.MusicDisplayMode = SettingsService.MusicDisplayModeAuto;
                     break;
                 case WidgetKind.Weather:
                     WeatherAutoLocation = true;
@@ -1365,11 +1549,45 @@ public bool IsOpacitySliderEnabled =>
     public string[] AvailableWidgetCornerPreferences { get; } = [CornerSmall, CornerRound, CornerSquare];
     public string[] AvailableWidgetCornerPreferenceDisplayNames => _cachedWidgetCornerPreferenceDisplayNames ??= AvailableWidgetCornerPreferences.Select(GetCornerDisplayName).ToArray();
 
-    public string[] AvailableWidgetMaterialTypes { get; } = [MaterialAcrylic, MaterialMica, MaterialSolid];
+    public string[] AvailableWidgetMaterialTypes { get; } =
+        [MaterialAcrylic, MaterialAcrylicBase, MaterialMica, MaterialMicaAlt, MaterialSolid];
     public string[] AvailableWidgetMaterialTypeDisplayNames => _cachedWidgetMaterialTypeDisplayNames ??= AvailableWidgetMaterialTypes.Select(GetMaterialTypeDisplayName).ToArray();
 
-    public string[] AvailableWidgetBorderStyles { get; } = [BorderThin, BorderMedium, BorderThick, BorderNone];
+    public string[] AvailableWidgetBorderColorModes { get; } =
+        [BorderColorNeutral, BorderColorAccent, BorderColorNone];
+    public string[] AvailableWidgetBorderColorModeDisplayNames =>
+        _cachedWidgetBorderColorModeDisplayNames ??=
+            AvailableWidgetBorderColorModes.Select(GetBorderColorModeDisplayName).ToArray();
+
+    public string[] AvailableWidgetBorderStyles { get; } = [BorderThin, BorderMedium, BorderThick];
     public string[] AvailableWidgetBorderStyleDisplayNames => _cachedWidgetBorderStyleDisplayNames ??= AvailableWidgetBorderStyles.Select(GetBorderStyleDisplayName).ToArray();
+    public string[] AvailableLayoutDensities { get; } =
+    [
+        SettingsService.LayoutDensityCompact,
+        SettingsService.LayoutDensityStandard,
+        SettingsService.LayoutDensityRelaxed,
+        SettingsService.LayoutDensityCustom
+    ];
+    public string[] AvailableLayoutDensityDisplayNames =>
+        _cachedLayoutDensityDisplayNames ??= AvailableLayoutDensities.Select(GetLayoutDensityDisplayName).ToArray();
+    public string[] AvailableMusicDisplayModes { get; } =
+    [
+        SettingsService.MusicDisplayModeAuto,
+        SettingsService.MusicDisplayModeCover,
+        SettingsService.MusicDisplayModeControls
+    ];
+    public string[] AvailableMusicDisplayModeDisplayNames =>
+        _cachedMusicDisplayModeDisplayNames ??= AvailableMusicDisplayModes.Select(GetMusicDisplayModeDisplayName).ToArray();
+    public string[] AvailableAnimationPresets { get; } =
+    [
+        AnimationPresetNone,
+        AnimationPresetGentle,
+        AnimationPresetStandard,
+        AnimationPresetEmphasized,
+        AnimationPresetCustom
+    ];
+    public string[] AvailableAnimationPresetDisplayNames =>
+        _cachedAnimationPresetDisplayNames ??= AvailableAnimationPresets.Select(GetAnimationPresetDisplayName).ToArray();
     public string[] AvailableWidgetAnimationEffects { get; } =
     [
         SettingsService.WidgetAnimationEffectSlideFade,
@@ -2652,19 +2870,26 @@ partial void OnWeatherShowPressureChanged(bool value)
         _showListItemDetails = settings.ShowListItemDetails;
         _showFileItemPathTooltips = settings.ShowFileItemPathTooltips;
         _widgetOpacity = settings.WidgetOpacity;
+        _widgetMaterialIntensity = settings.WidgetMaterialIntensity;
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerDefault or CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
             : CornerSmall;
-        _selectedWidgetMaterialType = settings.WidgetMaterialType is MaterialMica or MaterialAcrylic or MaterialSolid
+        _selectedWidgetMaterialType = settings.WidgetMaterialType is
+            MaterialMica or MaterialMicaAlt or MaterialAcrylic or MaterialAcrylicBase or MaterialSolid
             ? settings.WidgetMaterialType
             : MaterialAcrylic;
-        _selectedWidgetBorderStyle = settings.WidgetBorderStyle is BorderNone or BorderThin or BorderMedium or BorderThick
+        _selectedWidgetBorderColorMode = settings.WidgetBorderColorMode is
+            BorderColorNeutral or BorderColorAccent or BorderColorNone
+                ? settings.WidgetBorderColorMode
+                : BorderColorNeutral;
+        _selectedWidgetBorderStyle = settings.WidgetBorderStyle is BorderThin or BorderMedium or BorderThick
             ? settings.WidgetBorderStyle
             : BorderThin;
         _selectedWidgetAnimationEffect = NormalizeWidgetAnimationEffect(settings.WidgetAnimationEffect);
         _selectedWidgetAnimationSpeed = NormalizeWidgetAnimationSpeed(settings.WidgetAnimationSpeed);
         _selectedWidgetAnimationSlideDirection = NormalizeWidgetAnimationSlideDirection(settings.WidgetAnimationSlideDirection);
         _selectedWidgetAnimationEasingIntensity = NormalizeWidgetAnimationEasingIntensity(settings.WidgetAnimationEasingIntensity);
+        _selectedAnimationPreset = ResolveAnimationPreset();
         _selectedDisplayWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.DisplayWidgetChromeMode, WidgetChromeMode.Overlay);
         _selectedInteractiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
         _selectedWidgetTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
@@ -2675,6 +2900,7 @@ partial void OnWeatherShowPressureChanged(bool value)
         _horizontalSpacingScale = settings.HorizontalSpacingScale;
         _verticalSpacingScale = settings.VerticalSpacingScale;
         _fileNameWidthScale = settings.FileNameWidthScale;
+        _selectedLayoutDensity = SettingsService.ResolveLayoutDensityPreset(settings);
         _showFileExtensions = settings.ShowFileExtensions;
         _hideShortcutExtensionWhenShowingFileExtensions = settings.HideShortcutExtensionWhenShowingFileExtensions;
         _quickCaptureEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.QuickCapture);
@@ -2692,6 +2918,7 @@ partial void OnWeatherShowPressureChanged(bool value)
         _todoReminderEnabled = settings.TodoReminderEnabled;
         _musicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
         _musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
+        _selectedMusicDisplayMode = SettingsService.NormalizeMusicDisplayMode(settings.MusicDisplayMode);
 _weatherAutoLocation = settings.WeatherAutoLocation;
 _weatherCityName = settings.WeatherCityName;
 _weatherCitySearchText = settings.WeatherCityName;
@@ -2795,11 +3022,14 @@ _ = RefreshQuickAccessStateAsync();
             DefaultHeight = SettingsService.DefaultWidgetHeight;
             SelectedWidgetCornerPreference = CornerRound;
             SelectedWidgetMaterialType = MaterialMica;
+            WidgetMaterialIntensity = SettingsService.DefaultWidgetMaterialIntensity;
+            SelectedWidgetBorderColorMode = BorderColorNeutral;
             SelectedWidgetBorderStyle = BorderThin;
             SelectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectSlideFade;
             SelectedWidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedStandard;
             SelectedWidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionRight;
             SelectedWidgetAnimationEasingIntensity = SettingsService.WidgetAnimationEasingStandard;
+            SelectedAnimationPreset = AnimationPresetStandard;
             SelectedDisplayWidgetChromeMode = SettingsService.WidgetChromeModeOverlay;
             SelectedInteractiveWidgetChromeMode = SettingsService.WidgetChromeModeStandard;
             SelectedWidgetTitleIconMode = SettingsService.WidgetTitleIconModeColor;
@@ -2811,6 +3041,7 @@ _ = RefreshQuickAccessStateAsync();
             HorizontalSpacingScale = SettingsService.DefaultHorizontalSpacingScale;
             VerticalSpacingScale = SettingsService.DefaultVerticalSpacingScale;
             FileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
+            SelectedLayoutDensity = SettingsService.LayoutDensityStandard;
             ShowFileExtensions = false;
             ShowImageFilesAsIcons = false;
             HideShortcutExtensionWhenShowingFileExtensions = true;
@@ -2832,6 +3063,7 @@ _ = RefreshQuickAccessStateAsync();
             SelectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
             MusicUseArtworkBackdrop = true;
             MusicEnableCoverHoverMotion = true;
+            SelectedMusicDisplayMode = SettingsService.MusicDisplayModeAuto;
 WeatherAutoLocation = true;
 WeatherCityName = string.Empty;
 SelectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
@@ -2919,8 +3151,20 @@ SelectedWeatherRefreshInterval = 60;
         return material switch
         {
             MaterialMica => _localizationService.T("Settings.Material.Mica"),
+            MaterialMicaAlt => _localizationService.T("Settings.Material.MicaAlt"),
+            MaterialAcrylicBase => _localizationService.T("Settings.Material.AcrylicBase"),
             MaterialSolid => _localizationService.T("Settings.Material.Solid"),
             _ => _localizationService.T("Settings.Material.Acrylic")
+        };
+    }
+
+    public string GetBorderColorModeDisplayName(string mode)
+    {
+        return mode switch
+        {
+            BorderColorAccent => _localizationService.T("Settings.BorderColor.Accent"),
+            BorderColorNone => _localizationService.T("Settings.BorderColor.None"),
+            _ => _localizationService.T("Settings.BorderColor.Neutral")
         };
     }
 
@@ -2932,6 +3176,29 @@ SelectedWeatherRefreshInterval = 60;
             BorderMedium => _localizationService.T("Settings.Border.Medium"),
             BorderThick => _localizationService.T("Settings.Border.Thick"),
             _ => _localizationService.T("Settings.Border.Thin")
+        };
+    }
+
+    public string GetLayoutDensityDisplayName(string density)
+    {
+        return density switch
+        {
+            SettingsService.LayoutDensityCompact => _localizationService.T("Settings.Density.Compact"),
+            SettingsService.LayoutDensityRelaxed => _localizationService.T("Settings.Density.Relaxed"),
+            SettingsService.LayoutDensityCustom => _localizationService.T("Settings.Density.Custom"),
+            _ => _localizationService.T("Settings.Density.Standard")
+        };
+    }
+
+    public string GetAnimationPresetDisplayName(string preset)
+    {
+        return preset switch
+        {
+            AnimationPresetNone => _localizationService.T("Settings.Animation.Preset.None"),
+            AnimationPresetGentle => _localizationService.T("Settings.Animation.Preset.Gentle"),
+            AnimationPresetEmphasized => _localizationService.T("Settings.Animation.Preset.Emphasized"),
+            AnimationPresetCustom => _localizationService.T("Settings.Animation.Preset.Custom"),
+            _ => _localizationService.T("Settings.Animation.Preset.Standard")
         };
     }
 
@@ -3086,6 +3353,16 @@ SelectedWeatherRefreshInterval = 60;
         };
     }
 
+    public string GetMusicDisplayModeDisplayName(string mode)
+    {
+        return SettingsService.NormalizeMusicDisplayMode(mode) switch
+        {
+            SettingsService.MusicDisplayModeCover => _localizationService.T("Settings.Music.DisplayMode.Cover"),
+            SettingsService.MusicDisplayModeControls => _localizationService.T("Settings.Music.DisplayMode.Controls"),
+            _ => _localizationService.T("Settings.Music.DisplayMode.Auto")
+        };
+    }
+
     public string GetLanguageDisplayName(string language)
     {
         return _localizationService.GetLanguageDisplayName(language);
@@ -3125,6 +3402,7 @@ SelectedWeatherRefreshInterval = 60;
         bool todoReminderEnabled = settings.TodoReminderEnabled;
         bool musicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
         bool musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
+        string musicDisplayMode = SettingsService.NormalizeMusicDisplayMode(settings.MusicDisplayMode);
         bool showImageFilesAsIcons = settings.ShowImageFilesAsIcons;
         bool showFileItemPathTooltips = settings.ShowFileItemPathTooltips;
         bool showHoverButtons = settings.ShowHoverButtons;
@@ -3224,6 +3502,11 @@ SelectedWeatherRefreshInterval = 60;
                 MusicEnableCoverHoverMotion = musicEnableCoverHoverMotion;
             }
 
+            if (!string.Equals(SelectedMusicDisplayMode, musicDisplayMode, StringComparison.Ordinal))
+            {
+                SelectedMusicDisplayMode = musicDisplayMode;
+            }
+
             if (ShowImageFilesAsIcons != showImageFilesAsIcons)
             {
                 ShowImageFilesAsIcons = showImageFilesAsIcons;
@@ -3303,6 +3586,8 @@ SelectedWeatherRefreshInterval = 60;
         OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesIndex));
+        OnPropertyChanged(nameof(SelectedMusicDisplayModeText));
+        OnPropertyChanged(nameof(SelectedMusicDisplayModeIndex));
         OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeText));
         OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeIndex));
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeText));
@@ -3370,7 +3655,10 @@ RefreshWeatherCityPopularCities();
         _cachedLanguageDisplayNames = null;
         _cachedWidgetCornerPreferenceDisplayNames = null;
         _cachedWidgetMaterialTypeDisplayNames = null;
+        _cachedWidgetBorderColorModeDisplayNames = null;
         _cachedWidgetBorderStyleDisplayNames = null;
+        _cachedLayoutDensityDisplayNames = null;
+        _cachedAnimationPresetDisplayNames = null;
         _cachedWidgetAnimationEffectDisplayNames = null;
         _cachedWidgetAnimationSpeedDisplayNames = null;
         _cachedWidgetAnimationSlideDirectionDisplayNames = null;
@@ -3386,6 +3674,7 @@ RefreshWeatherCityPopularCities();
         _cachedTodoDefaultFilterDisplayNames = null;
         _cachedTodoTabStyleDisplayNames = null;
         _cachedTodoReminderOffsetDisplayNames = null;
+        _cachedMusicDisplayModeDisplayNames = null;
         _cachedWeatherTempUnitDisplayNames = null;
         _cachedWeatherWindUnitDisplayNames = null;
         _cachedWeatherDefaultViewDisplayNames = null;
@@ -3396,8 +3685,14 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(AvailableLanguageDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetMaterialTypeDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetBorderColorModeDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetBorderStyleDisplayNames));
+        OnPropertyChanged(nameof(AvailableLayoutDensityDisplayNames));
+        OnPropertyChanged(nameof(AvailableAnimationPresetDisplayNames));
         OnPropertyChanged(nameof(IsOpacitySliderEnabled));
+        OnPropertyChanged(nameof(WidgetOpacityVisibility));
+        OnPropertyChanged(nameof(MaterialIntensityVisibility));
+        OnPropertyChanged(nameof(IsWidgetBorderStyleEnabled));
         OnPropertyChanged(nameof(AvailableWidgetAnimationEffectDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetAnimationSpeedDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetAnimationSlideDirectionDisplayNames));
@@ -3414,6 +3709,7 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(AvailableTodoDefaultFilterDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoTabStyleDisplayNames));
         OnPropertyChanged(nameof(AvailableTodoReminderOffsetDisplayNames));
+        OnPropertyChanged(nameof(AvailableMusicDisplayModeDisplayNames));
         OnPropertyChanged(nameof(SelectedThemeText));
         OnPropertyChanged(nameof(SelectedThemeIndex));
         OnPropertyChanged(nameof(SelectedTrayIconStyleText));
@@ -3424,8 +3720,14 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceIndex));
         OnPropertyChanged(nameof(SelectedWidgetMaterialTypeText));
         OnPropertyChanged(nameof(SelectedWidgetMaterialTypeIndex));
+        OnPropertyChanged(nameof(SelectedWidgetBorderColorModeText));
+        OnPropertyChanged(nameof(SelectedWidgetBorderColorModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetBorderStyleText));
         OnPropertyChanged(nameof(SelectedWidgetBorderStyleIndex));
+        OnPropertyChanged(nameof(SelectedLayoutDensityText));
+        OnPropertyChanged(nameof(SelectedLayoutDensityIndex));
+        OnPropertyChanged(nameof(SelectedAnimationPresetText));
+        OnPropertyChanged(nameof(SelectedAnimationPresetIndex));
         OnPropertyChanged(nameof(SelectedWidgetAnimationEffectText));
         OnPropertyChanged(nameof(SelectedWidgetAnimationEffectIndex));
         OnPropertyChanged(nameof(IsDirectionEnabled));
@@ -3459,6 +3761,8 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesIndex));
+        OnPropertyChanged(nameof(SelectedMusicDisplayModeText));
+        OnPropertyChanged(nameof(SelectedMusicDisplayModeIndex));
         OnPropertyChanged(nameof(AvailableWeatherTemperatureUnitDisplayNames));
         OnPropertyChanged(nameof(SelectedWeatherTemperatureUnitIndex));
         OnPropertyChanged(nameof(AvailableWeatherWindSpeedUnitDisplayNames));
@@ -4375,6 +4679,35 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(WidgetOpacityPercentInput));
     }
 
+    partial void OnWidgetMaterialIntensityChanged(double value)
+    {
+        if (_isRestoringDefaults)
+        {
+            OnPropertyChanged(nameof(WidgetMaterialIntensityValueText));
+            return;
+        }
+
+        if (!double.IsFinite(value))
+        {
+            WidgetMaterialIntensity = _settingsService.Settings.WidgetMaterialIntensity;
+            return;
+        }
+
+        double normalizedValue = Math.Clamp(
+            Math.Round(value / 0.02d, MidpointRounding.AwayFromZero) * 0.02d,
+            SettingsService.MinWidgetMaterialIntensity,
+            SettingsService.MaxWidgetMaterialIntensity);
+        if (Math.Abs(normalizedValue - value) > 0.0001)
+        {
+            WidgetMaterialIntensity = normalizedValue;
+            return;
+        }
+
+        _settingsService.Settings.WidgetMaterialIntensity = normalizedValue;
+        SaveAppearanceChange();
+        OnPropertyChanged(nameof(WidgetMaterialIntensityValueText));
+    }
+
     partial void OnIconSizeChanged(double value)
     {
         if (_isRestoringDefaults)
@@ -4402,6 +4735,7 @@ RefreshWeatherCityPopularCities();
         }
 
         _settingsService.Settings.IconSize = normalizedValue;
+        SyncLayoutDensitySelection();
         SaveAppearanceChange();
         OnPropertyChanged(nameof(IconSizeValueText));
         OnPropertyChanged(nameof(IconSizeInput));
@@ -4434,6 +4768,7 @@ RefreshWeatherCityPopularCities();
         }
 
         _settingsService.Settings.TextSize = normalizedValue;
+        SyncLayoutDensitySelection();
         SaveAppearanceChange();
         OnPropertyChanged(nameof(TextSizeValueText));
         OnPropertyChanged(nameof(TextSizeInput));
@@ -4467,6 +4802,7 @@ RefreshWeatherCityPopularCities();
         }
 
         _settingsService.Settings.LayoutDensityScale = normalizedValue;
+        SyncLayoutDensitySelection();
         SaveAppearanceChange();
         OnPropertyChanged(nameof(LayoutDensityValueText));
         OnPropertyChanged(nameof(LayoutDensityPercent));
@@ -4682,6 +5018,145 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(QuickCaptureRecentLimitInput));
     }
 
+    private void ApplyLayoutDensityPreset(string preset)
+    {
+        if (!SettingsService.TryGetLayoutDensityPresetValues(preset, out LayoutDensityPresetValues values))
+        {
+            return;
+        }
+
+        _isApplyingLayoutDensityPreset = true;
+        try
+        {
+            IconSize = values.IconSize;
+            TextSize = values.TextSize;
+            LayoutDensityScale = values.DensityScale;
+            HorizontalSpacingScale = values.HorizontalSpacingScale;
+            VerticalSpacingScale = values.VerticalSpacingScale;
+            FileNameWidthScale = values.FileNameWidthScale;
+            _settingsService.Settings.LayoutDensity = preset;
+        }
+        finally
+        {
+            _isApplyingLayoutDensityPreset = false;
+        }
+
+        RefreshNumberInputs();
+        SaveAppearanceChange();
+    }
+
+    private void SyncLayoutDensitySelection()
+    {
+        if (_isApplyingLayoutDensityPreset || _isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.LayoutDensity = SettingsService.LayoutDensityCustom;
+        if (SetProperty(
+            ref _selectedLayoutDensity,
+            SettingsService.LayoutDensityCustom,
+            nameof(SelectedLayoutDensity)))
+        {
+            OnPropertyChanged(nameof(SelectedLayoutDensityText));
+            OnPropertyChanged(nameof(SelectedLayoutDensityIndex));
+        }
+    }
+
+    private void ApplyAnimationPreset(string preset)
+    {
+        (string effect, string speed, string direction, string easing) = preset switch
+        {
+            AnimationPresetNone => (
+                SettingsService.WidgetAnimationEffectNone,
+                SettingsService.WidgetAnimationSpeedStandard,
+                SettingsService.WidgetAnimationSlideDirectionNone,
+                SettingsService.WidgetAnimationEasingNone),
+            AnimationPresetGentle => (
+                SettingsService.WidgetAnimationEffectFade,
+                SettingsService.WidgetAnimationSpeedRelaxed,
+                SettingsService.WidgetAnimationSlideDirectionNone,
+                SettingsService.WidgetAnimationEasingLight),
+            AnimationPresetEmphasized => (
+                SettingsService.WidgetAnimationEffectScaleFade,
+                SettingsService.WidgetAnimationSpeedRelaxed,
+                SettingsService.WidgetAnimationSlideDirectionNone,
+                SettingsService.WidgetAnimationEasingStrong),
+            _ => (
+                SettingsService.WidgetAnimationEffectSlideFade,
+                SettingsService.WidgetAnimationSpeedStandard,
+                SettingsService.WidgetAnimationSlideDirectionRight,
+                SettingsService.WidgetAnimationEasingStandard)
+        };
+
+        _isApplyingAnimationPreset = true;
+        try
+        {
+            SelectedWidgetAnimationEffect = effect;
+            SelectedWidgetAnimationSpeed = speed;
+            SelectedWidgetAnimationSlideDirection = direction;
+            SelectedWidgetAnimationEasingIntensity = easing;
+        }
+        finally
+        {
+            _isApplyingAnimationPreset = false;
+        }
+
+        _settingsService.SaveDebounced();
+    }
+
+    private void SyncAnimationPresetSelection()
+    {
+        if (_isApplyingAnimationPreset || _isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        string resolvedPreset = ResolveAnimationPreset();
+        if (SetProperty(ref _selectedAnimationPreset, resolvedPreset, nameof(SelectedAnimationPreset)))
+        {
+            OnPropertyChanged(nameof(SelectedAnimationPresetText));
+            OnPropertyChanged(nameof(SelectedAnimationPresetIndex));
+        }
+    }
+
+    private string ResolveAnimationPreset()
+    {
+        if (_selectedWidgetAnimationEffect == SettingsService.WidgetAnimationEffectNone &&
+            _selectedWidgetAnimationSpeed == SettingsService.WidgetAnimationSpeedStandard &&
+            _selectedWidgetAnimationSlideDirection == SettingsService.WidgetAnimationSlideDirectionNone &&
+            _selectedWidgetAnimationEasingIntensity == SettingsService.WidgetAnimationEasingNone)
+        {
+            return AnimationPresetNone;
+        }
+
+        if (_selectedWidgetAnimationEffect == SettingsService.WidgetAnimationEffectFade &&
+            _selectedWidgetAnimationSpeed == SettingsService.WidgetAnimationSpeedRelaxed &&
+            _selectedWidgetAnimationSlideDirection == SettingsService.WidgetAnimationSlideDirectionNone &&
+            _selectedWidgetAnimationEasingIntensity == SettingsService.WidgetAnimationEasingLight)
+        {
+            return AnimationPresetGentle;
+        }
+
+        if (_selectedWidgetAnimationEffect == SettingsService.WidgetAnimationEffectSlideFade &&
+            _selectedWidgetAnimationSpeed == SettingsService.WidgetAnimationSpeedStandard &&
+            _selectedWidgetAnimationSlideDirection == SettingsService.WidgetAnimationSlideDirectionRight &&
+            _selectedWidgetAnimationEasingIntensity == SettingsService.WidgetAnimationEasingStandard)
+        {
+            return AnimationPresetStandard;
+        }
+
+        if (_selectedWidgetAnimationEffect == SettingsService.WidgetAnimationEffectScaleFade &&
+            _selectedWidgetAnimationSpeed == SettingsService.WidgetAnimationSpeedRelaxed &&
+            _selectedWidgetAnimationSlideDirection == SettingsService.WidgetAnimationSlideDirectionNone &&
+            _selectedWidgetAnimationEasingIntensity == SettingsService.WidgetAnimationEasingStrong)
+        {
+            return AnimationPresetEmphasized;
+        }
+
+        return AnimationPresetCustom;
+    }
+
     private void ApplySpacingScaleChange(
         double value,
         double currentStoredValue,
@@ -4707,6 +5182,7 @@ RefreshWeatherCityPopularCities();
         }
 
         setStoredValue(normalizedValue);
+        SyncLayoutDensitySelection();
         SaveAppearanceChange();
         foreach (string propertyName in dependentPropertyNames)
         {
@@ -4716,6 +5192,11 @@ RefreshWeatherCityPopularCities();
 
     private void SaveAppearanceChange()
     {
+        if (_isApplyingLayoutDensityPreset)
+        {
+            return;
+        }
+
         if (DeferAppearancePersistence)
         {
             _settingsService.RequestAppearancePreview();

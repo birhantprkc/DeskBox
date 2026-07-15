@@ -118,7 +118,7 @@
             TitleRightTapped="TitleBarGrid_RightTapped"
             RightTapped="QuickCaptureShell_RightTapped">
             <controls:WidgetShell.ShellContent>
-                <Grid Padding="10,6,6,8" RowSpacing="4">
+                <Grid Padding="{Binding RootPadding}" RowSpacing="{Binding RootRowSpacing}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -344,9 +344,9 @@
                     <ListView.Header>
                         <Button
                             x:Name="AddNoteCardButton"
-                            Margin="0,0,0,6"
-                            MinHeight="48"
-                            Padding="8,5"
+                            Margin="{Binding AddCardMargin}"
+                            MinHeight="{Binding AddCardMinHeight}"
+                            Padding="{Binding AddCardPadding}"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Stretch"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -379,7 +379,7 @@
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
                             <Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,0,5" />
+                            <Setter Property="Margin" Value="0" />
                             <Setter Property="MinHeight" Value="0" />
                             <Setter Property="UseSystemFocusVisuals" Value="False" />
                             <Setter Property="Background" Value="Transparent" />
@@ -404,7 +404,8 @@
                                 x:Name="QuickCaptureItemRoot"
                                 AllowDrop="True"
                                 HorizontalAlignment="Stretch"
-                                Padding="10,6,6,6"
+                                Margin="{Binding ElementName=ItemsListView, Path=DataContext.ItemMargin}"
+                                Padding="{Binding ElementName=ItemsListView, Path=DataContext.ItemPadding}"
                                 Background="Transparent"
                                 DataContextChanged="QuickCaptureItem_DataContextChanged"
                                 DragLeave="QuickCaptureItem_DragLeave"
@@ -424,17 +425,17 @@
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     BorderThickness="0"
                                     CornerRadius="4"
-                                    Margin="-10,-6,-6,-6" />
+                                    Margin="{Binding ElementName=ItemsListView, Path=DataContext.ItemChromeMargin}" />
                                 <Border
                                     x:Name="ItemHoverBackground"
                                     Grid.ColumnSpan="2"
-                                    Margin="-10,-6,-6,-6"
+                                    Margin="{Binding ElementName=ItemsListView, Path=DataContext.ItemChromeMargin}"
                                     Style="{StaticResource WidgetRowHoverBackgroundStyle}" />
                                 <Border
                                     Grid.ColumnSpan="2"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
                                     CornerRadius="4"
-                                    Margin="-10,-6,-6,-6"
+                                    Margin="{Binding ElementName=ItemsListView, Path=DataContext.ItemChromeMargin}"
                                     Opacity="0.18"
                                     Visibility="{Binding CopySelectionVisibility}" />
                                     <StackPanel
