@@ -15,6 +15,18 @@ internal static class Program
         try
         {
             var options = UpdateOptions.Parse(args);
+            if (options.RestartOnly)
+            {
+                if (string.IsNullOrWhiteSpace(options.AppPath) || !File.Exists(options.AppPath))
+                {
+                    Log("App executable not found for restart.");
+                    return 2;
+                }
+
+                WaitForParentExit(options.ParentProcessId);
+                return RestartApp(options.AppPath) ? 0 : 3;
+            }
+
             if (string.IsNullOrWhiteSpace(options.InstallerPath) || !File.Exists(options.InstallerPath))
             {
                 Log("Installer not found.");
@@ -26,7 +38,7 @@ internal static class Program
             int exitCode = RunInstaller(options);
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(options.AppPath) && File.Exists(options.AppPath))
             {
-                RestartApp(options.AppPath);
+                _ = RestartApp(options.AppPath);
             }
 
             return exitCode;
@@ -90,7 +102,7 @@ internal static class Program
         return process.ExitCode;
     }
 
-    private static void RestartApp(string appPath)
+    private static bool RestartApp(string appPath)
     {
         try
         {
@@ -101,10 +113,12 @@ internal static class Program
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(appPath) ?? Environment.CurrentDirectory
             });
+            return true;
         }
         catch (Exception ex)
         {
             Log($"Restart failed: {ex.Message}");
+            return false;
         }
     }
 
@@ -128,6 +142,7 @@ internal static class Program
         public string InstallerPath { get; private init; } = string.Empty;
         public string AppPath { get; private init; } = string.Empty;
         public bool Silent { get; private init; }
+        public bool RestartOnly { get; private init; }
 
         public static UpdateOptions Parse(IReadOnlyList<string> args)
         {
@@ -135,6 +150,7 @@ internal static class Program
             string installerPath = string.Empty;
             string appPath = string.Empty;
             bool silent = false;
+            bool restartOnly = false;
 
             for (int index = 0; index < args.Count; index++)
             {
@@ -142,6 +158,12 @@ internal static class Program
                 if (string.Equals(arg, "--silent", StringComparison.OrdinalIgnoreCase))
                 {
                     silent = true;
+                    continue;
+                }
+
+                if (string.Equals(arg, "--restart-only", StringComparison.OrdinalIgnoreCase))
+                {
+                    restartOnly = true;
                     continue;
                 }
 
@@ -171,7 +193,8 @@ internal static class Program
                 ParentProcessId = parentProcessId,
                 InstallerPath = installerPath,
                 AppPath = appPath,
-                Silent = silent
+                Silent = silent,
+                RestartOnly = restartOnly
             };
         }
     }

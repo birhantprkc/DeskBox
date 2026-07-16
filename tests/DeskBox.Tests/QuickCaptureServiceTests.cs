@@ -836,6 +836,29 @@ public sealed class QuickCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Store_RecoversBackupWhenPrimaryJsonIsCorrupt()
+    {
+        var store = new QuickCaptureStore(_storeRoot);
+        await store.SaveAsync(new QuickCaptureStoreData
+        {
+            Items = [CreateStoredItem("recover", "Recover this note")]
+        });
+        await store.SaveAsync(new QuickCaptureStoreData
+        {
+            Items = [CreateStoredItem("latest", "Latest note")]
+        });
+        await File.WriteAllTextAsync(store.StorePath, "{ invalid json");
+
+        QuickCaptureStoreData recovered = await store.LoadAsync();
+
+        QuickCaptureItem item = Assert.Single(recovered.Items);
+        Assert.Equal("recover", item.Id);
+        Assert.True(File.Exists(store.StorePath));
+        Assert.True(File.Exists(ResilientJsonStore.GetBackupPath(store.StorePath)));
+        Assert.Single(Directory.EnumerateFiles(_storeRoot, "quick-capture.json.corrupt-*"));
+    }
+
+    [Fact]
     public async Task DeleteAttachmentAsync_FallsBackToNextImage()
     {
         string firstPath = Path.Combine(_tempRoot, "first.png");
@@ -860,6 +883,17 @@ public sealed class QuickCaptureServiceTests : IDisposable
     private QuickCaptureService CreateService()
     {
         return new QuickCaptureService(new QuickCaptureStore(_storeRoot));
+    }
+
+    private static QuickCaptureItem CreateStoredItem(string id, string body)
+    {
+        return new QuickCaptureItem
+        {
+            Id = id,
+            Body = body,
+            CreatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            UpdatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z")
+        };
     }
 
     public void Dispose()
