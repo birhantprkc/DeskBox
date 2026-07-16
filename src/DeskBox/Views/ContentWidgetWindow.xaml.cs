@@ -4,6 +4,8 @@ using DeskBox.Controls.WidgetContents;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
+using DeskBox.ViewModels;
+using System.ComponentModel;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -35,6 +37,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     private bool _isHidePrepared;
     private bool _isCommittingTitleRename;
     private bool _isCancellingTitleRename;
+    private INotifyPropertyChanged? _compactPresentationSource;
 
     private bool _isVisibleOnDesktop;
 
@@ -60,7 +63,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             RootGrid,
             DispatcherQueue,
             HWnd,
-            () => Diagnostics.AnimationBounds,
+            GetCurrentAnimationBounds,
             LogTrayWindow);
         _contentHost = new WidgetShellContentHost(ContentWidgetShell);
 
@@ -85,13 +88,252 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     public override WidgetConfig Config => _config;
     protected override double WidgetOpacity => SettingsService.Settings.WidgetOpacity;
     protected override FrameworkElement RootElement => RootGrid;
+    protected override WidgetShell WidgetShellControl => ContentWidgetShell;
     protected override string LogPrefix => "Content";
     protected override bool IsSizeLocked => _config.IsSizeLocked;
     protected override bool IsPositionLocked => _config.IsPositionLocked;
 
+    protected override WidgetCompactPresentation CreateCompactPresentation()
+    {
+        var localization = App.Current.LocalizationService;
+        string contentMode = SettingsService.NormalizeWidgetCompactContentMode(
+            SettingsService.Settings.WidgetCompactContentMode);
+        return CurrentContent switch
+        {
+            TodoWidgetContentAdapter todo => CreateTodoCompactPresentation(todo, contentMode, localization),
+            MusicWidgetContentAdapter music => new WidgetCompactPresentation(
+                music.ViewModel.Title,
+                contentMode == SettingsService.WidgetCompactContentModeMinimal
+                    ? string.Empty
+                    : music.ViewModel.Artist,
+                _descriptor.DefaultGlyph,
+                string.Empty,
+                music.ViewModel.ThumbnailImage,
+                ShowMediaControls: contentMode == SettingsService.WidgetCompactContentModeSmart,
+                IsPlaying: music.ViewModel.IsPlaying,
+                CanGoPrevious: music.ViewModel.CanGoPrevious,
+                CanGoNext: music.ViewModel.CanGoNext,
+                UseStackedText: contentMode == SettingsService.WidgetCompactContentModeSmart,
+                EnableMarquee: true,
+                Progress: GetMusicCompactProgress(music),
+                LiveStateKey: string.Join(
+                    "|",
+                    music.ViewModel.Title,
+                    music.ViewModel.Artist,
+                    music.ViewModel.PlaybackState,
+                    music.ViewModel.Duration.Ticks)),
+            WeatherWidgetContentAdapter weather => new WidgetCompactPresentation(
+                string.IsNullOrWhiteSpace(weather.ViewModel.CurrentTemperatureText)
+                    ? _titleViewModel.DisplayName
+                    : weather.ViewModel.CurrentTemperatureText,
+                BuildWeatherCompactSummary(weather, contentMode),
+                _descriptor.DefaultGlyph,
+                string.Empty,
+                UseStackedText: contentMode == SettingsService.WidgetCompactContentModeSmart,
+                EnableMarquee: true,
+                Progress: IsCompactWeatherAttentionRequired(weather) ? 1 : null,
+                IsAttention: IsCompactWeatherAttentionRequired(weather),
+                LiveStateKey: string.Join(
+                    "|",
+                    weather.ViewModel.CurrentTemperatureText,
+                    weather.ViewModel.CurrentDescription,
+                    weather.ViewModel.PrecipitationText)),
+            _ => new WidgetCompactPresentation(
+                _titleViewModel.DisplayName,
+                string.Empty,
+                _descriptor.DefaultGlyph,
+                localization.T("Widget.Compact.DropHint"),
+                EnableMarquee: true,
+                LiveStateKey: _titleViewModel.DisplayName)
+        };
+    }
+
+    private WidgetCompactPresentation CreateTodoCompactPresentation(
+        TodoWidgetContentAdapter todo,
+        string contentMode,
+        LocalizationService localization)
+    {
+        if (SettingsService.Settings.WidgetCompactHideSensitiveContent &&
+            contentMode == SettingsService.WidgetCompactContentModeSmart)
+        {
+            contentMode = SettingsService.WidgetCompactContentModeSummary;
+        }
+
+        var nextItem = GetNextCompactTodoItem(todo);
+        int overdueCount = todo.ViewModel.Items.Count(item => item.IsOverdue);
+        string countSummary = localization.Format(
+            "Widget.Compact.TodoSummary",
+            todo.ViewModel.TodayFilterCount,
+            overdueCount);
+
+        WidgetCompactPresentation presentation = contentMode switch
+        {
+            SettingsService.WidgetCompactContentModeMinimal => new WidgetCompactPresentation(
+                _titleViewModel.DisplayName,
+                string.Empty,
+                _descriptor.DefaultGlyph,
+                localization.T("Widget.Compact.TodoDropHint")),
+            SettingsService.WidgetCompactContentModeSmart when nextItem is not null =>
+                new WidgetCompactPresentation(
+                    NormalizeCompactSingleLine(nextItem.Text),
+                    BuildCompactTodoDueSummary(nextItem, countSummary, localization),
+                    _descriptor.DefaultGlyph,
+                    localization.T("Widget.Compact.TodoDropHint"),
+                    ShowPrimaryAction: true),
+            _ => new WidgetCompactPresentation(
+                _titleViewModel.DisplayName,
+                countSummary,
+                _descriptor.DefaultGlyph,
+                localization.T("Widget.Compact.TodoDropHint"))
+        };
+
+        int totalCount = todo.ViewModel.Items.Count;
+        return presentation with
+        {
+            EnableMarquee = true,
+            Progress = totalCount > 0
+                ? todo.ViewModel.CompletedCount / (double)totalCount
+                : null,
+            IsAttention = overdueCount > 0,
+            LiveStateKey = string.Join(
+                "|",
+                nextItem?.Id ?? string.Empty,
+                nextItem?.Text ?? string.Empty,
+                todo.ViewModel.CompletedCount,
+                totalCount,
+                overdueCount)
+        };
+    }
+
+    private static double? GetMusicCompactProgress(MusicWidgetContentAdapter music)
+    {
+        double duration = music.ViewModel.Duration.TotalSeconds;
+        return duration > 0
+            ? Math.Clamp(music.ViewModel.Position.TotalSeconds / duration, 0, 1)
+            : null;
+    }
+
+    private static bool IsCompactWeatherAttentionRequired(WeatherWidgetContentAdapter weather)
+    {
+        int code = weather.ViewModel.CurrentWeatherCode;
+        return code is >= 51 and <= 67 or
+            >= 71 and <= 86 or
+            >= 95 and <= 99;
+    }
+
+    private static string NormalizeCompactSingleLine(string? text)
+    {
+        return string.Join(
+            " ",
+            (text ?? string.Empty).Split(
+                (char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    private static string BuildCompactTodoDueSummary(
+        TodoItemViewModel item,
+        string fallback,
+        LocalizationService localization)
+    {
+        if (item.DueDate is not { } dueDate)
+        {
+            return fallback;
+        }
+
+        if (item.IsOverdue)
+        {
+            return localization.T("Todo.Due.OverdueSuffix");
+        }
+
+        DateTimeOffset localDueDate = dueDate.ToLocalTime();
+        DateTime today = DateTime.Today;
+        if (localDueDate.Date == today)
+        {
+            return localization.Format("Todo.Due.TodayAt", localDueDate.ToString("HH:mm"));
+        }
+
+        if (localDueDate.Date == today.AddDays(1))
+        {
+            return localization.Format("Todo.Due.TomorrowAt", localDueDate.ToString("HH:mm"));
+        }
+
+        return localDueDate.ToString("M/d");
+    }
+
+    private static TodoItemViewModel? GetNextCompactTodoItem(TodoWidgetContentAdapter todo) =>
+        todo.ViewModel.Items
+            .Where(item => !item.IsCompleted)
+            .OrderByDescending(item => item.IsOverdue)
+            .ThenByDescending(item => item.IsImportant)
+            .ThenBy(item => item.DueDate ?? DateTimeOffset.MaxValue)
+            .FirstOrDefault();
+
+    private static string BuildWeatherCompactSummary(
+        WeatherWidgetContentAdapter weather,
+        string contentMode)
+    {
+        if (contentMode == SettingsService.WidgetCompactContentModeMinimal)
+        {
+            return string.Empty;
+        }
+
+        string description = weather.ViewModel.CurrentDescription;
+        if (contentMode != SettingsService.WidgetCompactContentModeSmart ||
+            string.IsNullOrWhiteSpace(weather.ViewModel.PrecipitationText))
+        {
+            return description;
+        }
+
+        return string.IsNullOrWhiteSpace(description)
+            ? weather.ViewModel.PrecipitationText
+            : $"{description} · {weather.ViewModel.PrecipitationText}";
+    }
+
+    protected override async Task OnCompactPrimaryActionRequestedAsync()
+    {
+        if (CurrentContent is not TodoWidgetContentAdapter todo ||
+            GetNextCompactTodoItem(todo) is not { } item)
+        {
+            return;
+        }
+
+        await todo.ViewModel.SetCompletedAsync(item.Id, true);
+    }
+
+    protected override Task OnCompactPreviousRequestedAsync()
+    {
+        return CurrentContent is MusicWidgetContentAdapter music
+            ? music.ViewModel.PreviousAsync()
+            : Task.CompletedTask;
+    }
+
+    protected override Task OnCompactPlayPauseRequestedAsync()
+    {
+        return CurrentContent is MusicWidgetContentAdapter music
+            ? music.ViewModel.TogglePlayPauseAsync()
+            : Task.CompletedTask;
+    }
+
+    protected override Task OnCompactNextRequestedAsync()
+    {
+        return CurrentContent is MusicWidgetContentAdapter music
+            ? music.ViewModel.NextAsync()
+            : Task.CompletedTask;
+    }
+
     protected override void UpdateConfigBoundsFromPhysical(
         int x, int y, int width, int height, bool persist)
     {
+        if (IsCompactBoundsStateActive)
+        {
+            if (persist)
+            {
+                SettingsService.UpdateWidget(_config, notifySubscribers: false);
+                SettingsService.SaveDebounced(notifySubscribers: false);
+            }
+            return;
+        }
+
         var bounds = new RectInt32(x, y, width, height);
         var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
         WidgetPositioningService.UpdateConfigFromPhysicalBounds(_config, bounds, workArea);
@@ -154,7 +396,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         ContentWidgetShell.BackgroundSurface.BorderBrush = GetOrUpdateSolidColorBrush(
             ContentWidgetShell.BackgroundSurface.BorderBrush,
             borderColor);
-        ContentWidgetShell.BackgroundSurface.CornerRadius = new CornerRadius(GetCornerRadiusFromPreference());
+        ContentWidgetShell.BackgroundSurface.CornerRadius = new CornerRadius(GetCurrentSurfaceCornerRadius());
         ContentWidgetShell.Divider.Background = GetOrUpdateSolidColorBrush(
             ContentWidgetShell.Divider.Background,
             dividerColor);
@@ -171,7 +413,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
     public IntPtr WindowHandle => HWnd;
     public WidgetWindowIdentity Identity => Diagnostics.Identity;
-    public Windows.Foundation.Rect AnimationBounds => Diagnostics.AnimationBounds;
+    public Windows.Foundation.Rect AnimationBounds => GetCurrentAnimationBounds();
 
     public new bool Visible
     {
@@ -209,7 +451,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     public void PrepareTrayShowAnimation()
     {
         TrayAnimation.NextGeneration();
-        TrayAnimation.Stop();
+        TrayAnimation.StopAndRestoreWindowPosition();
         _isHidePrepared = false;
         IsHideAnimationRunning = false;
 
@@ -256,7 +498,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         }
 
         TrayAnimation.NextGeneration();
-        TrayAnimation.Stop();
+        TrayAnimation.StopAndRestoreWindowPosition();
         IsHideAnimationRunning = true;
         _isHidePrepared = true;
         Visible = false;
@@ -365,12 +607,47 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     {
         _titleViewModel.RefreshDisplayName();
         ApplyLocalizedTitleActionTooltips();
+        RefreshCompactPresentation();
     }
 
     private async Task LoadContentAsync(IWidgetContent content)
     {
         await _contentHost.SetContentAsync(content);
+        AttachCompactPresentationSource(content);
+        RefreshCompactPresentation();
         ApplyTitleActionButtonConfiguration();
+    }
+
+    private void AttachCompactPresentationSource(IWidgetContent content)
+    {
+        if (_compactPresentationSource is not null)
+        {
+            _compactPresentationSource.PropertyChanged -= CompactPresentationSource_PropertyChanged;
+        }
+
+        _compactPresentationSource = content switch
+        {
+            TodoWidgetContentAdapter todo => todo.ViewModel,
+            MusicWidgetContentAdapter music => music.ViewModel,
+            WeatherWidgetContentAdapter weather => weather.ViewModel,
+            _ => null
+        };
+
+        if (_compactPresentationSource is not null)
+        {
+            _compactPresentationSource.PropertyChanged += CompactPresentationSource_PropertyChanged;
+        }
+    }
+
+    private void CompactPresentationSource_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(RefreshCompactPresentation);
+            return;
+        }
+
+        RefreshCompactPresentation();
     }
 
     private void ApplyLocalizedTitleActionTooltips()
@@ -413,6 +690,11 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             AppWindow.Changed -= OnAppWindowChanged;
             ContentWidgetShell.RightTapped -= ContentWidgetShell_RightTapped;
             ContentWidgetShell.TitleDoubleTapped -= ContentWidgetShell_TitleDoubleTapped;
+            if (_compactPresentationSource is not null)
+            {
+                _compactPresentationSource.PropertyChanged -= CompactPresentationSource_PropertyChanged;
+                _compactPresentationSource = null;
+            }
             try { CleanupBase(); } catch (Exception ex) { App.Log($"[ContentWidget] CleanupBase failed during close: {ex.Message}"); }
             try { _contentHost.DisposeContent(); } catch (Exception ex) { App.Log($"[ContentWidget] DisposeContent failed during close: {ex.Message}"); }
 

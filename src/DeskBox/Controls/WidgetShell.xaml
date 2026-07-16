@@ -10,6 +10,7 @@
 
     <Grid
         x:Name="ShellRoot"
+        AllowDrop="True"
         Background="Transparent"
         PointerEntered="ShellRoot_PointerEntered"
         PointerExited="ShellRoot_PointerExited">
@@ -108,6 +109,12 @@
                         <Path x:Name="AddButtonIcon" Data="M6 10c0-.28.22-.5.5-.5h3v-3a.5.5 0 0 1 1 0v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3A.5.5 0 0 1 6 10Zm4 8a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm0-1a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z" Fill="{Binding Foreground, ElementName=AddButton}" Stretch="Uniform" />
                     </Button>
                     <Button
+                        x:Name="CollapseButton"
+                        Click="CollapseButton_Click"
+                        Style="{StaticResource WidgetTitleActionButtonStyle}">
+                        <FontIcon FontSize="12" Glyph="&#xE70E;" />
+                    </Button>
+                    <Button
                         x:Name="MoreButton"
                         Click="MoreButton_Click"
                         Style="{StaticResource WidgetTitleActionButtonStyle}">
@@ -134,6 +141,193 @@
             x:Name="ShellContentPresenter"
             Grid.Row="1"
             Content="{x:Bind ShellContent, Mode=OneWay}" />
+
+        <Grid
+            x:Name="CollapsedChromeLayer"
+            Grid.RowSpan="2"
+            Canvas.ZIndex="45"
+            Padding="8,0,6,0"
+            Background="Transparent"
+            Visibility="Collapsed"
+            GotFocus="CollapsedChromeLayer_GotFocus"
+            LostFocus="CollapsedChromeLayer_LostFocus"
+            PointerCaptureLost="OverlayDragHandle_PointerCaptureLost"
+            PointerMoved="OverlayDragHandle_PointerMoved"
+            PointerPressed="OverlayDragHandle_PointerPressed"
+            PointerReleased="OverlayDragHandle_PointerReleased"
+            SizeChanged="CollapsedChromeLayer_SizeChanged">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Grid
+                x:Name="CompactIdentityHost"
+                Width="28"
+                Height="28"
+                VerticalAlignment="Center"
+                Background="Transparent"
+                PointerEntered="CompactIdentityHost_PointerEntered"
+                PointerExited="CompactIdentityHost_PointerExited">
+                <controls:WidgetTitleIcon
+                    x:Name="CompactTitleIcon"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    AccentColor="{x:Bind TitleIconAccentColor, Mode=OneWay}"
+                    Glyph="{x:Bind TitleGlyph, Mode=OneWay}"
+                    IconSize="14"
+                    IconKind="{x:Bind TitleIconKind, Mode=OneWay}"
+                    LabelText="{x:Bind OverlayTitle, Mode=OneWay}"
+                    Mode="{x:Bind TitleIconMode, Mode=OneWay}" />
+                <Border
+                    x:Name="CompactThumbnailHost"
+                    Width="28"
+                    Height="28"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                    CornerRadius="8"
+                    Visibility="Collapsed">
+                    <Image x:Name="CompactThumbnail" Stretch="UniformToFill" />
+                </Border>
+            </Grid>
+
+            <Grid x:Name="CompactTextContainer" Grid.Column="1" MinWidth="0" Margin="6,0,7,0" VerticalAlignment="Center">
+                <StackPanel x:Name="CompactTextHost" Orientation="Horizontal" Spacing="6">
+                    <StackPanel.RenderTransform>
+                        <TranslateTransform x:Name="CompactTextTransform" />
+                    </StackPanel.RenderTransform>
+                    <Grid x:Name="CompactTitleViewport" Height="18">
+                        <Canvas x:Name="CompactTitleMarqueeCanvas">
+                            <TextBlock
+                                x:Name="CompactTitleText"
+                                VerticalAlignment="Center"
+                                FontSize="12.5"
+                                FontWeight="SemiBold"
+                                MaxLines="1"
+                                TextWrapping="NoWrap"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                x:Name="CompactTitleMarqueeClone"
+                                VerticalAlignment="Center"
+                                FontSize="12.5"
+                                FontWeight="SemiBold"
+                                MaxLines="1"
+                                TextWrapping="NoWrap"
+                                TextTrimming="Clip"
+                                Visibility="Collapsed" />
+                        </Canvas>
+                    </Grid>
+                    <Border
+                        x:Name="CompactTextSeparator"
+                        Width="3"
+                        Height="3"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource TextFillColorTertiaryBrush}"
+                        CornerRadius="2" />
+                    <Grid x:Name="CompactSummaryViewport" Height="17">
+                        <Canvas x:Name="CompactSummaryMarqueeCanvas">
+                            <TextBlock
+                                x:Name="CompactSummaryText"
+                                MinWidth="0"
+                                VerticalAlignment="Center"
+                                FontSize="11.5"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                MaxLines="1"
+                                TextWrapping="NoWrap"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                x:Name="CompactSummaryMarqueeClone"
+                                MinWidth="0"
+                                VerticalAlignment="Center"
+                                FontSize="11.5"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                MaxLines="1"
+                                TextWrapping="NoWrap"
+                                TextTrimming="Clip"
+                                Visibility="Collapsed" />
+                        </Canvas>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+
+            <StackPanel
+                x:Name="CompactActionHost"
+                Grid.Column="2"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Opacity="0"
+                PointerEntered="CompactActionHost_PointerEntered"
+                PointerExited="CompactActionHost_PointerExited"
+                Spacing="2"
+                IsHitTestVisible="False">
+                <Button
+                    x:Name="CompactPrimaryActionButton"
+                    Click="CompactPrimaryActionButton_Click"
+                    Style="{StaticResource WidgetTitleActionButtonStyle}"
+                    Visibility="Collapsed">
+                    <FontIcon x:Name="CompactPrimaryActionIcon" FontSize="12" Glyph="&#xE73E;" />
+                </Button>
+                <Button
+                    x:Name="CompactPreviousButton"
+                    Click="CompactPreviousButton_Click"
+                    Style="{StaticResource WidgetTitleActionButtonStyle}"
+                    Visibility="Collapsed">
+                    <FontIcon FontSize="12" Glyph="&#xE100;" />
+                </Button>
+                <Button
+                    x:Name="CompactPlayPauseButton"
+                    Click="CompactPlayPauseButton_Click"
+                    Style="{StaticResource WidgetTitleActionButtonStyle}"
+                    Visibility="Collapsed">
+                    <FontIcon x:Name="CompactPlayPauseIcon" FontSize="12" Glyph="&#xE102;" />
+                </Button>
+                <Button
+                    x:Name="CompactNextButton"
+                    Click="CompactNextButton_Click"
+                    Style="{StaticResource WidgetTitleActionButtonStyle}"
+                    Visibility="Collapsed">
+                    <FontIcon FontSize="12" Glyph="&#xE101;" />
+                </Button>
+                <Button
+                    x:Name="CompactExpandButton"
+                    Click="CompactExpandButton_Click"
+                    Style="{StaticResource WidgetTitleActionButtonStyle}">
+                    <FontIcon FontSize="12" Glyph="&#xE70D;" />
+                </Button>
+            </StackPanel>
+
+            <Grid
+                x:Name="CompactLiveIndicatorHost"
+                Grid.ColumnSpan="3"
+                Height="2"
+                Margin="8,0,8,2"
+                VerticalAlignment="Bottom"
+                IsHitTestVisible="False">
+                <Border
+                    x:Name="CompactLiveTrack"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    CornerRadius="1"
+                    Opacity="0"
+                    Visibility="Collapsed" />
+                <Border
+                    x:Name="CompactLiveProgress"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    CornerRadius="1"
+                    Opacity="0"
+                    RenderTransformOrigin="0,0.5"
+                    Visibility="Collapsed">
+                    <Border.RenderTransform>
+                        <ScaleTransform x:Name="CompactLiveProgressTransform" ScaleX="0" />
+                    </Border.RenderTransform>
+                </Border>
+                <Border
+                    x:Name="CompactLiveEventIndicator"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    CornerRadius="1"
+                    Opacity="0" />
+            </Grid>
+        </Grid>
 
         <Grid
             x:Name="OverlayChromeLayer"
@@ -178,8 +372,8 @@
 
             <Border
                 x:Name="OverlayDragHandle"
-                Width="104"
-                Height="30"
+                Width="72"
+                Height="24"
                 Margin="0"
                 Padding="0"
                 HorizontalAlignment="Center"
@@ -188,18 +382,35 @@
                 BorderThickness="0"
                 Opacity="0"
                 PointerCaptureLost="OverlayDragHandle_PointerCaptureLost"
+                PointerEntered="OverlayDragHandle_PointerEntered"
+                PointerExited="OverlayDragHandle_PointerExited"
                 PointerMoved="OverlayDragHandle_PointerMoved"
                 PointerPressed="OverlayDragHandle_PointerPressed"
                 PointerReleased="OverlayDragHandle_PointerReleased">
-                <Border
-                    Width="28"
-                    Height="6"
-                    Margin="0,4,0,0"
+                <Grid
+                    Width="32"
+                    Height="12"
+                    Margin="0,2,0,0"
                     HorizontalAlignment="Center"
-                    VerticalAlignment="Top"
-                    Background="{ThemeResource TextFillColorSecondaryBrush}"
-                    CornerRadius="3"
-                    Opacity="0.76" />
+                    VerticalAlignment="Top">
+                    <Border
+                        x:Name="OverlayDragGrip"
+                        Width="28"
+                        Height="4"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        Background="{ThemeResource TextFillColorSecondaryBrush}"
+                        CornerRadius="2"
+                        Opacity="0.76" />
+                    <FontIcon
+                        x:Name="OverlayCollapseChevron"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        FontSize="10"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE70E;"
+                        Opacity="0" />
+                </Grid>
             </Border>
         </Grid>
     </Grid>

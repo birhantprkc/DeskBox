@@ -152,7 +152,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
     public override WidgetConfig Config => ViewModel.Config;
 
-    public Windows.Foundation.Rect AnimationBounds => _diagnostics.AnimationBounds;
+    public Windows.Foundation.Rect AnimationBounds => GetCurrentAnimationBounds();
 
     private bool _isVisibleOnDesktop;
     public new bool Visible
@@ -164,10 +164,35 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
     // ── WidgetWindowBase abstract overrides ────────────────────
     protected override double WidgetOpacity => ViewModel.WidgetOpacity;
     protected override FrameworkElement RootElement => RootGrid;
+    protected override WidgetShell WidgetShellControl => QuickCaptureShell;
     protected override string LogPrefix => "Quick";
     protected override bool IsSizeLocked => ViewModel.Config.IsSizeLocked;
     protected override bool IsPositionLocked => ViewModel.Config.IsPositionLocked;
     protected override bool IsBackdropSuppressedForTrayReveal => _isNativeBackdropSuppressedForTrayReveal;
+
+    protected override WidgetCompactPresentation CreateCompactPresentation()
+    {
+        string contentMode = SettingsService.NormalizeWidgetCompactContentMode(
+            _settingsService.Settings.WidgetCompactContentMode);
+        string summary = contentMode switch
+        {
+            SettingsService.WidgetCompactContentModeMinimal => string.Empty,
+            SettingsService.WidgetCompactContentModeSmart
+                when !_settingsService.Settings.WidgetCompactHideSensitiveContent =>
+                ViewModel.Items.FirstOrDefault()?.DisplayText?.ReplaceLineEndings(" ").Trim() ??
+                _localizationService.Format("Widget.Compact.QuickCaptureCount", ViewModel.RecordCount),
+            _ => _localizationService.Format("Widget.Compact.QuickCaptureCount", ViewModel.RecordCount)
+        };
+
+        return new WidgetCompactPresentation(
+            ViewModel.DisplayName,
+            summary,
+            "\uE70F",
+            _localizationService.T("Widget.Compact.QuickCaptureDropHint"),
+            UseStackedText: contentMode == SettingsService.WidgetCompactContentModeSmart &&
+                !_settingsService.Settings.WidgetCompactHideSensitiveContent,
+            LiveStateKey: $"{ViewModel.RecordCount}|{summary}");
+    }
 
     protected override void OnElevated()
     {
@@ -239,7 +264,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             RootGrid,
             DispatcherQueue,
             HWnd,
-            () => Diagnostics.AnimationBounds,
+            GetCurrentAnimationBounds,
             LogTrayWindow);
 
         ConfigureWindowCore();
@@ -352,7 +377,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
     public void PrepareTrayShowAnimation()
     {
         _trayAnimation.NextGeneration();
-        _trayAnimation.Stop();
+        _trayAnimation.StopAndRestoreWindowPosition();
         _isHideAnimationRunning = false;
         var profile = GetTrayAnimationProfile();
         LogTrayWindow(
@@ -386,7 +411,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         }
 
         _trayAnimation.NextGeneration();
-        _trayAnimation.Stop();
+        _trayAnimation.StopAndRestoreWindowPosition();
         RestoreNativeBackdropAfterTrayReveal();
         _isHideAnimationRunning = true;
         Visible = false;
@@ -625,6 +650,12 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(QuickCaptureWidgetViewModel.DisplayName) or
+            nameof(QuickCaptureWidgetViewModel.RecordCount))
+        {
+            RefreshCompactPresentation();
+        }
+
         if (e.PropertyName == nameof(QuickCaptureWidgetViewModel.DisplayName))
         {
             ApplyTitleBarLayout();

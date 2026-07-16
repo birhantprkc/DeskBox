@@ -166,6 +166,32 @@ public abstract partial class WidgetWindowBase
         return (thickness, borderColor, dividerColor);
     }
 
+    private void ApplyCompactBorderVisuals(bool? isDarkOverride = null)
+    {
+        bool isDark = isDarkOverride ?? RootElement.ActualTheme == ElementTheme.Dark;
+        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
+            ?? AccentColorHelper.DefaultAccentColor;
+        var (borderThickness, borderColor, _) = GetWidgetBorderVisuals(isDark, accentColor);
+
+        try
+        {
+            if (new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+            {
+                borderThickness = Math.Max(1, borderThickness);
+                borderColor = new Windows.UI.ViewManagement.UISettings().GetColorValue(
+                    Windows.UI.ViewManagement.UIColorType.Foreground);
+            }
+        }
+        catch
+        {
+            // Keep the configured border when accessibility APIs are unavailable.
+        }
+
+        var surface = WidgetShellControl.BackgroundSurface;
+        surface.BorderThickness = new Thickness(borderThickness);
+        surface.BorderBrush = GetOrUpdateSolidColorBrush(surface.BorderBrush, borderColor);
+    }
+
     protected void ScheduleInactiveBackdropControllerCleanup(string materialType)
     {
         bool hasInactiveController = materialType switch

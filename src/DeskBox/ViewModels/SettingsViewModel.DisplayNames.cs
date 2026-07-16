@@ -79,6 +79,26 @@ public partial class SettingsViewModel
         };
     }
 
+    public string GetWidgetCollapseBehaviorDisplayName(string behavior)
+    {
+        return WidgetCollapseBehaviorNames.Normalize(behavior) switch
+        {
+            WidgetCollapseBehavior.Expanded => _localizationService.T("Settings.CollapseBehavior.Expanded"),
+            WidgetCollapseBehavior.Smart => _localizationService.T("Settings.CollapseBehavior.Smart"),
+            _ => _localizationService.T("Settings.CollapseBehavior.Click")
+        };
+    }
+
+    public string GetWidgetCompactContentModeDisplayName(string mode)
+    {
+        return SettingsService.NormalizeWidgetCompactContentMode(mode) switch
+        {
+            SettingsService.WidgetCompactContentModeMinimal => _localizationService.T("Settings.CompactContent.Minimal"),
+            SettingsService.WidgetCompactContentModeSummary => _localizationService.T("Settings.CompactContent.Summary"),
+            _ => _localizationService.T("Settings.CompactContent.Smart")
+        };
+    }
+
     public string GetLayoutDensityDisplayName(string density)
     {
         return density switch

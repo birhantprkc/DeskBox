@@ -266,6 +266,69 @@ public partial class SettingsViewModel
     public string SelectedWidgetBorderStyleText => GetBorderStyleDisplayName(SelectedWidgetBorderStyle);
     public int SelectedWidgetBorderStyleIndex => Array.IndexOf(AvailableWidgetBorderStyles, _selectedWidgetBorderStyle);
 
+    public string SelectedWidgetCollapseBehavior
+    {
+        get => _selectedWidgetCollapseBehavior;
+        set
+        {
+            string normalized = SettingsService.NormalizeWidgetCollapseBehavior(value);
+            if (normalized == SettingsService.WidgetCollapseBehaviorExpanded)
+            {
+                normalized = SettingsService.WidgetCollapseBehaviorClick;
+            }
+            if (!SetProperty(ref _selectedWidgetCollapseBehavior, normalized))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetCollapseBehavior = normalized;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedWidgetCollapseBehaviorText));
+            OnPropertyChanged(nameof(SelectedWidgetCollapseBehaviorIndex));
+            OnPropertyChanged(nameof(IsSmartWidgetCollapseBehavior));
+        }
+    }
+
+    public string SelectedWidgetCollapseBehaviorText =>
+        GetWidgetCollapseBehaviorDisplayName(SelectedWidgetCollapseBehavior);
+
+    public int SelectedWidgetCollapseBehaviorIndex =>
+        Array.IndexOf(AvailableWidgetCollapseBehaviors, _selectedWidgetCollapseBehavior);
+
+    public string SelectedWidgetCompactContentMode
+    {
+        get => _selectedWidgetCompactContentMode;
+        set
+        {
+            string normalized = SettingsService.NormalizeWidgetCompactContentMode(value);
+            if (!SetProperty(ref _selectedWidgetCompactContentMode, normalized))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetCompactContentMode = normalized;
+            _settingsService.SaveDebounced();
+            OnPropertyChanged(nameof(SelectedWidgetCompactContentModeText));
+            OnPropertyChanged(nameof(SelectedWidgetCompactContentModeIndex));
+        }
+    }
+
+    public string SelectedWidgetCompactContentModeText =>
+        GetWidgetCompactContentModeDisplayName(SelectedWidgetCompactContentMode);
+
+    public int SelectedWidgetCompactContentModeIndex =>
+        Array.IndexOf(AvailableWidgetCompactContentModes, _selectedWidgetCompactContentMode);
+
     public string SelectedLayoutDensity
     {
         get => _selectedLayoutDensity;

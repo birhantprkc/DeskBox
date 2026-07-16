@@ -35,6 +35,8 @@ public sealed partial class WidgetWindow
             return;
         }
 
+        RefreshCompactPresentation();
+
         if (e.PropertyName is nameof(WidgetViewModel.IsLoading))
         {
             UpdateEmptyState();
@@ -308,6 +310,11 @@ public sealed partial class WidgetWindow
             return;
         }
 
+        if (TryHandleCompactActivation(e))
+        {
+            return;
+        }
+
         bool ctrlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
         bool shiftPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift);
         var listView = GetActiveItemsView();
@@ -409,8 +416,15 @@ public sealed partial class WidgetWindow
 
         if (e.Key == Windows.System.VirtualKey.Escape)
         {
-            ClearItemSelectionCore(clearCutState: true);
-            e.Handled = true;
+            if (GetSelectedItems().Count > 0 || _cutClipboardPaths.Length > 0)
+            {
+                ClearItemSelectionCore(clearCutState: true);
+                e.Handled = true;
+            }
+            else if (TryHandleCompactEscape())
+            {
+                e.Handled = true;
+            }
             return;
         }
 

@@ -58,6 +58,18 @@ public partial class SettingsViewModel
         string interactiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
         string widgetTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
         string widgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(settings.WidgetLayerMode);
+        bool widgetCapsuleModeEnabled = settings.WidgetCapsuleModeEnabled;
+        bool widgetCompactHideSensitiveContent = settings.WidgetCompactHideSensitiveContent;
+        string widgetCollapseBehavior = SettingsService.NormalizeWidgetCollapseBehavior(settings.WidgetCollapseBehavior) == SettingsService.WidgetCollapseBehaviorSmart
+            ? SettingsService.WidgetCollapseBehaviorSmart
+            : SettingsService.WidgetCollapseBehaviorClick;
+        string widgetCompactContentMode = SettingsService.NormalizeWidgetCompactContentMode(
+            settings.WidgetCompactContentMode);
+        string widgetCompactAnimationEffect = SettingsService.NormalizeWidgetCompactAnimationEffect(settings.WidgetCompactAnimationEffect);
+        int widgetCompactAnimationDurationMs = SettingsService.NormalizeWidgetCompactAnimationDurationMs(settings.WidgetCompactAnimationDurationMs);
+        int widgetCompactExpandDelayMs = SettingsService.NormalizeWidgetCompactExpandDelayMs(settings.WidgetCompactExpandDelayMs);
+        int widgetCompactCollapseDelayMs = SettingsService.NormalizeWidgetCompactCollapseDelayMs(settings.WidgetCompactCollapseDelayMs);
+        string widgetCompactMediaCornerMode = SettingsService.NormalizeWidgetCompactMediaCornerMode(settings.WidgetCompactMediaCornerMode);
         string todoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
         string todoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);
         string todoTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.TodoTabStyle);
@@ -67,6 +79,16 @@ public partial class SettingsViewModel
         _isApplyingSettingsSnapshot = true;
         try
         {
+            if (WidgetCapsuleModeEnabled != widgetCapsuleModeEnabled)
+            {
+                WidgetCapsuleModeEnabled = widgetCapsuleModeEnabled;
+            }
+
+            if (WidgetCompactHideSensitiveContent != widgetCompactHideSensitiveContent)
+            {
+                WidgetCompactHideSensitiveContent = widgetCompactHideSensitiveContent;
+            }
+
             if (!string.Equals(ManagedStorageRootPath, managedStorageRootPath, StringComparison.OrdinalIgnoreCase))
             {
                 ManagedStorageRootPath = managedStorageRootPath;
@@ -195,6 +217,44 @@ public partial class SettingsViewModel
                 SelectedWidgetLayerMode = widgetLayerMode;
             }
 
+            if (!string.Equals(SelectedWidgetCollapseBehavior, widgetCollapseBehavior, StringComparison.Ordinal))
+            {
+                SelectedWidgetCollapseBehavior = widgetCollapseBehavior;
+            }
+
+            if (!string.Equals(
+                    SelectedWidgetCompactContentMode,
+                    widgetCompactContentMode,
+                    StringComparison.Ordinal))
+            {
+                SelectedWidgetCompactContentMode = widgetCompactContentMode;
+            }
+
+            if (!string.Equals(SelectedWidgetCompactAnimationEffect, widgetCompactAnimationEffect, StringComparison.Ordinal))
+            {
+                SelectedWidgetCompactAnimationEffect = widgetCompactAnimationEffect;
+            }
+
+            if (Math.Abs(WidgetCompactAnimationDurationMs - widgetCompactAnimationDurationMs) > 0.01)
+            {
+                WidgetCompactAnimationDurationMs = widgetCompactAnimationDurationMs;
+            }
+
+            if (Math.Abs(WidgetCompactExpandDelayMs - widgetCompactExpandDelayMs) > 0.01)
+            {
+                WidgetCompactExpandDelayMs = widgetCompactExpandDelayMs;
+            }
+
+            if (Math.Abs(WidgetCompactCollapseDelayMs - widgetCompactCollapseDelayMs) > 0.01)
+            {
+                WidgetCompactCollapseDelayMs = widgetCompactCollapseDelayMs;
+            }
+
+            if (!string.Equals(SelectedWidgetCompactMediaCornerMode, widgetCompactMediaCornerMode, StringComparison.Ordinal))
+            {
+                SelectedWidgetCompactMediaCornerMode = widgetCompactMediaCornerMode;
+            }
+
             if (!string.Equals(SelectedTodoNewTaskPosition, todoNewTaskPosition, StringComparison.Ordinal))
             {
                 SelectedTodoNewTaskPosition = todoNewTaskPosition;
@@ -303,6 +363,10 @@ RefreshWeatherCityPopularCities();
         _cachedWidgetMaterialTypeDisplayNames = null;
         _cachedWidgetBorderColorModeDisplayNames = null;
         _cachedWidgetBorderStyleDisplayNames = null;
+        _cachedWidgetCollapseBehaviorDisplayNames = null;
+        _cachedWidgetCompactContentModeDisplayNames = null;
+        _cachedWidgetCompactAnimationEffectDisplayNames = null;
+        _cachedWidgetCompactMediaCornerDisplayNames = null;
         _cachedLayoutDensityDisplayNames = null;
         _cachedAnimationPresetDisplayNames = null;
         _cachedWidgetAnimationEffectDisplayNames = null;
@@ -333,6 +397,10 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(AvailableWidgetMaterialTypeDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetBorderColorModeDisplayNames));
         OnPropertyChanged(nameof(AvailableWidgetBorderStyleDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetCollapseBehaviorDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetCompactContentModeDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetCompactAnimationEffectDisplayNames));
+        OnPropertyChanged(nameof(AvailableWidgetCompactMediaCornerDisplayNames));
         OnPropertyChanged(nameof(AvailableLayoutDensityDisplayNames));
         OnPropertyChanged(nameof(AvailableAnimationPresetDisplayNames));
         OnPropertyChanged(nameof(IsOpacitySliderEnabled));
@@ -370,6 +438,15 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedWidgetBorderColorModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetBorderStyleText));
         OnPropertyChanged(nameof(SelectedWidgetBorderStyleIndex));
+        OnPropertyChanged(nameof(SelectedWidgetCollapseBehaviorText));
+        OnPropertyChanged(nameof(SelectedWidgetCollapseBehaviorIndex));
+        OnPropertyChanged(nameof(IsSmartWidgetCollapseBehavior));
+        OnPropertyChanged(nameof(SelectedWidgetCompactContentModeText));
+        OnPropertyChanged(nameof(SelectedWidgetCompactContentModeIndex));
+        OnPropertyChanged(nameof(SelectedWidgetCompactAnimationEffectText));
+        OnPropertyChanged(nameof(SelectedWidgetCompactAnimationEffectIndex));
+        OnPropertyChanged(nameof(SelectedWidgetCompactMediaCornerText));
+        OnPropertyChanged(nameof(SelectedWidgetCompactMediaCornerIndex));
         OnPropertyChanged(nameof(SelectedLayoutDensityText));
         OnPropertyChanged(nameof(SelectedLayoutDensityIndex));
         OnPropertyChanged(nameof(SelectedAnimationPresetText));

@@ -69,6 +69,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedWidgetMaterialType = MaterialMica;
     private string _selectedWidgetBorderColorMode = BorderColorNeutral;
     private string _selectedWidgetBorderStyle = BorderThin;
+    private string _selectedWidgetCollapseBehavior = SettingsService.WidgetCollapseBehaviorClick;
+    private string _selectedWidgetCompactContentMode = SettingsService.WidgetCompactContentModeSmart;
     private string _selectedLayoutDensity = SettingsService.LayoutDensityStandard;
     private string _selectedAnimationPreset = AnimationPresetStandard;
     private string _selectedWidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade;
@@ -120,6 +122,8 @@ private int _selectedWeatherRefreshInterval = 60;
     private string[]? _cachedWidgetMaterialTypeDisplayNames;
     private string[]? _cachedWidgetBorderColorModeDisplayNames;
     private string[]? _cachedWidgetBorderStyleDisplayNames;
+    private string[]? _cachedWidgetCollapseBehaviorDisplayNames;
+    private string[]? _cachedWidgetCompactContentModeDisplayNames;
     private string[]? _cachedLayoutDensityDisplayNames;
     private string[]? _cachedAnimationPresetDisplayNames;
     private string[]? _cachedWidgetAnimationEffectDisplayNames;
@@ -253,6 +257,18 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _selectedWidgetBorderStyle = settings.WidgetBorderStyle is BorderThin or BorderMedium or BorderThick
             ? settings.WidgetBorderStyle
             : BorderThin;
+        _widgetCapsuleModeEnabled = settings.WidgetCapsuleModeEnabled;
+        _widgetCompactHideSensitiveContent = settings.WidgetCompactHideSensitiveContent;
+        _selectedWidgetCollapseBehavior = SettingsService.NormalizeWidgetCollapseBehavior(settings.WidgetCollapseBehavior) == SettingsService.WidgetCollapseBehaviorSmart
+            ? SettingsService.WidgetCollapseBehaviorSmart
+            : SettingsService.WidgetCollapseBehaviorClick;
+        _selectedWidgetCompactContentMode = SettingsService.NormalizeWidgetCompactContentMode(
+            settings.WidgetCompactContentMode);
+        _selectedWidgetCompactAnimationEffect = SettingsService.NormalizeWidgetCompactAnimationEffect(settings.WidgetCompactAnimationEffect);
+        _widgetCompactAnimationDurationMs = SettingsService.NormalizeWidgetCompactAnimationDurationMs(settings.WidgetCompactAnimationDurationMs);
+        _widgetCompactExpandDelayMs = SettingsService.NormalizeWidgetCompactExpandDelayMs(settings.WidgetCompactExpandDelayMs);
+        _widgetCompactCollapseDelayMs = SettingsService.NormalizeWidgetCompactCollapseDelayMs(settings.WidgetCompactCollapseDelayMs);
+        _selectedWidgetCompactMediaCornerMode = SettingsService.NormalizeWidgetCompactMediaCornerMode(settings.WidgetCompactMediaCornerMode);
         _selectedWidgetAnimationEffect = NormalizeWidgetAnimationEffect(settings.WidgetAnimationEffect);
         _selectedWidgetAnimationSpeed = NormalizeWidgetAnimationSpeed(settings.WidgetAnimationSpeed);
         _selectedWidgetAnimationSlideDirection = NormalizeWidgetAnimationSlideDirection(settings.WidgetAnimationSlideDirection);
