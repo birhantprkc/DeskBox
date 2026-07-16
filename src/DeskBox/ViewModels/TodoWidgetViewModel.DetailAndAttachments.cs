@@ -84,7 +84,7 @@ public sealed partial class TodoWidgetViewModel
         return viewModel;
     }
 
-    public async Task<TodoItemViewModel?> FinalizeDetailAsync(string? title)
+    public async Task<TodoItemViewModel?> FinalizeDetailAsync(string? title, bool closeDetail = true)
     {
         TodoItemViewModel? item = SelectedDetailItem;
         if (item is null)
@@ -101,15 +101,23 @@ public sealed partial class TodoWidgetViewModel
             }
 
             item.CancelEdit();
-            SelectedDetailItem = null;
+            if (closeDetail)
+            {
+                SelectedDetailItem = null;
+            }
+
             return item;
         }
 
         if (string.IsNullOrWhiteSpace(normalizedTitle))
         {
             item.CancelEdit();
-            SelectedDetailItem = null;
             IsCreatingDetailItem = false;
+            if (closeDetail)
+            {
+                SelectedDetailItem = null;
+            }
+
             return null;
         }
 
@@ -126,7 +134,11 @@ public sealed partial class TodoWidgetViewModel
         }
 
         IsCreatingDetailItem = false;
-        SelectedDetailItem = null;
+        if (closeDetail)
+        {
+            SelectedDetailItem = null;
+        }
+
         NormalizeSortOrders();
         RefreshVisibleItems();
         RefreshCountProperties();

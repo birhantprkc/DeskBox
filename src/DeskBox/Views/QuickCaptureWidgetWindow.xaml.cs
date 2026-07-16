@@ -122,9 +122,12 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
     private bool _isExpandingInput;
     private QuickCaptureItemViewModel? _detailItem;
     private bool _isCreatingDetail;
+    private bool _isClosingDetail;
+    private bool _isSavingDetail;
     private bool _detailIsPinned;
     private QuickCaptureAppearancePreset _detailAppearance = QuickCaptureAppearancePreset.Default;
     private List<DroppedFilePath> _pendingDetailAttachments = [];
+    private long _detailTransitionGeneration;
     private long _statusToastGeneration;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;

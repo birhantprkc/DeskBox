@@ -36,8 +36,10 @@ public sealed partial class TodoWidgetContent : UserControl
     private string? _copySelectionAnchorId;
     private long _undoToastGeneration;
     private long _copyTapGeneration;
+    private long _detailTransitionGeneration;
     private bool _selectionPointerPressed;
     private bool _isBoxSelecting;
+    private bool _isClosingDetail;
     private bool _isResizingDetailTitle;
     private Button? _pressedColorFilterButton;
     private bool _isStartingColorFilterDrag;
@@ -143,6 +145,8 @@ public sealed partial class TodoWidgetContent : UserControl
 
         App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;
         _copyTapGeneration++;
+        _detailTransitionGeneration++;
+        DetailPageTransitionHelper.Reset(DetailPage);
         CloseTodoEdit();
         CloseCustomDueDateOverlay();
     }
@@ -205,6 +209,29 @@ public sealed partial class TodoWidgetContent : UserControl
         {
             ShowUndoToast(ViewModel.UndoText, ViewModel.UndoActionText);
         }
+
+        if (e.PropertyName == nameof(TodoWidgetViewModel.IsDetailPageOpen) &&
+            ViewModel?.IsDetailPageOpen == true)
+        {
+            QueueDetailEnterAnimation();
+        }
+    }
+
+    private void QueueDetailEnterAnimation()
+    {
+        long generation = ++_detailTransitionGeneration;
+        DetailPage.IsHitTestVisible = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (generation != _detailTransitionGeneration ||
+                ViewModel?.IsDetailPageOpen != true ||
+                DetailPage.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            DetailPageTransitionHelper.PlayEnter(DetailPage);
+        });
     }
 
     private void OnLanguageChanged()
@@ -495,18 +522,50 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private async Task CloseDetailAsync()
     {
-        if (ViewModel?.SelectedDetailItem is not { } item)
+        if (_isClosingDetail || ViewModel?.SelectedDetailItem is not { } item)
         {
             return;
         }
 
-        TodoItemViewModel? finalizedItem = await ViewModel.FinalizeDetailAsync(DetailTitleTextBox.Text);
-        ClearTodoListContainerSelection();
-        Focus(FocusState.Programmatic);
-        if (finalizedItem is not null)
+        _isClosingDetail = true;
+        try
         {
-            TodoListView.ScrollIntoView(finalizedItem);
+            TodoItemViewModel? finalizedItem = await ViewModel.FinalizeDetailAsync(
+                DetailTitleTextBox.Text,
+                closeDetail: false);
+            if (!await PlayDetailExitAnimationAsync(item))
+            {
+                return;
+            }
+
+            ViewModel.CloseDetail();
+            ClearTodoListContainerSelection();
+            Focus(FocusState.Programmatic);
+            if (finalizedItem is not null)
+            {
+                TodoListView.ScrollIntoView(finalizedItem);
+            }
         }
+        finally
+        {
+            ResetDetailTransition();
+        }
+    }
+
+    private async Task<bool> PlayDetailExitAnimationAsync(TodoItemViewModel expectedItem)
+    {
+        long generation = ++_detailTransitionGeneration;
+        DetailPage.IsHitTestVisible = false;
+        await DetailPageTransitionHelper.PlayExitAsync(DetailPage);
+        return generation == _detailTransitionGeneration &&
+               ReferenceEquals(ViewModel?.SelectedDetailItem, expectedItem);
+    }
+
+    private void ResetDetailTransition()
+    {
+        DetailPageTransitionHelper.Reset(DetailPage);
+        DetailPage.IsHitTestVisible = true;
+        _isClosingDetail = false;
     }
 
     private async Task SaveDetailEditorsAsync(TodoItemViewModel item)

@@ -155,11 +155,48 @@ public sealed partial class TodoWidgetContent
                 anchor,
                 App.Current.LocalizationService.T("Todo.DeleteConfirm.Title"),
                 App.Current.LocalizationService.T("Common.Delete"),
-                async () => await ViewModel.DeleteItemAsync(item.Id));
+                async () => await DeleteTodoItemWithTransitionAsync(item));
             return;
         }
 
-        await ViewModel.DeleteItemAsync(item.Id);
+        await DeleteTodoItemWithTransitionAsync(item);
+    }
+
+    private async Task DeleteTodoItemWithTransitionAsync(TodoItemViewModel item)
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        bool isOpenDetail = ReferenceEquals(ViewModel.SelectedDetailItem, item);
+        if (!isOpenDetail)
+        {
+            await ViewModel.DeleteItemAsync(item.Id);
+            return;
+        }
+
+        if (_isClosingDetail)
+        {
+            return;
+        }
+
+        _isClosingDetail = true;
+        try
+        {
+            if (!await PlayDetailExitAnimationAsync(item))
+            {
+                return;
+            }
+
+            await ViewModel.DeleteItemAsync(item.Id);
+            ClearTodoListContainerSelection();
+            Focus(FocusState.Programmatic);
+        }
+        finally
+        {
+            ResetDetailTransition();
+        }
     }
 
     private void ShowDeleteItemConfirmation(TodoItemViewModel item, FrameworkElement anchor)

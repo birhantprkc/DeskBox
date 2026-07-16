@@ -122,10 +122,19 @@ public sealed partial class QuickCaptureWidgetWindow
         CloseInlineEdit(restoreInputFocus: false);
         ListPage.Visibility = Visibility.Collapsed;
         DetailPage.Visibility = Visibility.Visible;
+        DetailPage.IsHitTestVisible = true;
         UpdateDetailPinVisual();
         ApplyDetailMaterialSurface();
+        long generation = ++_detailTransitionGeneration;
         DispatcherQueue.TryEnqueue(() =>
         {
+            if (generation != _detailTransitionGeneration ||
+                DetailPage.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            DetailPageTransitionHelper.PlayEnter(DetailPage);
             DetailBodyTextBox.Focus(FocusState.Programmatic);
             DetailBodyTextBox.Select(DetailBodyTextBox.Text.Length, 0);
         });
@@ -149,6 +158,24 @@ public sealed partial class QuickCaptureWidgetWindow
     }
 
     private async Task<bool> SaveAndCloseDetailAsync()
+    {
+        if (_isSavingDetail || _isClosingDetail)
+        {
+            return false;
+        }
+
+        _isSavingDetail = true;
+        try
+        {
+            return await SaveAndCloseDetailCoreAsync();
+        }
+        finally
+        {
+            _isSavingDetail = false;
+        }
+    }
+
+    private async Task<bool> SaveAndCloseDetailCoreAsync()
     {
         string body = DetailBodyTextBox.Text;
         if (_isCreatingDetail)
@@ -180,13 +207,13 @@ public sealed partial class QuickCaptureWidgetWindow
                 }
             }
 
-            CloseDetailPage();
+            await CloseDetailPageAsync();
             return true;
         }
 
         if (_detailItem is not { } item)
         {
-            CloseDetailPage();
+            await CloseDetailPageAsync();
             return true;
         }
 
@@ -210,24 +237,51 @@ public sealed partial class QuickCaptureWidgetWindow
 
         await ViewModel.RefreshItemsAsync();
 
-        CloseDetailPage();
+        await CloseDetailPageAsync();
         return true;
     }
 
-    private void CloseDetailPage()
+    private async Task CloseDetailPageAsync()
     {
-        _detailItem = null;
-        _isCreatingDetail = false;
-        _detailIsPinned = false;
-        _detailAppearance = QuickCaptureAppearancePreset.Default;
-        _pendingDetailAttachments = [];
-        DetailAttachmentsList.ItemsSource = null;
-        DetailAttachmentScroller.Visibility = Visibility.Collapsed;
-        DetailPage.Visibility = Visibility.Collapsed;
-        ListPage.Visibility = Visibility.Visible;
-        ClearQuickCaptureListContainerSelection();
-        RefreshItemMaterialSurfaces();
-        RootGrid.Focus(FocusState.Programmatic);
+        if (_isClosingDetail || DetailPage.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        _isClosingDetail = true;
+        long generation = ++_detailTransitionGeneration;
+        DetailPage.IsHitTestVisible = false;
+        try
+        {
+            await DetailPageTransitionHelper.PlayExitAsync(DetailPage);
+            if (generation != _detailTransitionGeneration)
+            {
+                return;
+            }
+
+            _detailItem = null;
+            _isCreatingDetail = false;
+            _detailIsPinned = false;
+            _detailAppearance = QuickCaptureAppearancePreset.Default;
+            _pendingDetailAttachments = [];
+            DetailAttachmentsList.ItemsSource = null;
+            DetailAttachmentScroller.Visibility = Visibility.Collapsed;
+            DetailPage.Visibility = Visibility.Collapsed;
+            ListPage.Visibility = Visibility.Visible;
+            ClearQuickCaptureListContainerSelection();
+            RefreshItemMaterialSurfaces();
+            RootGrid.Focus(FocusState.Programmatic);
+        }
+        finally
+        {
+            if (generation == _detailTransitionGeneration)
+            {
+                DetailPageTransitionHelper.Reset(DetailPage);
+                DetailPage.IsHitTestVisible = true;
+            }
+
+            _isClosingDetail = false;
+        }
     }
 
     private void ClearQuickCaptureListContainerSelection()
@@ -315,11 +369,11 @@ public sealed partial class QuickCaptureWidgetWindow
         yield return BlueMaterialButton;
     }
 
-    private void DetailDeleteButton_Click(object sender, RoutedEventArgs e)
+    private async void DetailDeleteButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isCreatingDetail || _detailItem is not { } item || sender is not FrameworkElement anchor)
         {
-            CloseDetailPage();
+            await CloseDetailPageAsync();
             return;
         }
 
@@ -330,7 +384,7 @@ public sealed partial class QuickCaptureWidgetWindow
             async () =>
             {
                 await DeleteItemWithUndoAsync(item);
-                CloseDetailPage();
+                await CloseDetailPageAsync();
             });
     }
 

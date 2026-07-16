@@ -175,6 +175,14 @@
                 SelectionMode="None"
                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListView.Resources>
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedDisabled" Color="Transparent" />
+                </ListView.Resources>
                 <ListView.Header>
                     <Button
                         Margin="{Binding AddCardMargin}"

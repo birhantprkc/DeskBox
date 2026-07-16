@@ -969,6 +969,29 @@ public sealed class TodoWidgetViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task FinalizeDetail_CanKeepDetailOpenUntilViewTransitionCompletes()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        TodoItemViewModel draft = viewModel.OpenNewDetail();
+
+        TodoItemViewModel? finalized = await viewModel.FinalizeDetailAsync(
+            "new task",
+            closeDetail: false);
+
+        Assert.Same(draft, finalized);
+        Assert.Same(draft, viewModel.SelectedDetailItem);
+        Assert.True(viewModel.IsDetailPageOpen);
+        Assert.False(viewModel.IsCreatingDetailItem);
+        Assert.Same(draft, Assert.Single(viewModel.Items));
+
+        viewModel.CloseDetail();
+
+        Assert.False(viewModel.IsDetailPageOpen);
+        Assert.Null(viewModel.SelectedDetailItem);
+    }
+
+    [Fact]
     public async Task DetailContent_PersistsStepsNotesAndAttachments()
     {
         var viewModel = CreateViewModel("todo-widget");
