@@ -44,41 +44,18 @@ public sealed class QuickCaptureStore
 
     public async Task<QuickCaptureStoreData> LoadAsync()
     {
-        if (!File.Exists(_storePath))
-        {
-            return new QuickCaptureStoreData();
-        }
-
-        try
-        {
-            string json = await File.ReadAllTextAsync(_storePath);
-            var data = JsonSerializer.Deserialize<QuickCaptureStoreData>(json, s_jsonOptions);
-            return Normalize(data);
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[QuickCaptureStore] Failed to load store: {ex}");
-            return new QuickCaptureStoreData();
-        }
+        return await ResilientJsonStore.LoadAsync(
+            _storePath,
+            json => Normalize(JsonSerializer.Deserialize<QuickCaptureStoreData>(json, s_jsonOptions)),
+            () => new QuickCaptureStoreData(),
+            nameof(QuickCaptureStore));
     }
 
     public async Task SaveAsync(QuickCaptureStoreData data)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_storePath)!);
         data = Normalize(data);
-
-        string tempPath = $"{_storePath}.{Guid.NewGuid():N}.tmp";
         string json = JsonSerializer.Serialize(data, s_jsonOptions);
-        await File.WriteAllTextAsync(tempPath, json);
-
-        if (File.Exists(_storePath))
-        {
-            File.Replace(tempPath, _storePath, null);
-        }
-        else
-        {
-            File.Move(tempPath, _storePath);
-        }
+        await ResilientJsonStore.SaveAsync(_storePath, json);
     }
 
     private static QuickCaptureStoreData Normalize(QuickCaptureStoreData? data)

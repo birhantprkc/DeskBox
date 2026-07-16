@@ -45,41 +45,18 @@ public sealed class TodoWidgetStore
 
     public async Task<TodoWidgetData> LoadAsync()
     {
-        if (!File.Exists(_storePath))
-        {
-            return new TodoWidgetData();
-        }
-
-        try
-        {
-            string json = await File.ReadAllTextAsync(_storePath);
-            var data = JsonSerializer.Deserialize<TodoWidgetData>(json, s_jsonOptions);
-            return Normalize(data);
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[TodoWidgetStore] Failed to load store: {ex}");
-            return new TodoWidgetData();
-        }
+        return await ResilientJsonStore.LoadAsync(
+            _storePath,
+            json => Normalize(JsonSerializer.Deserialize<TodoWidgetData>(json, s_jsonOptions)),
+            () => new TodoWidgetData(),
+            nameof(TodoWidgetStore));
     }
 
     public async Task SaveAsync(TodoWidgetData data)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_storePath)!);
         data = Normalize(data);
-
-        string tempPath = $"{_storePath}.{Guid.NewGuid():N}.tmp";
         string json = JsonSerializer.Serialize(data, s_jsonOptions);
-        await File.WriteAllTextAsync(tempPath, json);
-
-        if (File.Exists(_storePath))
-        {
-            File.Replace(tempPath, _storePath, null);
-        }
-        else
-        {
-            File.Move(tempPath, _storePath);
-        }
+        await ResilientJsonStore.SaveAsync(_storePath, json);
     }
 
     private static TodoWidgetData Normalize(TodoWidgetData? data)

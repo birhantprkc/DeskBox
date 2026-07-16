@@ -32,6 +32,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     private double _widgetOpacity;
     private double _textSize;
     private double _iconSize;
+    private double _layoutDensityScale = SettingsService.DefaultLayoutDensityScale;
     private Visibility _emptyStateVisibility = Visibility.Collapsed;
     private Visibility _listVisibility = Visibility.Visible;
     private int _recordCount;
@@ -78,6 +79,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         _tabStyle = SettingsService.NormalizeWidgetTabStyle(settingsService.Settings.QuickCaptureTabStyle);
         _textSize = SettingsService.NormalizeTextSize(settingsService.Settings.TextSize);
         _iconSize = SettingsService.NormalizeIconSize(settingsService.Settings.IconSize);
+        _layoutDensityScale = NormalizeDensity(settingsService.Settings.LayoutDensityScale);
         Name = config.Name;
         _quickCaptureService.Changed += OnQuickCaptureChanged;
         _settingsService.SettingsChanged += OnSettingsChanged;
@@ -265,6 +267,27 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         }
     }
 
+    public double LayoutDensityScale
+    {
+        get => _layoutDensityScale;
+        private set
+        {
+            if (SetProperty(ref _layoutDensityScale, NormalizeDensity(value)))
+            {
+                OnPropertyChanged(nameof(RootPadding));
+                OnPropertyChanged(nameof(RootRowSpacing));
+                OnPropertyChanged(nameof(ItemPadding));
+                OnPropertyChanged(nameof(ItemMargin));
+                OnPropertyChanged(nameof(ItemChromeMargin));
+                OnPropertyChanged(nameof(AddCardMinHeight));
+                OnPropertyChanged(nameof(AddCardMargin));
+                OnPropertyChanged(nameof(AddCardPadding));
+                OnPropertyChanged(nameof(ItemTextLineHeight));
+                OnPropertyChanged(nameof(ItemMetaLineHeight));
+            }
+        }
+    }
+
     public double TitleTextSize => Math.Min(SettingsService.MaxTextSize + 2, TextSize + 3);
 
     public double SecondaryTextSize => Math.Max(SettingsService.MinTextSize, TextSize - 1.5);
@@ -287,9 +310,41 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public Thickness InputPadding => WidgetInputMetrics.Create(TextSize).Padding;
 
-    public double ItemTextLineHeight => Math.Round(TextSize * 1.24);
+    public Thickness RootPadding => new(
+        DensityMetric(8, 10, 14),
+        DensityMetric(4, 6, 9),
+        DensityMetric(4, 6, 9),
+        DensityMetric(6, 8, 12));
 
-    public double ItemMetaLineHeight => Math.Round(SecondaryTextSize * 1.16);
+    public double RootRowSpacing => DensityMetric(3, 4, 7);
+
+    public Thickness ItemPadding => new(
+        DensityMetric(8, 10, 14),
+        DensityMetric(4, 6, 9),
+        DensityMetric(4, 6, 9),
+        DensityMetric(4, 6, 9));
+
+    public Thickness ItemMargin => new(0, 0, 0, DensityMetric(3, 5, 8));
+
+    public Thickness ItemChromeMargin => new(
+        -ItemPadding.Left,
+        -ItemPadding.Top,
+        -ItemPadding.Right,
+        -ItemPadding.Bottom);
+
+    public double AddCardMinHeight => DensityMetric(42, 48, 56);
+
+    public Thickness AddCardMargin => new(0, 0, 0, DensityMetric(4, 6, 9));
+
+    public Thickness AddCardPadding => new(
+        DensityMetric(6, 8, 12),
+        DensityMetric(4, 5, 8),
+        DensityMetric(6, 8, 12),
+        DensityMetric(4, 5, 8));
+
+    public double ItemTextLineHeight => Math.Round(TextSize * DensityMetric(1.18, 1.24, 1.34));
+
+    public double ItemMetaLineHeight => Math.Round(SecondaryTextSize * DensityMetric(1.12, 1.16, 1.24));
 
     public Visibility CreatedTimeVisibility => _settingsService.Settings.QuickCaptureShowCreatedTime
         ? Visibility.Visible
@@ -874,7 +929,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public void ApplyAppearancePreview()
     {
-        WidgetOpacity = _settingsService.Settings.WidgetOpacity;
+        RefreshAppearanceFromSettings();
     }
 
     public void SetPositionLocked(bool locked)
@@ -1106,6 +1161,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         TabStyle = settings.QuickCaptureTabStyle;
         TextSize = SettingsService.NormalizeTextSize(settings.TextSize);
         IconSize = SettingsService.NormalizeIconSize(settings.IconSize);
+        LayoutDensityScale = NormalizeDensity(settings.LayoutDensityScale);
         OnPropertyChanged(nameof(TitleIconSize));
         OnPropertyChanged(nameof(ActionIconSize));
         OnPropertyChanged(nameof(EmptyIconSize));
@@ -1116,6 +1172,23 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
             item.UpdateSearchText(SearchText);
         }
     }
+
+    private static double NormalizeDensity(double value) =>
+        double.IsFinite(value)
+            ? Math.Clamp(value, SettingsService.MinLayoutDensityScale, SettingsService.MaxLayoutDensityScale)
+            : SettingsService.DefaultLayoutDensityScale;
+
+    private double DensityMetric(double compact, double standard, double relaxed)
+    {
+        const double standardPoint = SettingsService.DefaultLayoutDensityScale;
+        double value = LayoutDensityScale <= standardPoint
+            ? Lerp(compact, standard, LayoutDensityScale / standardPoint)
+            : Lerp(standard, relaxed, (LayoutDensityScale - standardPoint) / (1 - standardPoint));
+        return Math.Round(value, 2);
+    }
+
+    private static double Lerp(double min, double max, double t) =>
+        min + ((max - min) * Math.Clamp(t, 0, 1));
 
     private async Task RefreshVisibleItemsAsync()
     {

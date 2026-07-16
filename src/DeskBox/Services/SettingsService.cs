@@ -8,6 +8,14 @@ using DeskBox.Models;
 
 namespace DeskBox.Services;
 
+public readonly record struct LayoutDensityPresetValues(
+    double IconSize,
+    double TextSize,
+    double DensityScale,
+    double HorizontalSpacingScale,
+    double VerticalSpacingScale,
+    double FileNameWidthScale);
+
 /// <summary>
 /// Manages application settings persistence using JSON files stored in the application directory.
 /// </summary>
@@ -16,9 +24,17 @@ public sealed class SettingsService
     public const double DefaultWidgetOpacity = 0.80;
     public const double MinWidgetOpacity = 0.0;
     public const double MaxWidgetOpacity = 1.0;
+    public const double DefaultWidgetMaterialIntensity = 0.65;
+    public const double MinWidgetMaterialIntensity = 0.0;
+    public const double MaxWidgetMaterialIntensity = 1.0;
     public const string WidgetMaterialTypeMica = "Mica";
+    public const string WidgetMaterialTypeMicaAlt = "MicaAlt";
     public const string WidgetMaterialTypeAcrylic = "Acrylic";
+    public const string WidgetMaterialTypeAcrylicBase = "AcrylicBase";
     public const string WidgetMaterialTypeSolid = "Solid";
+    public const string WidgetBorderColorModeNeutral = "Neutral";
+    public const string WidgetBorderColorModeAccent = "Accent";
+    public const string WidgetBorderColorModeNone = "None";
     public const string WidgetBorderStyleNone = "None";
     public const string WidgetBorderStyleThin = "Thin";
     public const string WidgetBorderStyleMedium = "Medium";
@@ -55,6 +71,18 @@ public sealed class SettingsService
     public const string WidgetAnimationEasingLight = "Light";
     public const string WidgetAnimationEasingStandard = "Standard";
     public const string WidgetAnimationEasingStrong = "Strong";
+
+    public static bool IsMicaMaterial(string? materialType) =>
+        materialType is WidgetMaterialTypeMica or WidgetMaterialTypeMicaAlt;
+
+    public static bool IsAcrylicMaterial(string? materialType) =>
+        materialType is WidgetMaterialTypeAcrylic or WidgetMaterialTypeAcrylicBase;
+
+    public static bool SupportsWidgetOpacity(string? materialType) =>
+        IsAcrylicMaterial(materialType);
+
+    public static bool SupportsMaterialIntensity(string? materialType) =>
+        IsMicaMaterial(materialType) || IsAcrylicMaterial(materialType);
     public const string WidgetLayerModeDynamic = "Dynamic";
     public const string WidgetLayerModeDesktopPinned = "DesktopPinned";
     public const string WidgetChromeModeStandard = WidgetChromeModeNames.Standard;
@@ -101,6 +129,13 @@ public sealed class SettingsService
     public const double DefaultFileNameWidthScale = 0.36;
     public const double MinSpacingScale = 0.0;
     public const double MaxSpacingScale = 1.0;
+    public const string LayoutDensityCompact = "Compact";
+    public const string LayoutDensityStandard = "Standard";
+    public const string LayoutDensityRelaxed = "Relaxed";
+    public const string LayoutDensityCustom = "Custom";
+    public const string MusicDisplayModeAuto = "Auto";
+    public const string MusicDisplayModeCover = "Cover";
+    public const string MusicDisplayModeControls = "Controls";
     public const int MaxRecentOrganizationHistoryCount = 24;
     public const string TodoNewTaskPositionTop = "Top";
     public const string TodoNewTaskPositionBottom = "Bottom";
@@ -162,6 +197,8 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.DefaultWidgetHeight = DefaultWidgetHeight;
         settings.WidgetCornerPreference = WidgetCornerPreferenceRound;
         settings.WidgetMaterialType = WidgetMaterialTypeMica;
+        settings.WidgetMaterialIntensity = DefaultWidgetMaterialIntensity;
+        settings.WidgetBorderColorMode = WidgetBorderColorModeNeutral;
         settings.WidgetBorderStyle = WidgetBorderStyleThin;
         settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
         settings.WidgetAnimationSpeed = WidgetAnimationSpeedStandard;
@@ -175,7 +212,7 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.IconSize = DefaultIconSize;
         settings.TextSize = DefaultTextSize;
         settings.LayoutDensityScale = DefaultLayoutDensityScale;
-        settings.LayoutDensity = "Comfortable";
+        settings.LayoutDensity = LayoutDensityStandard;
         settings.HorizontalSpacingScale = DefaultHorizontalSpacingScale;
         settings.VerticalSpacingScale = DefaultVerticalSpacingScale;
         settings.FileNameWidthScale = DefaultFileNameWidthScale;
@@ -200,6 +237,7 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.TodoDefaultReminderOffsetMinutes = DefaultTodoReminderOffsetMinutes;
         settings.MusicUseArtworkBackdrop = true;
         settings.MusicEnableCoverHoverMotion = true;
+        settings.MusicDisplayMode = MusicDisplayModeAuto;
 settings.WeatherAutoLocation = true;
 settings.WeatherCityName = string.Empty;
 settings.WeatherLatitude = 0;
@@ -533,7 +571,9 @@ changed |= NormalizeDeletionSettings(_settings);
 
         if (settings.WidgetMaterialType is not (
             WidgetMaterialTypeMica or
+            WidgetMaterialTypeMicaAlt or
             WidgetMaterialTypeAcrylic or
+            WidgetMaterialTypeAcrylicBase or
             WidgetMaterialTypeSolid))
         {
             // Migrate legacy "Auto" to "Acrylic"
@@ -548,12 +588,44 @@ changed |= NormalizeDeletionSettings(_settings);
             changed = true;
         }
 
+        if (settings.WidgetMaterialType == WidgetMaterialTypeSolid &&
+            Math.Abs(settings.WidgetOpacity - MaxWidgetOpacity) > 0.0001)
+        {
+            settings.WidgetOpacity = MaxWidgetOpacity;
+            changed = true;
+        }
+
+        double normalizedMaterialIntensity = double.IsFinite(settings.WidgetMaterialIntensity)
+            ? Math.Clamp(
+                settings.WidgetMaterialIntensity,
+                MinWidgetMaterialIntensity,
+                MaxWidgetMaterialIntensity)
+            : DefaultWidgetMaterialIntensity;
+        if (Math.Abs(settings.WidgetMaterialIntensity - normalizedMaterialIntensity) > 0.0001)
+        {
+            settings.WidgetMaterialIntensity = normalizedMaterialIntensity;
+            changed = true;
+        }
+
+        if (settings.WidgetBorderColorMode is not (
+            WidgetBorderColorModeNeutral or
+            WidgetBorderColorModeAccent or
+            WidgetBorderColorModeNone))
+        {
+            settings.WidgetBorderColorMode = WidgetBorderColorModeNeutral;
+            changed = true;
+        }
+
         if (settings.WidgetBorderStyle is not (
-            WidgetBorderStyleNone or
             WidgetBorderStyleThin or
             WidgetBorderStyleMedium or
             WidgetBorderStyleThick))
         {
+            if (settings.WidgetBorderStyle == WidgetBorderStyleNone)
+            {
+                settings.WidgetBorderColorMode = WidgetBorderColorModeNone;
+            }
+
             settings.WidgetBorderStyle = WidgetBorderStyleThin;
             changed = true;
         }
@@ -645,9 +717,7 @@ changed |= NormalizeDeletionSettings(_settings);
         double legacyLayoutDensityScale = settings.LayoutDensityScale;
         if (!double.IsFinite(legacyLayoutDensityScale))
         {
-            legacyLayoutDensityScale = string.Equals(settings.LayoutDensity, "Compact", StringComparison.OrdinalIgnoreCase)
-                ? DefaultLayoutDensityScale
-                : DefaultLayoutDensityScale;
+            legacyLayoutDensityScale = DefaultLayoutDensityScale;
         }
 
         double normalizedLayoutDensityScale = Math.Clamp(legacyLayoutDensityScale, MinLayoutDensityScale, MaxLayoutDensityScale);
@@ -691,9 +761,19 @@ changed |= NormalizeDeletionSettings(_settings);
             changed = true;
         }
 
-        if (settings.LayoutDensity is not ("Comfortable" or "Compact"))
+        string resolvedLayoutDensity = settings.LayoutDensity == LayoutDensityCustom
+            ? LayoutDensityCustom
+            : ResolveLayoutDensityPreset(settings);
+        if (!string.Equals(settings.LayoutDensity, resolvedLayoutDensity, StringComparison.Ordinal))
         {
-            settings.LayoutDensity = "Comfortable";
+            settings.LayoutDensity = resolvedLayoutDensity;
+            changed = true;
+        }
+
+        string normalizedMusicDisplayMode = NormalizeMusicDisplayMode(settings.MusicDisplayMode);
+        if (!string.Equals(settings.MusicDisplayMode, normalizedMusicDisplayMode, StringComparison.Ordinal))
+        {
+            settings.MusicDisplayMode = normalizedMusicDisplayMode;
             changed = true;
         }
 
@@ -738,6 +818,89 @@ changed |= NormalizeDeletionSettings(_settings);
             ? Math.Clamp(value, MinTextSize, MaxTextSize)
             : DefaultTextSize;
     }
+
+    public static string NormalizeMusicDisplayMode(string? mode)
+    {
+        return mode switch
+        {
+            MusicDisplayModeCover => MusicDisplayModeCover,
+            MusicDisplayModeControls => MusicDisplayModeControls,
+            _ => MusicDisplayModeAuto
+        };
+    }
+
+    public static bool TryGetLayoutDensityPresetValues(
+        string? preset,
+        out LayoutDensityPresetValues values)
+    {
+        values = preset switch
+        {
+            LayoutDensityCompact => new LayoutDensityPresetValues(
+                IconSize: 26,
+                TextSize: 10.5,
+                DensityScale: 0.20,
+                HorizontalSpacingScale: 0.20,
+                VerticalSpacingScale: 0.28,
+                FileNameWidthScale: 0.30),
+            LayoutDensityStandard => new LayoutDensityPresetValues(
+                IconSize: DefaultIconSize,
+                TextSize: DefaultTextSize,
+                DensityScale: DefaultLayoutDensityScale,
+                HorizontalSpacingScale: DefaultHorizontalSpacingScale,
+                VerticalSpacingScale: DefaultVerticalSpacingScale,
+                FileNameWidthScale: DefaultFileNameWidthScale),
+            LayoutDensityRelaxed => new LayoutDensityPresetValues(
+                IconSize: 36,
+                TextSize: 13,
+                DensityScale: 0.84,
+                HorizontalSpacingScale: 0.68,
+                VerticalSpacingScale: 0.82,
+                FileNameWidthScale: 0.50),
+            _ => default
+        };
+
+        return preset is LayoutDensityCompact or LayoutDensityStandard or LayoutDensityRelaxed;
+    }
+
+    public static void ApplyLayoutDensityPreset(AppSettings settings, string preset)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!TryGetLayoutDensityPresetValues(preset, out LayoutDensityPresetValues values))
+        {
+            return;
+        }
+
+        settings.IconSize = values.IconSize;
+        settings.TextSize = values.TextSize;
+        settings.LayoutDensityScale = values.DensityScale;
+        settings.HorizontalSpacingScale = values.HorizontalSpacingScale;
+        settings.VerticalSpacingScale = values.VerticalSpacingScale;
+        settings.FileNameWidthScale = values.FileNameWidthScale;
+        settings.LayoutDensity = preset;
+    }
+
+    public static string ResolveLayoutDensityPreset(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        foreach (string preset in new[] { LayoutDensityCompact, LayoutDensityStandard, LayoutDensityRelaxed })
+        {
+            TryGetLayoutDensityPresetValues(preset, out LayoutDensityPresetValues values);
+            if (NearlyEqual(settings.IconSize, values.IconSize) &&
+                NearlyEqual(settings.TextSize, values.TextSize) &&
+                NearlyEqual(settings.LayoutDensityScale, values.DensityScale) &&
+                NearlyEqual(settings.HorizontalSpacingScale, values.HorizontalSpacingScale) &&
+                NearlyEqual(settings.VerticalSpacingScale, values.VerticalSpacingScale) &&
+                NearlyEqual(settings.FileNameWidthScale, values.FileNameWidthScale))
+            {
+                return preset;
+            }
+        }
+
+        return LayoutDensityCustom;
+    }
+
+    private static bool NearlyEqual(double left, double right) =>
+        Math.Abs(left - right) <= 0.0001;
 
     public static string NormalizeWidgetChromeModeSetting(string? value, WidgetChromeMode fallback)
     {

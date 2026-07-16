@@ -93,6 +93,43 @@ public sealed class TodoWidgetStoreTests : IDisposable
 
         Assert.Equal(3, data.Version);
         Assert.Empty(data.Items);
+        Assert.False(File.Exists(store.StorePath));
+        Assert.Single(Directory.EnumerateFiles(
+            Path.GetDirectoryName(store.StorePath)!,
+            "todo.json.corrupt-*"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_PreservesPreviousVersionAsBackup()
+    {
+        var store = CreateStore("todo-widget");
+        await store.SaveAsync(CreateData("first", "First version"));
+
+        await store.SaveAsync(CreateData("second", "Second version"));
+
+        string backupPath = ResilientJsonStore.GetBackupPath(store.StorePath);
+        Assert.True(File.Exists(backupPath));
+        using JsonDocument backup = JsonDocument.Parse(await File.ReadAllTextAsync(backupPath));
+        JsonElement item = Assert.Single(backup.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal("first", item.GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task LoadAsync_QuarantinesCorruptPrimaryAndRecoversBackup()
+    {
+        var store = CreateStore("todo-widget");
+        await store.SaveAsync(CreateData("recover", "Recover this version"));
+        await store.SaveAsync(CreateData("latest", "Latest version"));
+        await File.WriteAllTextAsync(store.StorePath, "{ invalid json");
+
+        TodoWidgetData recovered = await store.LoadAsync();
+
+        TodoItem item = Assert.Single(recovered.Items);
+        Assert.Equal("recover", item.Id);
+        Assert.True(File.Exists(store.StorePath));
+        Assert.Single(Directory.EnumerateFiles(
+            Path.GetDirectoryName(store.StorePath)!,
+            "todo.json.corrupt-*"));
     }
 
     [Fact]
@@ -385,5 +422,21 @@ public sealed class TodoWidgetStoreTests : IDisposable
     private TodoWidgetStore CreateStore(string widgetId)
     {
         return new TodoWidgetStore(_widgetsDataRoot, widgetId);
+    }
+
+    private static TodoWidgetData CreateData(string id, string text)
+    {
+        return new TodoWidgetData
+        {
+            Items =
+            [
+                new TodoItem
+                {
+                    Id = id,
+                    Text = text,
+                    CreatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z")
+                }
+            ]
+        };
     }
 }

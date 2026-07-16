@@ -346,6 +346,49 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(SettingsService.WidgetTitleIconModeColor, service.Settings.WidgetTitleIconMode);
     }
 
+    [Theory]
+    [InlineData(SettingsService.WidgetMaterialTypeMicaAlt)]
+    [InlineData(SettingsService.WidgetMaterialTypeAcrylicBase)]
+    public async Task LoadAsync_PreservesNewNativeWidgetMaterials(string materialType)
+    {
+        var settings = new AppSettings
+        {
+            WidgetMaterialType = materialType,
+            WidgetMaterialIntensity = 0.72,
+            WidgetBorderColorMode = SettingsService.WidgetBorderColorModeAccent
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(materialType, service.Settings.WidgetMaterialType);
+        Assert.Equal(0.72, service.Settings.WidgetMaterialIntensity, precision: 3);
+        Assert.Equal(SettingsService.WidgetBorderColorModeAccent, service.Settings.WidgetBorderColorMode);
+    }
+
+    [Fact]
+    public async Task LoadAsync_MigratesLegacyNoBorderAndClampsMaterialIntensity()
+    {
+        var settings = new AppSettings
+        {
+            WidgetBorderStyle = SettingsService.WidgetBorderStyleNone,
+            WidgetMaterialIntensity = 2.0
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(SettingsService.WidgetBorderColorModeNone, service.Settings.WidgetBorderColorMode);
+        Assert.Equal(SettingsService.WidgetBorderStyleThin, service.Settings.WidgetBorderStyle);
+        Assert.Equal(SettingsService.MaxWidgetMaterialIntensity, service.Settings.WidgetMaterialIntensity);
+    }
+
     [Fact]
     public void ApplyDefaultPreferences_MatchesNewUserAppearanceDefaults()
     {
@@ -355,6 +398,8 @@ public sealed class SettingsServiceTests : IDisposable
             WidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade,
             WidgetTitleIconMode = SettingsService.WidgetTitleIconModeHidden,
             WidgetBorderStyle = SettingsService.WidgetBorderStyleThick,
+            WidgetBorderColorMode = SettingsService.WidgetBorderColorModeNone,
+            WidgetMaterialIntensity = 0.1,
             LayoutDensity = "Compact",
             Language = SettingsService.LanguageChinese,
             AutoStart = false,
@@ -387,6 +432,10 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.WidgetTitleIconMode, restoredDefaults.WidgetTitleIconMode);
         Assert.Equal(SettingsService.WidgetBorderStyleThin, newUserDefaults.WidgetBorderStyle);
         Assert.Equal(newUserDefaults.WidgetBorderStyle, restoredDefaults.WidgetBorderStyle);
+        Assert.Equal(SettingsService.WidgetBorderColorModeNeutral, newUserDefaults.WidgetBorderColorMode);
+        Assert.Equal(newUserDefaults.WidgetBorderColorMode, restoredDefaults.WidgetBorderColorMode);
+        Assert.Equal(SettingsService.DefaultWidgetMaterialIntensity, newUserDefaults.WidgetMaterialIntensity);
+        Assert.Equal(newUserDefaults.WidgetMaterialIntensity, restoredDefaults.WidgetMaterialIntensity);
         Assert.True(newUserDefaults.AutoCheckForUpdates);
         Assert.Equal(newUserDefaults.AutoCheckForUpdates, restoredDefaults.AutoCheckForUpdates);
         Assert.False(newUserDefaults.QuickCaptureClipboardEnabled);
@@ -401,7 +450,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.TodoTabStyle, restoredDefaults.TodoTabStyle);
         Assert.Equal(SettingsService.WidgetTabStyleButton, restoredDefaults.QuickCaptureTabStyle);
         Assert.Equal(SettingsService.WidgetTabStyleButton, restoredDefaults.TodoTabStyle);
-        Assert.Equal("Comfortable", restoredDefaults.LayoutDensity);
+        Assert.Equal(SettingsService.LayoutDensityStandard, restoredDefaults.LayoutDensity);
         Assert.True(restoredDefaults.QuickCaptureShowCreatedTime);
         Assert.True(restoredDefaults.ResizeSnapEnabled);
         Assert.False(restoredDefaults.TodoShowFooterStats);
@@ -417,6 +466,36 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.ShowFileItemPathTooltips, restoredDefaults.ShowFileItemPathTooltips);
         Assert.Equal(SettingsService.DefaultWidgetHoverButtonActions, newUserDefaults.WidgetHoverButtonActions);
         Assert.Equal(newUserDefaults.WidgetHoverButtonActions, restoredDefaults.WidgetHoverButtonActions);
+    }
+
+    [Theory]
+    [InlineData(SettingsService.LayoutDensityCompact)]
+    [InlineData(SettingsService.LayoutDensityStandard)]
+    [InlineData(SettingsService.LayoutDensityRelaxed)]
+    public void LayoutDensityPreset_AppliesAndResolvesUnderlyingMetrics(string preset)
+    {
+        var settings = new AppSettings();
+
+        SettingsService.ApplyLayoutDensityPreset(settings, preset);
+
+        Assert.True(SettingsService.TryGetLayoutDensityPresetValues(preset, out LayoutDensityPresetValues expected));
+        Assert.Equal(expected.IconSize, settings.IconSize);
+        Assert.Equal(expected.TextSize, settings.TextSize);
+        Assert.Equal(expected.DensityScale, settings.LayoutDensityScale);
+        Assert.Equal(expected.HorizontalSpacingScale, settings.HorizontalSpacingScale);
+        Assert.Equal(expected.VerticalSpacingScale, settings.VerticalSpacingScale);
+        Assert.Equal(expected.FileNameWidthScale, settings.FileNameWidthScale);
+        Assert.Equal(preset, SettingsService.ResolveLayoutDensityPreset(settings));
+    }
+
+    [Fact]
+    public void ResolveLayoutDensityPreset_ReturnsCustomWhenOneMetricChanges()
+    {
+        var settings = new AppSettings();
+        SettingsService.ApplyLayoutDensityPreset(settings, SettingsService.LayoutDensityStandard);
+        settings.VerticalSpacingScale += 0.02;
+
+        Assert.Equal(SettingsService.LayoutDensityCustom, SettingsService.ResolveLayoutDensityPreset(settings));
     }
 
     [Theory]
@@ -458,6 +537,42 @@ public sealed class SettingsServiceTests : IDisposable
         string expected)
     {
         Assert.Equal(expected, SettingsService.NormalizeAttachmentStorageMode(value));
+    }
+
+    [Theory]
+    [InlineData(null, SettingsService.MusicDisplayModeAuto)]
+    [InlineData("", SettingsService.MusicDisplayModeAuto)]
+    [InlineData("Unknown", SettingsService.MusicDisplayModeAuto)]
+    [InlineData(SettingsService.MusicDisplayModeAuto, SettingsService.MusicDisplayModeAuto)]
+    [InlineData(SettingsService.MusicDisplayModeCover, SettingsService.MusicDisplayModeCover)]
+    [InlineData(SettingsService.MusicDisplayModeControls, SettingsService.MusicDisplayModeControls)]
+    public void NormalizeMusicDisplayMode_UsesAutoAsSafeDefault(string? value, string expected)
+    {
+        Assert.Equal(expected, SettingsService.NormalizeMusicDisplayMode(value));
+    }
+
+    [Fact]
+    public async Task SaveAsync_PreservesExplicitCustomDensityWhenMetricsMatchPreset()
+    {
+        var service = new SettingsService(_settingsRoot);
+        SettingsService.ApplyLayoutDensityPreset(service.Settings, SettingsService.LayoutDensityStandard);
+        service.Settings.LayoutDensity = SettingsService.LayoutDensityCustom;
+
+        await service.SaveAsync(notifySubscribers: false);
+
+        Assert.Equal(SettingsService.LayoutDensityCustom, service.Settings.LayoutDensity);
+    }
+
+    [Fact]
+    public async Task SaveAsync_SolidMaterialForcesFullOpacity()
+    {
+        var service = new SettingsService(_settingsRoot);
+        service.Settings.WidgetMaterialType = SettingsService.WidgetMaterialTypeSolid;
+        service.Settings.WidgetOpacity = 0.24;
+
+        await service.SaveAsync(notifySubscribers: false);
+
+        Assert.Equal(SettingsService.MaxWidgetOpacity, service.Settings.WidgetOpacity);
     }
 
     public void Dispose()

@@ -95,6 +95,8 @@ public partial class App : Application
 
     public AppDistributionService DistributionService { get; } = AppDistributionService.Current;
     public SettingsService SettingsService { get; } = new();
+    public DeskBoxDataBackupService DataBackupService { get; } = new();
+    public DeskBoxAttachmentHealthService AttachmentHealthService { get; } = new();
     public FileService FileService { get; } = new();
     public OrganizerService OrganizerService { get; }
     public IAppUpdateService AppUpdateService { get; } = AppUpdateServiceFactory.Create(AppDistributionService.Current);
@@ -741,6 +743,12 @@ public partial class App : Application
         {
             IsStartupMode = IsStartupLaunch(args.Arguments);
             UiDispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+
+            // A prepared restore is applied before any service reads or normalizes app data.
+            await DataBackupService.ApplyPendingRestoreAsync();
+
+            // Capture the previous session's data before any startup normalization writes.
+            await DataBackupService.CreateAutomaticSnapshotIfDueAsync();
 
             // Phase 1: Load settings (must complete first)
             await SettingsService.LoadAsync();
@@ -2273,6 +2281,12 @@ public partial class App : Application
     public async Task ShutdownForUpdateAsync()
     {
         Log("ShutdownForUpdateAsync invoked");
+        await ShutdownApplicationAsync();
+    }
+
+    public async Task ShutdownForRestartAsync()
+    {
+        Log("ShutdownForRestartAsync invoked");
         await ShutdownApplicationAsync();
     }
 

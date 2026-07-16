@@ -127,7 +127,6 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
         string materialType = SettingsService.Settings.WidgetMaterialType;
-        string borderStyle = SettingsService.Settings.WidgetBorderStyle;
 
         // Simplified layering: only apply surface color overlay for Solid mode.
         if (materialType is SettingsService.WidgetMaterialTypeSolid)
@@ -144,20 +143,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
                 Colors.Transparent);
         }
 
-        var (borderThickness, borderAlpha) = borderStyle switch
-        {
-            SettingsService.WidgetBorderStyleNone => (0d, (byte)0),
-            SettingsService.WidgetBorderStyleMedium => (1.2d, (byte)0x30),
-            SettingsService.WidgetBorderStyleThick => (1.6d, (byte)0x48),
-            _ => (0.8d, (byte)0x18),
-        };
-
-        var borderColor = isDark
-            ? ColorHelper.FromArgb(borderAlpha, 0xFF, 0xFF, 0xFF)
-            : WithAlpha(BlendColors(ColorHelper.FromArgb(0xFF, 0x00, 0x00, 0x00), accentColor, 0.22), borderAlpha);
-        var dividerColor = isDark
-            ? ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(borderAlpha * 0.66), 0, 255), 0xFF, 0xFF, 0xFF)
-            : ColorHelper.FromArgb((byte)Math.Clamp(Math.Round(borderAlpha * 0.42), 0, 255), 0x00, 0x00, 0x00);
+        var (borderThickness, borderColor, dividerColor) = GetWidgetBorderVisuals(isDark, accentColor);
         var iconForeground = ColorHelper.FromArgb(
             isDark ? (byte)0xE2 : (byte)0xCC,
             accentColor.R,

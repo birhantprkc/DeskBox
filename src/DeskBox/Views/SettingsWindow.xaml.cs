@@ -434,14 +434,26 @@ WeatherSettingsSection.Visibility = sectionTag == "WeatherSettings" ? Visibility
             case "Language":
                 ViewModel.SelectedLanguage = ViewModel.AvailableLanguages[combo.SelectedIndex];
                 break;
+            case "MusicDisplayMode":
+                ViewModel.SelectedMusicDisplayMode = ViewModel.AvailableMusicDisplayModes[combo.SelectedIndex];
+                break;
             case "WidgetCorner":
                 ViewModel.SelectedWidgetCornerPreference = ViewModel.AvailableWidgetCornerPreferences[combo.SelectedIndex];
                 break;
             case "WidgetMaterial":
                 ViewModel.SelectedWidgetMaterialType = ViewModel.AvailableWidgetMaterialTypes[combo.SelectedIndex];
                 break;
+            case "WidgetBorderColor":
+                ViewModel.SelectedWidgetBorderColorMode = ViewModel.AvailableWidgetBorderColorModes[combo.SelectedIndex];
+                break;
             case "WidgetBorder":
                 ViewModel.SelectedWidgetBorderStyle = ViewModel.AvailableWidgetBorderStyles[combo.SelectedIndex];
+                break;
+            case "LayoutDensity":
+                ViewModel.SelectedLayoutDensity = ViewModel.AvailableLayoutDensities[combo.SelectedIndex];
+                break;
+            case "AnimationPreset":
+                ViewModel.SelectedAnimationPreset = ViewModel.AvailableAnimationPresets[combo.SelectedIndex];
                 break;
             case "WidgetAnimationEffect":
                 ViewModel.SelectedWidgetAnimationEffect = ViewModel.AvailableWidgetAnimationEffects[combo.SelectedIndex];
@@ -801,9 +813,13 @@ break;
                 "Theme" => ViewModel.SelectedThemeIndex,
                 "TrayIconStyle" => ViewModel.SelectedTrayIconStyleIndex,
                 "Language" => ViewModel.SelectedLanguageIndex,
+                "MusicDisplayMode" => ViewModel.SelectedMusicDisplayModeIndex,
                 "WidgetCorner" => ViewModel.SelectedWidgetCornerPreferenceIndex,
                 "WidgetMaterial" => ViewModel.SelectedWidgetMaterialTypeIndex,
+                "WidgetBorderColor" => ViewModel.SelectedWidgetBorderColorModeIndex,
                 "WidgetBorder" => ViewModel.SelectedWidgetBorderStyleIndex,
+                "LayoutDensity" => ViewModel.SelectedLayoutDensityIndex,
+                "AnimationPreset" => ViewModel.SelectedAnimationPresetIndex,
                 "WidgetTitleIconMode" => ViewModel.SelectedWidgetTitleIconModeIndex,
                 "WidgetAnimationEffect" => ViewModel.SelectedWidgetAnimationEffectIndex,
                 "WidgetAnimationSpeed" => ViewModel.SelectedWidgetAnimationSpeedIndex,
@@ -1769,66 +1785,6 @@ break;
         await App.Current.ShutdownForUpdateAsync();
     }
 
-    private void RefreshDragDropPermissionButton_Click(object sender, RoutedEventArgs e)
-    {
-        ViewModel.RefreshDragDropPermissionDiagnostic();
-    }
-
-    private async void RepairDragDropPermissionButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (SettingsRoot.XamlRoot is null)
-        {
-            return;
-        }
-
-        var result = ViewModel.RepairDragDropPermission();
-        if (result.NeedsRelaunch)
-        {
-            var dialog = new ContentDialog
-            {
-                XamlRoot = SettingsRoot.XamlRoot,
-                Title = _localizationService.T("Settings.DragDropPermission.RelaunchTitle"),
-                PrimaryButtonText = _localizationService.T("Settings.DragDropPermission.RelaunchButton"),
-                CloseButtonText = _localizationService.T("Common.Cancel"),
-                DefaultButton = ContentDialogButton.Primary,
-                Content = new TextBlock
-                {
-                    Text = _localizationService.T("Settings.DragDropPermission.RelaunchBody"),
-                    TextWrapping = TextWrapping.Wrap
-                }
-            };
-
-            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            {
-                if (DragDropPermissionService.TryRelaunchAsExplorerUser())
-                {
-                    App.Current.Exit();
-                }
-                else
-                {
-                    await ShowInfoDialogAsync(
-                        _localizationService.T("Settings.DragDropPermission.RelaunchFailedTitle"),
-                        _localizationService.T("Settings.DragDropPermission.RelaunchFailedBody"));
-                }
-            }
-
-            return;
-        }
-
-        await ShowInfoDialogAsync(
-            _localizationService.T(result.Success
-                ? "Settings.DragDropPermission.RepairCompleteTitle"
-                : "Settings.DragDropPermission.RepairFailedTitle"),
-            result.Success
-                ? _localizationService.Format("Settings.DragDropPermission.RepairCompleteBody", result.RepairedCount)
-                : result.FailureMessage);
-    }
-
-    private async void OpenUacSettingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        await Task.Run(() => Win32Helper.OpenFile("UserAccountControlSettings.exe"));
-    }
-
     private void OpenQuickCaptureSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         NavigateToSettingsSection("QuickCaptureSettings");
@@ -1946,35 +1902,6 @@ break;
     private void ShowOnboardingButton_Click(object sender, RoutedEventArgs e)
     {
         App.Current.ShowOnboarding();
-    }
-
-    private async void RestoreDefaultSettingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (SettingsRoot.XamlRoot is null)
-        {
-            return;
-        }
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = SettingsRoot.XamlRoot,
-            Title = _localizationService.T("Settings.Dialog.RestoreTitle"),
-            PrimaryButtonText = _localizationService.T("Common.Restore"),
-            CloseButtonText = _localizationService.T("Common.Cancel"),
-            DefaultButton = ContentDialogButton.Primary,
-            Content = new TextBlock
-            {
-                Text = _localizationService.T("Settings.Dialog.RestoreBody"),
-                TextWrapping = TextWrapping.Wrap
-            }
-        };
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
-        await ViewModel.RestoreDefaultPreferencesAsync();
     }
 
     private async void ShowProductReasonButton_Click(object sender, RoutedEventArgs e)

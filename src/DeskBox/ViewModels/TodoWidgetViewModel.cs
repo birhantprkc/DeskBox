@@ -51,6 +51,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     private TodoColorFilter _selectedColorFilter = TodoColorFilter.All;
     private string _inputText = string.Empty;
     private double _textSize = SettingsService.DefaultTextSize;
+    private double _layoutDensityScale = SettingsService.DefaultLayoutDensityScale;
     private string _newTaskPosition = SettingsService.TodoNewTaskPositionTop;
     private string _tabStyle = SettingsService.WidgetTabStyleButton;
     private bool _showCompletedTasks = true;
@@ -79,6 +80,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         if (_settingsService is not null)
         {
             _textSize = SettingsService.NormalizeTextSize(_settingsService.Settings.TextSize);
+            _layoutDensityScale = NormalizeDensity(_settingsService.Settings.LayoutDensityScale);
             ApplyTodoSettings(_settingsService.Settings, updateFilter: false);
         }
 
@@ -487,6 +489,28 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         }
     }
 
+    public double LayoutDensityScale
+    {
+        get => _layoutDensityScale;
+        private set
+        {
+            if (SetProperty(ref _layoutDensityScale, NormalizeDensity(value)))
+            {
+                OnPropertyChanged(nameof(RootPadding));
+                OnPropertyChanged(nameof(RootRowSpacing));
+                OnPropertyChanged(nameof(ItemMinHeight));
+                OnPropertyChanged(nameof(ItemPadding));
+                OnPropertyChanged(nameof(ItemMargin));
+                OnPropertyChanged(nameof(ItemChromeMargin));
+                OnPropertyChanged(nameof(ItemContentMargin));
+                OnPropertyChanged(nameof(AddCardMinHeight));
+                OnPropertyChanged(nameof(AddCardMargin));
+                OnPropertyChanged(nameof(AddCardPadding));
+                OnPropertyChanged(nameof(ItemTextLineHeight));
+            }
+        }
+    }
+
     public double SecondaryTextSize => Math.Max(SettingsService.MinTextSize, TextSize - 1);
 
     public double TitleTextSize => Math.Min(SettingsService.MaxTextSize + 1, TextSize + 1);
@@ -507,7 +531,39 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public Thickness InputPadding => WidgetInputMetrics.Create(TextSize).Padding;
 
-    public double ItemTextLineHeight => Math.Round(TextSize + 4);
+    public Thickness RootPadding => UniformThickness(Lerp(6, 10, LayoutDensityScale));
+
+    public double RootRowSpacing => Math.Round(Lerp(5, 10, LayoutDensityScale));
+
+    public double ItemMinHeight => Math.Round(Lerp(42, 56, LayoutDensityScale));
+
+    public Thickness ItemPadding => new(
+        Math.Round(Lerp(4, 11, LayoutDensityScale)),
+        Math.Round(Lerp(3, 8, LayoutDensityScale)),
+        Math.Round(Lerp(4, 11, LayoutDensityScale)),
+        Math.Round(Lerp(3, 8, LayoutDensityScale)));
+
+    public Thickness ItemMargin => new(0, 0, 0, Math.Round(Lerp(3, 8, LayoutDensityScale)));
+
+    public Thickness ItemChromeMargin => new(
+        -ItemPadding.Left,
+        -ItemPadding.Top,
+        -ItemPadding.Right,
+        -ItemPadding.Bottom);
+
+    public Thickness ItemContentMargin => new(0, Math.Round(Lerp(1, 3, LayoutDensityScale)), 0, Math.Round(Lerp(1, 3, LayoutDensityScale)));
+
+    public double AddCardMinHeight => Math.Round(Lerp(42, 56, LayoutDensityScale));
+
+    public Thickness AddCardMargin => new(0, 0, 0, Math.Round(Lerp(4, 9, LayoutDensityScale)));
+
+    public Thickness AddCardPadding => new(
+        Math.Round(Lerp(6, 12, LayoutDensityScale)),
+        Math.Round(Lerp(4, 8, LayoutDensityScale)),
+        Math.Round(Lerp(6, 12, LayoutDensityScale)),
+        Math.Round(Lerp(4, 8, LayoutDensityScale)));
+
+    public double ItemTextLineHeight => Math.Round(TextSize + Lerp(2.5, 6, LayoutDensityScale));
 
     public double SmallIconSize => Math.Round(Math.Clamp(TextSize + 1, 11, 15));
 
@@ -1773,6 +1829,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         }
 
         TextSize = SettingsService.NormalizeTextSize(_settingsService.Settings.TextSize);
+        LayoutDensityScale = NormalizeDensity(_settingsService.Settings.LayoutDensityScale);
         ApplySettings(updateFilter: false);
     }
 
@@ -1799,6 +1856,19 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
                string.Equals(SelectedDetailItem?.Id, itemId, StringComparison.Ordinal)
             ? SelectedDetailItem
             : null;
+    }
+
+    private static double NormalizeDensity(double value) =>
+        double.IsFinite(value)
+            ? Math.Clamp(value, SettingsService.MinLayoutDensityScale, SettingsService.MaxLayoutDensityScale)
+            : SettingsService.DefaultLayoutDensityScale;
+
+    private static double Lerp(double min, double max, double t) => min + ((max - min) * t);
+
+    private static Thickness UniformThickness(double value)
+    {
+        double rounded = Math.Round(value);
+        return new Thickness(rounded);
     }
 
     private TodoItemViewModel? FindGeneratedOccurrence(TodoItemViewModel item)

@@ -407,6 +407,10 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         var settings = _settingsService.Settings;
         double iconSize = Math.Clamp(settings.IconSize, SettingsService.MinIconSize, SettingsService.MaxIconSize);
         double textSize = Math.Clamp(settings.TextSize, SettingsService.MinTextSize, SettingsService.MaxTextSize);
+        double densityScale = Math.Clamp(
+            settings.LayoutDensityScale,
+            SettingsService.MinLayoutDensityScale,
+            SettingsService.MaxLayoutDensityScale);
         double horizontalScale = Math.Clamp(
             settings.HorizontalSpacingScale,
             SettingsService.MinSpacingScale,
@@ -423,6 +427,10 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         double horizontalT = NormalizeScale(horizontalScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
         double verticalT = NormalizeScale(verticalScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
         double nameWidthT = NormalizeScale(fileNameWidthScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
+        double densityT = NormalizeScale(
+            densityScale,
+            SettingsService.MinLayoutDensityScale,
+            SettingsService.MaxLayoutDensityScale);
 
         double labelMaxWidth = Math.Max(iconSize, Lerp(iconSize, textSize * 10.5, nameWidthT));
         IconLabelMaxWidth = labelMaxWidth;
@@ -442,7 +450,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         IconImageSize = iconSize;
         IconLabelFontSize = textSize;
 
-        const double listScale = 0.8;
+        double listScale = Lerp(0.68, 0.90, densityT);
         double listItemMarginY = Lerp(0, 2, verticalT);
         ListItemMargin = new Thickness(0, listItemMarginY * listScale, 0, listItemMarginY * listScale);
         ListItemPadding = new Thickness(
