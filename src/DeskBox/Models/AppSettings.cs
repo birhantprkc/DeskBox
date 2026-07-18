@@ -62,7 +62,7 @@ public class AppSettings
     public bool QuickCaptureShowCreatedTime { get; set; } = true;
 
     /// <summary>Maximum number of text lines shown for each Quick Capture item in the list.</summary>
-    public int QuickCaptureItemPreviewLineCount { get; set; } = 10;
+    public int QuickCaptureItemPreviewLineCount { get; set; } = 3;
 
     /// <summary>Enter-key behavior used by Quick Capture multiline editors.</summary>
     public string QuickCaptureEditorEnterBehavior { get; set; } = "CtrlEnterSaves";
@@ -100,10 +100,10 @@ public class AppSettings
     public string TodoDefaultFilter { get; set; } = "All";
 
     /// <summary>Whether completed Todo tasks remain visible in non-completed views.</summary>
-    public bool TodoShowCompletedTasks { get; set; } = true;
+    public bool TodoShowCompletedTasks { get; set; }
 
     /// <summary>Maximum number of text lines shown for each Todo item in the list.</summary>
-    public int TodoItemPreviewLineCount { get; set; } = 10;
+    public int TodoItemPreviewLineCount { get; set; } = 2;
 
     /// <summary>Enter-key behavior used by Todo multiline editors.</summary>
     public string TodoEditorEnterBehavior { get; set; } = "CtrlEnterSaves";
@@ -238,6 +238,40 @@ public class AppSettings
     public bool WidgetCapsuleModeEnabled { get; set; }
 
     /// <summary>
+    /// How compact and expanded widget widths relate to each other.
+    /// Valid values: <c>"Aligned"</c>, <c>"Independent"</c>.
+    /// </summary>
+    public string WidgetCompactWidthMode { get; set; } = "Aligned";
+
+    /// <summary>
+    /// How compact widgets are arranged on the desktop.
+    /// Valid values: <c>"Free"</c>, <c>"Bar"</c>.
+    /// </summary>
+    public string WidgetCapsuleArrangementMode { get; set; } = "Free";
+
+    /// <summary>Logical pixel spacing between adjacent widgets in a capsule bar.</summary>
+    public double WidgetCapsuleBarSpacing { get; set; } = 8;
+
+    /// <summary>
+    /// Where the capsule bar is anchored.
+    /// Valid values: <c>"Floating"</c>, <c>"Top"</c>, <c>"Bottom"</c>,
+    /// <c>"Left"</c>, <c>"Right"</c>.
+    /// </summary>
+    public string WidgetCapsuleBarPlacement { get; set; } = "Floating";
+
+    /// <summary>
+    /// Primary flow direction for the capsule bar.
+    /// Valid values: <c>"Auto"</c>, <c>"Horizontal"</c>, <c>"Vertical"</c>.
+    /// </summary>
+    public string WidgetCapsuleBarDirection { get; set; } = "Auto";
+
+    /// <summary>Stable user order used when compact widgets form a capsule bar.</summary>
+    public List<string> WidgetCapsuleBarOrder { get; set; } = [];
+
+    /// <summary>Free-layout placements preserved while a capsule bar is active.</summary>
+    public Dictionary<string, WidgetCompactPlacement> WidgetCapsuleFreePlacements { get; set; } = [];
+
+    /// <summary>
     /// Legacy combined compact style retained for settings migration.
     /// </summary>
     public string WidgetCollapsedStyle { get; set; } = "Smart";
@@ -344,7 +378,7 @@ public class AppSettings
     /// How files should be handled when dropped into a managed storage widget.
     /// Valid values: <c>"Move"</c>, <c>"Copy"</c>.
     /// </summary>
-    public string ManagedDropAction { get; set; } = "Move";
+    public string ManagedDropAction { get; set; } = "Copy";
 
     /// <summary>
     /// Root folder used by widgets that follow the default managed storage path.

@@ -5,9 +5,9 @@ namespace DeskBox.ViewModels;
 
 public partial class SettingsViewModel
 {
-    private int _quickCaptureItemPreviewLineCount = SettingsService.DefaultItemPreviewLineCount;
+    private int _quickCaptureItemPreviewLineCount = SettingsService.DefaultQuickCaptureItemPreviewLineCount;
     private string _quickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
-    private int _todoItemPreviewLineCount = SettingsService.DefaultItemPreviewLineCount;
+    private int _todoItemPreviewLineCount = SettingsService.DefaultTodoItemPreviewLineCount;
     private string _todoEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
     private string[]? _cachedItemPreviewLineCountDisplayNames;
     private string[]? _cachedEditorEnterBehaviorDisplayNames;
@@ -49,7 +49,6 @@ public partial class SettingsViewModel
                 return;
             }
 
-            OnPropertyChanged(nameof(SelectedQuickCaptureItemPreviewLineCountIndex));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -60,8 +59,6 @@ public partial class SettingsViewModel
         }
     }
 
-    public int SelectedQuickCaptureItemPreviewLineCountIndex =>
-        Array.IndexOf(AvailableItemPreviewLineCounts, QuickCaptureItemPreviewLineCount);
 
     public string QuickCaptureEditorEnterBehavior
     {
@@ -74,7 +71,6 @@ public partial class SettingsViewModel
                 return;
             }
 
-            OnPropertyChanged(nameof(SelectedQuickCaptureEditorEnterBehaviorIndex));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -85,8 +81,6 @@ public partial class SettingsViewModel
         }
     }
 
-    public int SelectedQuickCaptureEditorEnterBehaviorIndex =>
-        Array.IndexOf(AvailableEditorEnterBehaviors, QuickCaptureEditorEnterBehavior);
 
     public int TodoItemPreviewLineCount
     {
@@ -99,7 +93,6 @@ public partial class SettingsViewModel
                 return;
             }
 
-            OnPropertyChanged(nameof(SelectedTodoItemPreviewLineCountIndex));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -110,8 +103,6 @@ public partial class SettingsViewModel
         }
     }
 
-    public int SelectedTodoItemPreviewLineCountIndex =>
-        Array.IndexOf(AvailableItemPreviewLineCounts, TodoItemPreviewLineCount);
 
     public string TodoEditorEnterBehavior
     {
@@ -124,7 +115,6 @@ public partial class SettingsViewModel
                 return;
             }
 
-            OnPropertyChanged(nameof(SelectedTodoEditorEnterBehaviorIndex));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -135,8 +125,6 @@ public partial class SettingsViewModel
         }
     }
 
-    public int SelectedTodoEditorEnterBehaviorIndex =>
-        Array.IndexOf(AvailableEditorEnterBehaviors, TodoEditorEnterBehavior);
 
     private void InitializeContentEditorSettings(AppSettings settings)
     {
@@ -164,10 +152,6 @@ public partial class SettingsViewModel
         _cachedEditorEnterBehaviorDisplayNames = null;
         OnPropertyChanged(nameof(AvailableItemPreviewLineCountDisplayNames));
         OnPropertyChanged(nameof(AvailableEditorEnterBehaviorDisplayNames));
-        OnPropertyChanged(nameof(SelectedQuickCaptureItemPreviewLineCountIndex));
-        OnPropertyChanged(nameof(SelectedQuickCaptureEditorEnterBehaviorIndex));
-        OnPropertyChanged(nameof(SelectedTodoItemPreviewLineCountIndex));
-        OnPropertyChanged(nameof(SelectedTodoEditorEnterBehaviorIndex));
     }
 
     private string GetEditorEnterBehaviorDisplayName(string behavior) =>

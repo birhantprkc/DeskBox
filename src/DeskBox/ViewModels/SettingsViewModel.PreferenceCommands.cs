@@ -75,7 +75,6 @@ public partial class SettingsViewModel
             RefreshGlobalHotkeyState();
             _themeService.RefreshAppearance();
             RefreshAccentPreview();
-            RefreshLocalizedProperties();
             await _settingsService.SaveAsync();
             App.Current?.QuickCaptureClipboardService?.Refresh();
             _settingsService.NotifyAppearancePreviewNow();
@@ -86,4 +85,5 @@ public partial class SettingsViewModel
             _isRestoringDefaults = false;
         }
     }
+
 }

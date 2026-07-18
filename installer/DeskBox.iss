@@ -3,12 +3,14 @@
 ; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\x64 -v:minimal
 
 #define MyAppName "DeskBox"
-#define MyAppVersion "1.2.9"
-#define MyAppVersionInfo "1.2.9.0"
+#define MyAppVersion "1.3.0"
+#define MyAppVersionInfo "1.3.0.0"
 #define MyAppPublisher "朱天雨"
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
+#ifndef MyAppReleaseDir
 #define MyAppReleaseDir "..\artifacts\publish\DeskBox\x64"
+#endif
 
 [Setup]
 ; AppId 用于唯一标识同一个应用。
@@ -27,7 +29,10 @@ DisableDirPage=no
 PrivilegesRequired=lowest
 UsePreviousAppDir=no
 UsePreviousPrivileges=no
-CloseApplications=yes
+; DeskBox is a tray-first WinUI app with multiple top-level windows. Restart
+; Manager cannot always close the whole process through a single window, so
+; allow Setup to terminate DeskBox after the normal close attempt times out.
+CloseApplications=force
 CloseApplicationsFilter={#MyAppExeName}
 RestartApplications=no
 OutputDir=..\Output

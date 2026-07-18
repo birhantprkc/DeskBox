@@ -85,6 +85,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedQuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
     private string _selectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
     private string _selectedAttachmentStorageMode = SettingsService.AttachmentStorageModeLink;
+    private string _selectedManagedDropAction = SettingsService.ManagedDropActionCopy;
     private string _selectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
     private string _selectedTodoTabStyle = SettingsService.WidgetTabStyleButton;
     private int _selectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
@@ -138,6 +139,7 @@ private int _selectedWeatherRefreshInterval = 60;
     private string[]? _cachedQuickCaptureTabStyleDisplayNames;
     private string[]? _cachedTodoNewTaskPositionDisplayNames;
     private string[]? _cachedAttachmentStorageModeDisplayNames;
+    private string[]? _cachedManagedDropActionDisplayNames;
     private string[]? _cachedTodoDefaultFilterDisplayNames;
     private string[]? _cachedTodoTabStyleDisplayNames;
     private string[]? _cachedTodoReminderOffsetDisplayNames;
@@ -272,6 +274,16 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
             ? settings.WidgetBorderStyle
             : BorderThin;
         _widgetCapsuleModeEnabled = settings.WidgetCapsuleModeEnabled;
+        _selectedWidgetCompactWidthMode = SettingsService.NormalizeWidgetCompactWidthMode(
+            settings.WidgetCompactWidthMode);
+        _selectedWidgetCapsuleArrangementMode = SettingsService.NormalizeWidgetCapsuleArrangementMode(
+            settings.WidgetCapsuleArrangementMode);
+        _widgetCapsuleBarSpacing = SettingsService.NormalizeWidgetCapsuleBarSpacing(
+            settings.WidgetCapsuleBarSpacing);
+        _selectedWidgetCapsuleBarPlacement = SettingsService.NormalizeWidgetCapsuleBarPlacement(
+            settings.WidgetCapsuleBarPlacement);
+        _selectedWidgetCapsuleBarDirection = SettingsService.NormalizeWidgetCapsuleBarDirection(
+            settings.WidgetCapsuleBarDirection);
         _widgetCompactHideSensitiveContent = settings.WidgetCompactHideSensitiveContent;
         _selectedWidgetCollapseBehavior = SettingsService.NormalizeWidgetCollapseBehavior(settings.WidgetCollapseBehavior) == SettingsService.WidgetCollapseBehaviorSmart
             ? SettingsService.WidgetCollapseBehaviorSmart
@@ -282,6 +294,9 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _widgetCompactAnimationDurationMs = SettingsService.NormalizeWidgetCompactAnimationDurationMs(settings.WidgetCompactAnimationDurationMs);
         _widgetCompactExpandDelayMs = SettingsService.NormalizeWidgetCompactExpandDelayMs(settings.WidgetCompactExpandDelayMs);
         _widgetCompactCollapseDelayMs = SettingsService.NormalizeWidgetCompactCollapseDelayMs(settings.WidgetCompactCollapseDelayMs);
+        _selectedWidgetCompactHoverResponse = SettingsService.ResolveWidgetCompactHoverResponse(
+            settings.WidgetCompactExpandDelayMs,
+            settings.WidgetCompactCollapseDelayMs);
         _selectedWidgetCompactMediaCornerMode = SettingsService.NormalizeWidgetCompactMediaCornerMode(settings.WidgetCompactMediaCornerMode);
         _selectedWidgetAnimationEffect = NormalizeWidgetAnimationEffect(settings.WidgetAnimationEffect);
         _selectedWidgetAnimationSpeed = NormalizeWidgetAnimationSpeed(settings.WidgetAnimationSpeed);
@@ -307,6 +322,9 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _quickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
         _quickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
         _selectedAttachmentStorageMode = SettingsService.NormalizeAttachmentStorageMode(settings.AttachmentStorageMode);
+        _selectedManagedDropAction = settings.ManagedDropAction == SettingsService.ManagedDropActionMove
+            ? SettingsService.ManagedDropActionMove
+            : SettingsService.ManagedDropActionCopy;
         _selectedQuickCaptureDefaultView = NormalizeQuickCaptureDefaultView(settings.QuickCaptureDefaultView);
         _selectedQuickCaptureTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.QuickCaptureTabStyle);
         _quickCaptureShowTabBar = settings.QuickCaptureShowTabBar;
@@ -557,7 +575,6 @@ _ = RefreshQuickAccessStateAsync();
             nameof(SelectedLayoutDensity)))
         {
             OnPropertyChanged(nameof(SelectedLayoutDensityText));
-            OnPropertyChanged(nameof(SelectedLayoutDensityIndex));
         }
     }
 
@@ -614,7 +631,6 @@ _ = RefreshQuickAccessStateAsync();
         if (SetProperty(ref _selectedAnimationPreset, resolvedPreset, nameof(SelectedAnimationPreset)))
         {
             OnPropertyChanged(nameof(SelectedAnimationPresetText));
-            OnPropertyChanged(nameof(SelectedAnimationPresetIndex));
         }
     }
 

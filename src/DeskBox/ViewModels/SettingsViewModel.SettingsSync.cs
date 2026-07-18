@@ -77,6 +77,16 @@ public partial class SettingsViewModel
                 : BorderThin;
 
             WidgetCapsuleModeEnabled = settings.WidgetCapsuleModeEnabled;
+            SelectedWidgetCompactWidthMode = SettingsService.NormalizeWidgetCompactWidthMode(
+                settings.WidgetCompactWidthMode);
+            SelectedWidgetCapsuleArrangementMode = SettingsService.NormalizeWidgetCapsuleArrangementMode(
+                settings.WidgetCapsuleArrangementMode);
+            WidgetCapsuleBarSpacing = SettingsService.NormalizeWidgetCapsuleBarSpacing(
+                settings.WidgetCapsuleBarSpacing);
+            SelectedWidgetCapsuleBarPlacement = SettingsService.NormalizeWidgetCapsuleBarPlacement(
+                settings.WidgetCapsuleBarPlacement);
+            SelectedWidgetCapsuleBarDirection = SettingsService.NormalizeWidgetCapsuleBarDirection(
+                settings.WidgetCapsuleBarDirection);
             WidgetCompactHideSensitiveContent = settings.WidgetCompactHideSensitiveContent;
             SelectedWidgetCollapseBehavior = SettingsService.NormalizeWidgetCollapseBehavior(settings.WidgetCollapseBehavior) == SettingsService.WidgetCollapseBehaviorSmart
                 ? SettingsService.WidgetCollapseBehaviorSmart
@@ -86,6 +96,9 @@ public partial class SettingsViewModel
             WidgetCompactAnimationDurationMs = SettingsService.NormalizeWidgetCompactAnimationDurationMs(settings.WidgetCompactAnimationDurationMs);
             WidgetCompactExpandDelayMs = SettingsService.NormalizeWidgetCompactExpandDelayMs(settings.WidgetCompactExpandDelayMs);
             WidgetCompactCollapseDelayMs = SettingsService.NormalizeWidgetCompactCollapseDelayMs(settings.WidgetCompactCollapseDelayMs);
+            SelectedWidgetCompactHoverResponse = SettingsService.ResolveWidgetCompactHoverResponse(
+                settings.WidgetCompactExpandDelayMs,
+                settings.WidgetCompactCollapseDelayMs);
             SelectedWidgetCompactMediaCornerMode = SettingsService.NormalizeWidgetCompactMediaCornerMode(settings.WidgetCompactMediaCornerMode);
 
             SelectedWidgetAnimationEffect = NormalizeWidgetAnimationEffect(settings.WidgetAnimationEffect);
@@ -121,6 +134,9 @@ public partial class SettingsViewModel
             QuickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
             QuickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
             SelectedAttachmentStorageMode = SettingsService.NormalizeAttachmentStorageMode(settings.AttachmentStorageMode);
+            SelectedManagedDropAction = settings.ManagedDropAction == SettingsService.ManagedDropActionMove
+                ? SettingsService.ManagedDropActionMove
+                : SettingsService.ManagedDropActionCopy;
             SelectedQuickCaptureDefaultView = NormalizeQuickCaptureDefaultView(settings.QuickCaptureDefaultView);
             SelectedQuickCaptureTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.QuickCaptureTabStyle);
             QuickCaptureShowTabBar = settings.QuickCaptureShowTabBar;
@@ -189,7 +205,7 @@ public partial class SettingsViewModel
         }
 
         RefreshNumberInputs();
-        RefreshSelectionProperties();
+        RefreshSelectionProperties(refreshLocalizedOptions: false);
         RefreshGlobalHotkeyState();
         OnPropertyChanged(nameof(CanEditCustomAccent));
         OnPropertyChanged(nameof(AccentColorDescription));
@@ -204,7 +220,7 @@ public partial class SettingsViewModel
 
     private void RefreshLocalizedProperties()
     {
-        RefreshSelectionProperties();
+        RefreshSelectionProperties(refreshLocalizedOptions: true);
         OnPropertyChanged(nameof(AccentColorDescription));
         OnPropertyChanged(nameof(AboutVersionText));
         OnPropertyChanged(nameof(DistributionChannelText));
@@ -247,149 +263,153 @@ RefreshWeatherCityPopularCities();
         RefreshQuickCaptureClipboardDiagnostics();
     }
 
-    private void RefreshSelectionProperties()
+    private void RefreshSelectionProperties(bool refreshLocalizedOptions)
     {
-        RefreshFileStackSelectionProperties();
-        _cachedThemeDisplayNames = null;
-        _cachedTrayIconStyleDisplayNames = null;
-        _cachedLanguageDisplayNames = null;
-        _cachedWidgetCornerPreferenceDisplayNames = null;
-        _cachedWidgetMaterialTypeDisplayNames = null;
-        _cachedWidgetBorderColorModeDisplayNames = null;
-        _cachedWidgetBorderStyleDisplayNames = null;
-        _cachedWidgetCollapseBehaviorDisplayNames = null;
-        _cachedWidgetCompactContentModeDisplayNames = null;
-        _cachedWidgetCompactAnimationEffectDisplayNames = null;
-        _cachedWidgetCompactMediaCornerDisplayNames = null;
-        _cachedLayoutDensityDisplayNames = null;
-        _cachedAnimationPresetDisplayNames = null;
-        _cachedWidgetAnimationEffectDisplayNames = null;
-        _cachedWidgetAnimationSpeedDisplayNames = null;
-        _cachedWidgetAnimationSlideDirectionDisplayNames = null;
-        _cachedWidgetAnimationEasingIntensityDisplayNames = null;
-        _cachedDisplayWidgetChromeModeDisplayNames = null;
-        _cachedInteractiveWidgetChromeModeDisplayNames = null;
-        _cachedWidgetTitleIconModeDisplayNames = null;
-        _cachedWidgetLayerModeDisplayNames = null;
-        _cachedQuickCaptureDefaultViewDisplayNames = null;
-        _cachedQuickCaptureTabStyleDisplayNames = null;
-        _cachedTodoNewTaskPositionDisplayNames = null;
-        _cachedAttachmentStorageModeDisplayNames = null;
-        _cachedTodoDefaultFilterDisplayNames = null;
-        _cachedTodoTabStyleDisplayNames = null;
-        _cachedTodoReminderOffsetDisplayNames = null;
-        _cachedMusicDisplayModeDisplayNames = null;
-        _cachedWeatherTempUnitDisplayNames = null;
-        _cachedWeatherWindUnitDisplayNames = null;
-        _cachedWeatherDefaultViewDisplayNames = null;
-        _cachedWeatherSkinDisplayNames = null;
-        _cachedWeatherRefreshIntervalDisplayNames = null;
-        OnPropertyChanged(nameof(AvailableThemeDisplayNames));
-        OnPropertyChanged(nameof(AvailableTrayIconStyleDisplayNames));
-        OnPropertyChanged(nameof(AvailableLanguageDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetMaterialTypeDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetBorderColorModeDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetBorderStyleDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetCollapseBehaviorDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetCompactContentModeDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetCompactAnimationEffectDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetCompactMediaCornerDisplayNames));
-        OnPropertyChanged(nameof(AvailableLayoutDensityDisplayNames));
-        OnPropertyChanged(nameof(AvailableAnimationPresetDisplayNames));
+        // Replacing localized option arrays during an ordinary settings sync makes
+        // WinUI reset every bound ComboBox.SelectedIndex to -1.
+        if (refreshLocalizedOptions)
+        {
+            RefreshFileStackSelectionProperties();
+            _cachedThemeDisplayNames = null;
+            _cachedTrayIconStyleDisplayNames = null;
+            _cachedLanguageDisplayNames = null;
+            _cachedWidgetCornerPreferenceDisplayNames = null;
+            _cachedWidgetMaterialTypeDisplayNames = null;
+            _cachedWidgetBorderColorModeDisplayNames = null;
+            _cachedWidgetBorderStyleDisplayNames = null;
+            _cachedWidgetCollapseBehaviorDisplayNames = null;
+            _cachedWidgetCompactContentModeDisplayNames = null;
+            _cachedWidgetCompactWidthModeDisplayNames = null;
+            _cachedWidgetCapsuleArrangementDisplayNames = null;
+            _cachedWidgetCapsuleBarPlacementDisplayNames = null;
+            _cachedWidgetCapsuleBarDirectionDisplayNames = null;
+            _cachedWidgetCompactAnimationEffectDisplayNames = null;
+            _cachedWidgetCompactHoverResponseDisplayNames = null;
+            _cachedWidgetCompactMediaCornerDisplayNames = null;
+            _cachedLayoutDensityDisplayNames = null;
+            _cachedAnimationPresetDisplayNames = null;
+            _cachedWidgetAnimationEffectDisplayNames = null;
+            _cachedWidgetAnimationSpeedDisplayNames = null;
+            _cachedWidgetAnimationSlideDirectionDisplayNames = null;
+            _cachedWidgetAnimationEasingIntensityDisplayNames = null;
+            _cachedDisplayWidgetChromeModeDisplayNames = null;
+            _cachedInteractiveWidgetChromeModeDisplayNames = null;
+            _cachedWidgetTitleIconModeDisplayNames = null;
+            _cachedWidgetLayerModeDisplayNames = null;
+            _cachedQuickCaptureDefaultViewDisplayNames = null;
+            _cachedQuickCaptureTabStyleDisplayNames = null;
+            _cachedTodoNewTaskPositionDisplayNames = null;
+            _cachedAttachmentStorageModeDisplayNames = null;
+            _cachedTodoDefaultFilterDisplayNames = null;
+            _cachedTodoTabStyleDisplayNames = null;
+            _cachedTodoReminderOffsetDisplayNames = null;
+            _cachedMusicDisplayModeDisplayNames = null;
+            _cachedWeatherTempUnitDisplayNames = null;
+            _cachedWeatherWindUnitDisplayNames = null;
+            _cachedWeatherDefaultViewDisplayNames = null;
+            _cachedWeatherSkinDisplayNames = null;
+            _cachedWeatherRefreshIntervalDisplayNames = null;
+            _cachedManagedDropActionDisplayNames = null;
+            OnPropertyChanged(nameof(AvailableThemeDisplayNames));
+            OnPropertyChanged(nameof(AvailableTrayIconStyleDisplayNames));
+            OnPropertyChanged(nameof(AvailableLanguageDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetMaterialTypeDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetBorderColorModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetBorderStyleDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCollapseBehaviorDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCompactWidthModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCompactContentModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCapsuleArrangementDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCapsuleBarPlacementDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCapsuleBarDirectionDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCompactAnimationEffectDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCompactHoverResponseDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCompactMediaCornerDisplayNames));
+            OnPropertyChanged(nameof(AvailableLayoutDensityDisplayNames));
+            OnPropertyChanged(nameof(AvailableAnimationPresetDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetAnimationEffectDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetAnimationSpeedDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetAnimationSlideDirectionDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetAnimationEasingIntensityDisplayNames));
+            OnPropertyChanged(nameof(AvailableDisplayWidgetChromeModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableInteractiveWidgetChromeModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetTitleIconModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetLayerModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableQuickCaptureDefaultViewDisplayNames));
+            OnPropertyChanged(nameof(AvailableQuickCaptureTabStyleDisplayNames));
+            OnPropertyChanged(nameof(AvailableTodoNewTaskPositionDisplayNames));
+            OnPropertyChanged(nameof(AvailableAttachmentStorageModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableManagedDropActionDisplayNames));
+            OnPropertyChanged(nameof(AvailableTodoDefaultFilterDisplayNames));
+            OnPropertyChanged(nameof(AvailableTodoTabStyleDisplayNames));
+            OnPropertyChanged(nameof(AvailableTodoReminderOffsetDisplayNames));
+            OnPropertyChanged(nameof(AvailableMusicDisplayModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableWeatherTemperatureUnitDisplayNames));
+            OnPropertyChanged(nameof(AvailableWeatherWindSpeedUnitDisplayNames));
+            OnPropertyChanged(nameof(AvailableWeatherDefaultViewDisplayNames));
+            OnPropertyChanged(nameof(AvailableWeatherSkinDisplayNames));
+            OnPropertyChanged(nameof(AvailableWeatherRefreshIntervalDisplayNames));
+            RefreshContentEditorLocalizedProperties();
+            NotifySelectionOptionsChanged();
+        }
+
         OnPropertyChanged(nameof(IsOpacitySliderEnabled));
         OnPropertyChanged(nameof(WidgetOpacityVisibility));
         OnPropertyChanged(nameof(MaterialIntensityVisibility));
         OnPropertyChanged(nameof(IsWidgetBorderStyleEnabled));
-        OnPropertyChanged(nameof(AvailableWidgetAnimationEffectDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetAnimationSpeedDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetAnimationSlideDirectionDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetAnimationEasingIntensityDisplayNames));
-        OnPropertyChanged(nameof(AvailableDisplayWidgetChromeModeDisplayNames));
-        OnPropertyChanged(nameof(AvailableInteractiveWidgetChromeModeDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetTitleIconModeDisplayNames));
-        OnPropertyChanged(nameof(AvailableWidgetLayerModeDisplayNames));
-        OnPropertyChanged(nameof(AvailableQuickCaptureDefaultViewDisplayNames));
-        OnPropertyChanged(nameof(AvailableQuickCaptureTabStyleDisplayNames));
-        OnPropertyChanged(nameof(AvailableTodoNewTaskPositionDisplayNames));
-        OnPropertyChanged(nameof(AvailableAttachmentStorageModeDisplayNames));
-        OnPropertyChanged(nameof(SelectedAttachmentStorageModeIndex));
-        OnPropertyChanged(nameof(AvailableTodoDefaultFilterDisplayNames));
-        OnPropertyChanged(nameof(AvailableTodoTabStyleDisplayNames));
-        OnPropertyChanged(nameof(AvailableTodoReminderOffsetDisplayNames));
-        OnPropertyChanged(nameof(AvailableMusicDisplayModeDisplayNames));
-        RefreshContentEditorLocalizedProperties();
         OnPropertyChanged(nameof(SelectedThemeText));
-        OnPropertyChanged(nameof(SelectedThemeIndex));
         OnPropertyChanged(nameof(SelectedTrayIconStyleText));
-        OnPropertyChanged(nameof(SelectedTrayIconStyleIndex));
         OnPropertyChanged(nameof(SelectedLanguageText));
-        OnPropertyChanged(nameof(SelectedLanguageIndex));
         OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceText));
-        OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceIndex));
         OnPropertyChanged(nameof(SelectedWidgetMaterialTypeText));
-        OnPropertyChanged(nameof(SelectedWidgetMaterialTypeIndex));
         OnPropertyChanged(nameof(SelectedWidgetBorderColorModeText));
-        OnPropertyChanged(nameof(SelectedWidgetBorderColorModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetBorderStyleText));
-        OnPropertyChanged(nameof(SelectedWidgetBorderStyleIndex));
         OnPropertyChanged(nameof(SelectedWidgetCollapseBehaviorText));
-        OnPropertyChanged(nameof(SelectedWidgetCollapseBehaviorIndex));
+        OnPropertyChanged(nameof(SelectedWidgetCompactWidthModeText));
         OnPropertyChanged(nameof(IsSmartWidgetCollapseBehavior));
+        OnPropertyChanged(nameof(IsSmartWidgetCollapseBehaviorSelected));
+        OnPropertyChanged(nameof(CapsuleHoverResponseEntryVisibility));
+        OnPropertyChanged(nameof(CanOpenWidgetCompactHoverResponseDetails));
+        OnPropertyChanged(nameof(CanOpenWidgetCompactAnimationDetails));
+        OnPropertyChanged(nameof(SelectedWidgetCapsuleArrangementText));
+        OnPropertyChanged(nameof(IsWidgetCapsuleBarSelected));
+        OnPropertyChanged(nameof(IsWidgetCapsuleBarEnabled));
+        OnPropertyChanged(nameof(IsWidgetCapsuleBarSpacingEnabled));
+        OnPropertyChanged(nameof(CapsuleArrangementEntryVisibility));
+        OnPropertyChanged(nameof(WidgetCapsuleBarSpacingText));
+        OnPropertyChanged(nameof(SelectedWidgetCapsuleBarPlacementText));
+        OnPropertyChanged(nameof(SelectedWidgetCapsuleBarDirectionText));
+        OnPropertyChanged(nameof(CapsuleArrangementDetailsSummaryText));
         OnPropertyChanged(nameof(SelectedWidgetCompactContentModeText));
-        OnPropertyChanged(nameof(SelectedWidgetCompactContentModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetCompactAnimationEffectText));
-        OnPropertyChanged(nameof(SelectedWidgetCompactAnimationEffectIndex));
+        OnPropertyChanged(nameof(IsWidgetCompactAnimationCustom));
+        OnPropertyChanged(nameof(WidgetCompactAnimationCustomVisibility));
+        OnPropertyChanged(nameof(SelectedWidgetCompactHoverResponseText));
+        OnPropertyChanged(nameof(IsWidgetCompactHoverResponseCustom));
+        OnPropertyChanged(nameof(WidgetCompactHoverResponseCustomVisibility));
         OnPropertyChanged(nameof(SelectedWidgetCompactMediaCornerText));
-        OnPropertyChanged(nameof(SelectedWidgetCompactMediaCornerIndex));
         OnPropertyChanged(nameof(SelectedLayoutDensityText));
-        OnPropertyChanged(nameof(SelectedLayoutDensityIndex));
         OnPropertyChanged(nameof(SelectedAnimationPresetText));
-        OnPropertyChanged(nameof(SelectedAnimationPresetIndex));
         OnPropertyChanged(nameof(SelectedWidgetAnimationEffectText));
-        OnPropertyChanged(nameof(SelectedWidgetAnimationEffectIndex));
         OnPropertyChanged(nameof(IsDirectionEnabled));
         OnPropertyChanged(nameof(IsEasingEnabled));
         OnPropertyChanged(nameof(IsSpeedEnabled));
         OnPropertyChanged(nameof(SelectedWidgetAnimationSpeedText));
-        OnPropertyChanged(nameof(SelectedWidgetAnimationSpeedIndex));
         OnPropertyChanged(nameof(SelectedWidgetAnimationSlideDirectionText));
-        OnPropertyChanged(nameof(SelectedWidgetAnimationSlideDirectionIndex));
         OnPropertyChanged(nameof(SelectedWidgetAnimationEasingIntensityText));
-        OnPropertyChanged(nameof(SelectedWidgetAnimationEasingIntensityIndex));
         OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeText));
-        OnPropertyChanged(nameof(SelectedDisplayWidgetChromeModeIndex));
         OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeText));
-        OnPropertyChanged(nameof(SelectedInteractiveWidgetChromeModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetTitleIconModeText));
-        OnPropertyChanged(nameof(SelectedWidgetTitleIconModeIndex));
         OnPropertyChanged(nameof(SelectedWidgetLayerModeText));
-        OnPropertyChanged(nameof(SelectedWidgetLayerModeIndex));
         NotifyHoverButtonActionPropertiesChanged();
         OnPropertyChanged(nameof(HoverButtonActionsSummaryText));
         OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewText));
-        OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewIndex));
         OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleText));
-        OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleIndex));
         OnPropertyChanged(nameof(SelectedTodoNewTaskPositionText));
-        OnPropertyChanged(nameof(SelectedTodoNewTaskPositionIndex));
         OnPropertyChanged(nameof(SelectedTodoDefaultFilterText));
-        OnPropertyChanged(nameof(SelectedTodoDefaultFilterIndex));
         OnPropertyChanged(nameof(SelectedTodoTabStyleText));
-        OnPropertyChanged(nameof(SelectedTodoTabStyleIndex));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
-        OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesIndex));
         OnPropertyChanged(nameof(SelectedMusicDisplayModeText));
-        OnPropertyChanged(nameof(SelectedMusicDisplayModeIndex));
-        OnPropertyChanged(nameof(AvailableWeatherTemperatureUnitDisplayNames));
-        OnPropertyChanged(nameof(SelectedWeatherTemperatureUnitIndex));
-        OnPropertyChanged(nameof(AvailableWeatherWindSpeedUnitDisplayNames));
-        OnPropertyChanged(nameof(SelectedWeatherWindSpeedUnitIndex));
-        OnPropertyChanged(nameof(AvailableWeatherDefaultViewDisplayNames));
-        OnPropertyChanged(nameof(SelectedWeatherDefaultViewIndex));
-        OnPropertyChanged(nameof(AvailableWeatherSkinDisplayNames));
-        OnPropertyChanged(nameof(SelectedWeatherSkinIndex));
-        OnPropertyChanged(nameof(AvailableWeatherRefreshIntervalDisplayNames));
-        OnPropertyChanged(nameof(SelectedWeatherRefreshIntervalIndex));
     }
 }

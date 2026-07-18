@@ -4,6 +4,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:media="using:Microsoft.UI.Xaml.Media.Imaging"
+    xmlns:controls="using:DeskBox.Controls"
+    xmlns:sections="using:DeskBox.Views.SettingsSections"
     xmlns:svc="using:DeskBox.Services"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -23,6 +25,15 @@
             <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">22</x:Double>
             <Thickness x:Key="NavigationViewItemOnLeftIconBoxMargin">0</Thickness>
             <Thickness x:Key="NavigationViewItemButtonMargin">4,1,4,1</Thickness>
+
+            <!-- Shared settings-page metrics keep top-level and drill-down pages aligned. -->
+            <x:Double x:Key="SettingsContentMaxWidth">760</x:Double>
+            <x:Double x:Key="SettingsControlMinWidth">176</x:Double>
+            <x:Double x:Key="SettingsCardSpacing">4</x:Double>
+            <x:Double x:Key="SettingsRowMinHeight">64</x:Double>
+            <x:Double x:Key="SettingsRowColumnSpacing">18</x:Double>
+            <Thickness x:Key="SettingsRowPadding">16,10</Thickness>
+            <CornerRadius x:Key="SettingsCardCornerRadius">6</CornerRadius>
 			
             <Style x:Key="PageTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="30" />
@@ -37,7 +48,7 @@
             </Style>
 
             <Style x:Key="SectionPanelStyle" TargetType="StackPanel">
-                <Setter Property="Spacing" Value="4" />
+                <Setter Property="Spacing" Value="{StaticResource SettingsCardSpacing}" />
             </Style>
 			
             <Style x:Key="SectionTitleTextStyle" TargetType="TextBlock">
@@ -57,7 +68,7 @@
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="CornerRadius" Value="{StaticResource SettingsCardCornerRadius}" />
             </Style>
 			
             <Style x:Key="SettingsNavImageIconStyle" TargetType="ImageIcon">
@@ -67,9 +78,9 @@
 			
             <Style x:Key="SettingRowStyle" TargetType="Grid">
                 <Setter Property="Tag" Value="SettingRow" />
-                <Setter Property="MinHeight" Value="64" />
-                <Setter Property="Padding" Value="16,10" />
-                <Setter Property="ColumnSpacing" Value="18" />
+                <Setter Property="MinHeight" Value="{StaticResource SettingsRowMinHeight}" />
+                <Setter Property="Padding" Value="{StaticResource SettingsRowPadding}" />
+                <Setter Property="ColumnSpacing" Value="{StaticResource SettingsRowColumnSpacing}" />
                 <Setter Property="RowSpacing" Value="8" />
             </Style>
 			
@@ -167,12 +178,12 @@
             <Style x:Key="DrillDownRowStyle" TargetType="Button">
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                <Setter Property="Padding" Value="12,10" />
-                <Setter Property="MinHeight" Value="60" />
+                <Setter Property="Padding" Value="{StaticResource SettingsRowPadding}" />
+                <Setter Property="MinHeight" Value="{StaticResource SettingsRowMinHeight}" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderBrush" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="CornerRadius" Value="{StaticResource SettingsCardCornerRadius}" />
                 <Setter Property="VerticalAlignment" Value="Stretch" />
             </Style>
 			
@@ -196,10 +207,11 @@
         <Grid
             x:Name="AppTitleBar"
             Grid.Row="0"
-            Padding="18,0,128,0"
             Background="Transparent">
             <StackPanel
                 x:Name="TitleTextHost"
+                Margin="18,0,0,0"
+                HorizontalAlignment="Left"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
                 Spacing="8">
@@ -222,6 +234,44 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     svc:Localized.Key="Settings.Title" />
             </StackPanel>
+
+            <AutoSuggestBox
+                x:Name="SettingsSearchBox"
+                Width="460"
+                MinWidth="260"
+                MaxWidth="520"
+                Height="32"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                VerticalContentAlignment="Center"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="16"
+                Padding="0"
+                QuerySubmitted="SettingsSearchBox_QuerySubmitted"
+                TextChanged="SettingsSearchBox_TextChanged">
+                <AutoSuggestBox.QueryIcon>
+                    <SymbolIcon Symbol="Find" />
+                </AutoSuggestBox.QueryIcon>
+                <AutoSuggestBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Padding="8,6" Spacing="2">
+                            <TextBlock
+                                FontWeight="SemiBold"
+                                MaxLines="1"
+                                Text="{Binding Title}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                MaxLines="1"
+                                Text="{Binding Breadcrumb}"
+                                TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </DataTemplate>
+                </AutoSuggestBox.ItemTemplate>
+            </AutoSuggestBox>
         </Grid>
 
         <Border
@@ -342,281 +392,41 @@
 
             <Grid x:Name="SettingsContentRoot">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <AutoSuggestBox
-                    x:Name="SettingsSearchBox"
-                    Grid.Row="0"
-                    Margin="20,10,20,0"
-                    HorizontalAlignment="Center"
-                    Height="40"
-                    Width="320"
-                    MaxWidth="360"
-                    VerticalContentAlignment="Center"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="0"
-                    QuerySubmitted="SettingsSearchBox_QuerySubmitted"
-                    TextChanged="SettingsSearchBox_TextChanged">
-                    <AutoSuggestBox.QueryIcon>
-                        <SymbolIcon Symbol="Find" />
-                    </AutoSuggestBox.QueryIcon>
-                    <AutoSuggestBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Padding="8,6" Spacing="2">
-                                <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{Binding Breadcrumb}" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </AutoSuggestBox.ItemTemplate>
-                </AutoSuggestBox>
-
                 <ScrollViewer
                     x:Name="PageScroller"
-                    Grid.Row="1"
+                    Grid.Row="0"
                     Padding="20,16,20,38"
                     HorizontalContentAlignment="Stretch"
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto">
                     <StackPanel
                         x:Name="ContentHost"
-                        Width="760"
-                        MaxWidth="760"
+                        Width="{StaticResource SettingsContentMaxWidth}"
+                        MaxWidth="{StaticResource SettingsContentMaxWidth}"
                         HorizontalAlignment="Center"
-                        Spacing="24">
-                <BreadcrumbBar
-                    x:Name="SettingsBreadcrumbBar"
-                    Margin="0,0,0,-12"
-                    HorizontalAlignment="Left"
-                    ItemClicked="SettingsBreadcrumbBar_ItemClicked"
+                        Spacing="16">
+                <Grid
+                    x:Name="SettingsBreadcrumbHost"
                     Visibility="Collapsed">
-                    <BreadcrumbBar.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock
-                                Style="{StaticResource BreadcrumbTextStyle}"
-                                Opacity="{Binding Opacity}"
-                                Text="{Binding Title}" />
-                        </DataTemplate>
-                    </BreadcrumbBar.ItemTemplate>
-                </BreadcrumbBar>
-                <StackPanel
-                    x:Name="AppearanceSection"
-                    Visibility="Collapsed"
-                    Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Appearance" />
-                    <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.Theme.Description"
-                            svc:Localized.HeaderKey="Settings.Theme.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE790;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableThemeDisplayNames}"
-                                SelectedIndex="{Binding SelectedThemeIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="Theme" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.TrayIcon.Description"
-                            svc:Localized.HeaderKey="Settings.TrayIcon.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE713;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableTrayIconStyleDisplayNames}"
-                                SelectedIndex="{Binding SelectedTrayIconStyleIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="TrayIconStyle" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsExpander
-                            IsExpanded="False"
-                            svc:Localized.DescriptionKey="Settings.SystemAccent.Description"
-                            svc:Localized.HeaderKey="Settings.SystemAccent.Title">
-                            <toolkit:SettingsExpander.HeaderIcon>
-                                <FontIcon Glyph="&#xE7E6;" />
-                            </toolkit:SettingsExpander.HeaderIcon>
-                            <ToggleSwitch
-                                OnContent=""
-                                OffContent=""
-                                MinWidth="0"
-                                IsOn="{Binding UseSystemAccentColor, Mode=TwoWay}" />
-                            <toolkit:SettingsExpander.Items>
-                                <toolkit:SettingsCard
-                                    Description="{Binding AccentColorDescription}"
-                                    HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding CanEditCustomAccent}"
-                                    svc:Localized.HeaderKey="Settings.Accent.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE790;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
-                                    <StackPanel Orientation="Vertical" Spacing="8">
-                                        <toolkit:ColorPickerButton
-                                            Width="72"
-                                            Height="34"
-                                            MinWidth="72"
-                                            HorizontalAlignment="Right"
-                                            SelectedColor="{Binding SelectedAccentColor, Mode=TwoWay}"
-                                            svc:Localized.ToolTipKey="Settings.Accent.Tooltip" />
-                                        <StackPanel
-                                            HorizontalAlignment="Right"
-                                            Orientation="Horizontal"
-                                            Spacing="6">
-                                            <Button
-                                                Click="AccentPresetButton_Click"
-                                                Style="{StaticResource AccentSwatchButtonStyle}"
-                                                Tag="#0078D4"
-                                                ToolTipService.ToolTip="#0078D4">
-                                                <Border Width="16" Height="16" Background="#0078D4" CornerRadius="8" />
-                                            </Button>
-                                            <Button
-                                                Click="AccentPresetButton_Click"
-                                                Style="{StaticResource AccentSwatchButtonStyle}"
-                                                Tag="#EF6950"
-                                                ToolTipService.ToolTip="#EF6950">
-                                                <Border Width="16" Height="16" Background="#EF6950" CornerRadius="8" />
-                                            </Button>
-                                            <Button
-                                                Click="AccentPresetButton_Click"
-                                                Style="{StaticResource AccentSwatchButtonStyle}"
-                                                Tag="#2D7D46"
-                                                ToolTipService.ToolTip="#2D7D46">
-                                                <Border Width="16" Height="16" Background="#2D7D46" CornerRadius="8" />
-                                            </Button>
-                                            <Button
-                                                Click="AccentPresetButton_Click"
-                                                Style="{StaticResource AccentSwatchButtonStyle}"
-                                                Tag="#8764B8"
-                                                ToolTipService.ToolTip="#8764B8">
-                                                <Border Width="16" Height="16" Background="#8764B8" CornerRadius="8" />
-                                            </Button>
-                                            <Button
-                                                Click="AccentPresetButton_Click"
-                                                Style="{StaticResource AccentSwatchButtonStyle}"
-                                                Tag="#D83B01"
-                                                ToolTipService.ToolTip="#D83B01">
-                                                <Border Width="16" Height="16" Background="#D83B01" CornerRadius="8" />
-                                            </Button>
-                                            <Button
-                                                Click="AccentPresetButton_Click"
-                                                Style="{StaticResource AccentSwatchButtonStyle}"
-                                                Tag="#038387"
-                                                ToolTipService.ToolTip="#038387">
-                                                <Border Width="16" Height="16" Background="#038387" CornerRadius="8" />
-                                            </Button>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </toolkit:SettingsCard>
-                            </toolkit:SettingsExpander.Items>
-                        </toolkit:SettingsExpander>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceMaterialSettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE790;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Material.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedWidgetMaterialTypeText}" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    Width="156"
-                                    VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableWidgetMaterialTypeDisplayNames}"
-                                    SelectedIndex="{Binding SelectedWidgetMaterialTypeIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="WidgetMaterial" />
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceDensitySettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8A5;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Density.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedLayoutDensityText}" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    Width="156"
-                                    VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableLayoutDensityDisplayNames}"
-                                    SelectedIndex="{Binding SelectedLayoutDensityIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="LayoutDensity" />
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceWindowSettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8B7;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.AppVisual.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedDisplayWidgetChromeModeText}" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    Width="156"
-                                    VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableDisplayWidgetChromeModeDisplayNames}"
-                                    SelectedIndex="{Binding SelectedDisplayWidgetChromeModeIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="DisplayWidgetChromeMode" />
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceAnimationSettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE7B5;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.Animation.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedAnimationPresetText}" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    Width="156"
-                                    VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableAnimationPresetDisplayNames}"
-                                    SelectedIndex="{Binding SelectedAnimationPresetIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="AnimationPreset" />
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </StackPanel>
-
+                    <BreadcrumbBar
+                        x:Name="SettingsBreadcrumbBar"
+                        HorizontalAlignment="Left"
+                        ItemClicked="SettingsBreadcrumbBar_ItemClicked"
+                        Visibility="Collapsed">
+                        <BreadcrumbBar.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock
+                                    Style="{StaticResource BreadcrumbTextStyle}"
+                                    Opacity="{Binding Opacity}"
+                                    Text="{Binding Title}" />
+                            </DataTemplate>
+                        </BreadcrumbBar.ItemTemplate>
+                    </BreadcrumbBar>
+                </Grid>
+                <sections:AppearanceSettingsSection x:Name="AppearanceSection" Visibility="Collapsed" NavigationRequested="SettingsSection_NavigationRequested" />
                 <StackPanel
                     x:Name="AppearanceMaterialSettingsSection"
                     Visibility="Collapsed"
@@ -630,11 +440,9 @@
                                 <FontIcon Glyph="&#xE790;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableWidgetMaterialTypeDisplayNames}"
-                                SelectedIndex="{Binding SelectedWidgetMaterialTypeIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="WidgetMaterial" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableWidgetMaterialTypeOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedWidgetMaterialType, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
@@ -693,11 +501,9 @@
                                     svc:Localized.DescriptionKey="Settings.BorderColor.Description"
                                     svc:Localized.HeaderKey="Settings.BorderColor.Title">
                                     <ComboBox
-                                        MinWidth="176"
-                                        ItemsSource="{Binding AvailableWidgetBorderColorModeDisplayNames}"
-                                        SelectedIndex="{Binding SelectedWidgetBorderColorModeIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="WidgetBorderColor" />
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailableWidgetBorderColorModeOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetBorderColorMode, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
@@ -706,11 +512,9 @@
                                     svc:Localized.DescriptionKey="Settings.Border.Description"
                                     svc:Localized.HeaderKey="Settings.Border.Title">
                                     <ComboBox
-                                        MinWidth="176"
-                                        ItemsSource="{Binding AvailableWidgetBorderStyleDisplayNames}"
-                                        SelectedIndex="{Binding SelectedWidgetBorderStyleIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="WidgetBorder" />
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailableWidgetBorderStyleOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetBorderStyle, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
@@ -718,11 +522,9 @@
                                     svc:Localized.DescriptionKey="Settings.Corner.Description"
                                     svc:Localized.HeaderKey="Settings.Corner.Title">
                                     <ComboBox
-                                        MinWidth="176"
-                                        ItemsSource="{Binding AvailableWidgetCornerPreferenceDisplayNames}"
-                                        SelectedIndex="{Binding SelectedWidgetCornerPreferenceIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="WidgetCorner" />
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailableWidgetCornerPreferenceOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetCornerPreference, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
@@ -740,11 +542,9 @@
                                 <FontIcon Glyph="&#xE8A5;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableLayoutDensityDisplayNames}"
-                                SelectedIndex="{Binding SelectedLayoutDensityIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="LayoutDensity" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableLayoutDensityOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedLayoutDensity, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
@@ -861,11 +661,9 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.DescriptionKey="Settings.WidgetTitleIcon.Description"
                                     svc:Localized.HeaderKey="Settings.WidgetTitleIcon.Title">
                                     <ComboBox
-                                        MinWidth="176"
-                                        ItemsSource="{Binding AvailableWidgetTitleIconModeDisplayNames}"
-                                        SelectedIndex="{Binding SelectedWidgetTitleIconModeIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="WidgetTitleIconMode" />
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailableWidgetTitleIconModeOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetTitleIconMode, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
@@ -876,7 +674,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                         <Button Command="{Binding ResetDisplayWidgetChromeOverridesCommand}" Style="{StaticResource IconActionButtonStyle}" svc:Localized.ToolTipKey="Settings.DisplayWidgetChrome.ResetTooltip">
                                             <FontIcon FontSize="14" Glyph="&#xE72C;" />
                                         </Button>
-                                        <ComboBox MinWidth="176" ItemsSource="{Binding AvailableDisplayWidgetChromeModeDisplayNames}" SelectedIndex="{Binding SelectedDisplayWidgetChromeModeIndex, Mode=OneWay}" SelectionChanged="SettingsComboBox_SelectionChanged" Tag="DisplayWidgetChromeMode" />
+                                        <ComboBox MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableDisplayWidgetChromeModeOptions}" controls:SettingsComboBox.Value="{Binding SelectedDisplayWidgetChromeMode, Mode=TwoWay}" />
                                     </StackPanel>
                                 </toolkit:SettingsCard>
 
@@ -888,7 +686,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                         <Button Command="{Binding ResetInteractiveWidgetChromeOverridesCommand}" Style="{StaticResource IconActionButtonStyle}" svc:Localized.ToolTipKey="Settings.InteractiveWidgetChrome.ResetTooltip">
                                             <FontIcon FontSize="14" Glyph="&#xE72C;" />
                                         </Button>
-                                        <ComboBox MinWidth="176" ItemsSource="{Binding AvailableInteractiveWidgetChromeModeDisplayNames}" SelectedIndex="{Binding SelectedInteractiveWidgetChromeModeIndex, Mode=OneWay}" SelectionChanged="SettingsComboBox_SelectionChanged" Tag="InteractiveWidgetChromeMode" />
+                                        <ComboBox MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableInteractiveWidgetChromeModeOptions}" controls:SettingsComboBox.Value="{Binding SelectedInteractiveWidgetChromeMode, Mode=TwoWay}" />
                                     </StackPanel>
                                 </toolkit:SettingsCard>
                     </StackPanel>
@@ -907,22 +705,18 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 <FontIcon Glyph="&#xE7B5;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableAnimationPresetDisplayNames}"
-                                SelectedIndex="{Binding SelectedAnimationPresetIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="AnimationPreset" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableAnimationPresetOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedAnimationPreset, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
                                     svc:Localized.DescriptionKey="Settings.Animation.Effect.Description"
                                     svc:Localized.HeaderKey="Settings.Animation.Effect.Title">
                                     <ComboBox
-                                        MinWidth="176"
-                                        ItemsSource="{Binding AvailableWidgetAnimationEffectDisplayNames}"
-                                        SelectedIndex="{Binding SelectedWidgetAnimationEffectIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="WidgetAnimationEffect" />
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailableWidgetAnimationEffectOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetAnimationEffect, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
@@ -930,12 +724,10 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.DescriptionKey="Settings.Animation.Speed.Description"
                                     svc:Localized.HeaderKey="Settings.Animation.Speed.Title">
                                     <ComboBox
-                                        MinWidth="176"
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
                                         IsEnabled="{Binding IsSpeedEnabled}"
-                                        ItemsSource="{Binding AvailableWidgetAnimationSpeedDisplayNames}"
-                                        SelectedIndex="{Binding SelectedWidgetAnimationSpeedIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="WidgetAnimationSpeed" />
+                                        ItemsSource="{Binding AvailableWidgetAnimationSpeedOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetAnimationSpeed, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
@@ -943,12 +735,10 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.DescriptionKey="Settings.Animation.Direction.Description"
                                     svc:Localized.HeaderKey="Settings.Animation.Direction.Title">
                                     <ComboBox
-                                        MinWidth="176"
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
                                         IsEnabled="{Binding IsDirectionEnabled}"
-                                        ItemsSource="{Binding AvailableWidgetAnimationSlideDirectionDisplayNames}"
-                                        SelectedIndex="{Binding SelectedWidgetAnimationSlideDirectionIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="WidgetAnimationSlideDirection" />
+                                        ItemsSource="{Binding AvailableWidgetAnimationSlideDirectionOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetAnimationSlideDirection, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
@@ -956,137 +746,25 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.DescriptionKey="Settings.Animation.Easing.Description"
                                     svc:Localized.HeaderKey="Settings.Animation.Easing.Title">
                                     <ComboBox
-                                        MinWidth="176"
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
                                         IsEnabled="{Binding IsEasingEnabled}"
-                                        ItemsSource="{Binding AvailableWidgetAnimationEasingIntensityDisplayNames}"
-                                        SelectedIndex="{Binding SelectedWidgetAnimationEasingIntensityIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="WidgetAnimationEasingIntensity" />
+                                        ItemsSource="{Binding AvailableWidgetAnimationEasingIntensityOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetAnimationEasingIntensity, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                     </StackPanel>
                 </StackPanel>
 
-                <StackPanel
-                    x:Name="CapsuleModeSection"
-                    Visibility="Collapsed"
-                    Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.CapsuleMode" />
-                    <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.Capsule.Enabled.Description"
-                            svc:Localized.HeaderKey="Settings.Capsule.Enabled.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE73F;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch
-                                MinWidth="0"
-                                OffContent=""
-                                OnContent=""
-                                IsOn="{Binding WidgetCapsuleModeEnabled, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" IsEnabled="{Binding WidgetCapsuleModeEnabled}" Style="{StaticResource DrillDownRowStyle}" Tag="CapsuleBehaviorSettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE73F;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.CollapseBehavior.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedWidgetCollapseBehaviorText}" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    Width="156"
-                                    IsEnabled="{Binding WidgetCapsuleModeEnabled}"
-                                    VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableWidgetCollapseBehaviorDisplayNames}"
-                                    SelectedIndex="{Binding SelectedWidgetCollapseBehaviorIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="WidgetCollapseBehavior" />
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" IsEnabled="{Binding WidgetCapsuleModeEnabled}" Style="{StaticResource DrillDownRowStyle}" Tag="CapsuleContentSettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8A5;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.CompactContent.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedWidgetCompactContentModeText}" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    Width="156"
-                                    IsEnabled="{Binding WidgetCapsuleModeEnabled}"
-                                    VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableWidgetCompactContentModeDisplayNames}"
-                                    SelectedIndex="{Binding SelectedWidgetCompactContentModeIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="WidgetCompactContentMode" />
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" IsEnabled="{Binding WidgetCapsuleModeEnabled}" Style="{StaticResource DrillDownRowStyle}" Tag="CapsuleAnimationSettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE7B5;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Capsule.Animation.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedWidgetCompactAnimationEffectText}" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    Width="156"
-                                    IsEnabled="{Binding WidgetCapsuleModeEnabled}"
-                                    VerticalAlignment="Center"
-                                    ItemsSource="{Binding AvailableWidgetCompactAnimationEffectDisplayNames}"
-                                    SelectedIndex="{Binding SelectedWidgetCompactAnimationEffectIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="WidgetCompactAnimationEffect" />
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Button Click="NestedSettingsButton_Click" IsEnabled="{Binding WidgetCapsuleModeEnabled}" Style="{StaticResource DrillDownRowStyle}" Tag="CapsuleOverridesSettings">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                    <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE713;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                        <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Capsule.Overrides.Title" />
-                                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding CapsuleOverrideSummaryText}" />
-                                    </StackPanel>
-                                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                </Grid>
-                            </Button>
-                        </Border>
-                    </StackPanel>
-                </StackPanel>
-
+                <sections:CapsuleModeSettingsSection x:Name="CapsuleModeSection" Visibility="Collapsed" NavigationRequested="SettingsSection_NavigationRequested" />
                 <StackPanel x:Name="CapsuleBehaviorSettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.CollapseBehavior.Description" svc:Localized.HeaderKey="Settings.CollapseBehavior.Title">
-                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE73F;" /></toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox MinWidth="176" ItemsSource="{Binding AvailableWidgetCollapseBehaviorDisplayNames}" SelectedIndex="{Binding SelectedWidgetCollapseBehaviorIndex, Mode=OneWay}" SelectionChanged="SettingsComboBox_SelectionChanged" Tag="WidgetCollapseBehavior" />
-                        </toolkit:SettingsCard>
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding IsSmartWidgetCollapseBehavior}" svc:Localized.DescriptionKey="Settings.Capsule.ExpandDelay.Description" svc:Localized.HeaderKey="Settings.Capsule.ExpandDelay.Title">
+                        <toolkit:SettingsCard Visibility="{Binding WidgetCompactHoverResponseCustomVisibility}" HorizontalContentAlignment="Right" IsEnabled="{Binding WidgetCapsuleModeEnabled}" svc:Localized.DescriptionKey="Settings.Capsule.ExpandDelay.Description" svc:Localized.HeaderKey="Settings.Capsule.ExpandDelay.Title">
                             <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                                 <TextBlock Style="{StaticResource SliderSettingValueTextStyle}" Text="{Binding WidgetCompactExpandDelayText}" />
                                 <Slider Maximum="1000" Minimum="100" StepFrequency="10" Style="{StaticResource InlineMetricSliderStyle}" Value="{Binding WidgetCompactExpandDelayMs, Mode=TwoWay}" />
                             </StackPanel>
                         </toolkit:SettingsCard>
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding IsSmartWidgetCollapseBehavior}" svc:Localized.DescriptionKey="Settings.Capsule.CollapseDelay.Description" svc:Localized.HeaderKey="Settings.Capsule.CollapseDelay.Title">
+                        <toolkit:SettingsCard Visibility="{Binding WidgetCompactHoverResponseCustomVisibility}" HorizontalContentAlignment="Right" IsEnabled="{Binding WidgetCapsuleModeEnabled}" svc:Localized.DescriptionKey="Settings.Capsule.CollapseDelay.Description" svc:Localized.HeaderKey="Settings.Capsule.CollapseDelay.Title">
                             <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                                 <TextBlock Style="{StaticResource SliderSettingValueTextStyle}" Text="{Binding WidgetCompactCollapseDelayText}" />
                                 <Slider Maximum="1500" Minimum="200" StepFrequency="20" Style="{StaticResource InlineMetricSliderStyle}" Value="{Binding WidgetCompactCollapseDelayMs, Mode=TwoWay}" />
@@ -1095,29 +773,24 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                     </StackPanel>
                 </StackPanel>
 
-                <StackPanel x:Name="CapsuleContentSettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
+                <StackPanel x:Name="CapsuleArrangementSettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.CompactContent.Description" svc:Localized.HeaderKey="Settings.CompactContent.Title">
-                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8A5;" /></toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox MinWidth="176" ItemsSource="{Binding AvailableWidgetCompactContentModeDisplayNames}" SelectedIndex="{Binding SelectedWidgetCompactContentModeIndex, Mode=OneWay}" SelectionChanged="SettingsComboBox_SelectionChanged" Tag="WidgetCompactContentMode" />
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding IsWidgetCapsuleBarSpacingEnabled}" svc:Localized.DescriptionKey="Settings.Capsule.Spacing.Description" svc:Localized.HeaderKey="Settings.Capsule.Spacing.Title">
+                            <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Style="{StaticResource SliderSettingValueTextStyle}" Text="{Binding WidgetCapsuleBarSpacingText}" />
+                                <Slider Maximum="32" Minimum="0" StepFrequency="1" Style="{StaticResource InlineMetricSliderStyle}" Value="{Binding WidgetCapsuleBarSpacing, Mode=TwoWay}" />
+                            </StackPanel>
                         </toolkit:SettingsCard>
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.CompactPrivacy.Description" svc:Localized.HeaderKey="Settings.CompactPrivacy.Title">
-                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding WidgetCompactHideSensitiveContent, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.Capsule.MediaCorner.Description" svc:Localized.HeaderKey="Settings.Capsule.MediaCorner.Title">
-                            <ComboBox MinWidth="176" ItemsSource="{Binding AvailableWidgetCompactMediaCornerDisplayNames}" SelectedIndex="{Binding SelectedWidgetCompactMediaCornerIndex, Mode=OneWay}" SelectionChanged="SettingsComboBox_SelectionChanged" Tag="WidgetCompactMediaCornerMode" />
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding IsWidgetCapsuleBarEnabled}" svc:Localized.DescriptionKey="Settings.Capsule.Direction.Description" svc:Localized.HeaderKey="Settings.Capsule.Direction.Title">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72A;" /></toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableWidgetCapsuleBarDirectionOptions}" controls:SettingsComboBox.Value="{Binding SelectedWidgetCapsuleBarDirection, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
 
                 <StackPanel x:Name="CapsuleAnimationSettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.Capsule.Animation.Description" svc:Localized.HeaderKey="Settings.Capsule.Animation.Title">
-                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7B5;" /></toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox MinWidth="176" ItemsSource="{Binding AvailableWidgetCompactAnimationEffectDisplayNames}" SelectedIndex="{Binding SelectedWidgetCompactAnimationEffectIndex, Mode=OneWay}" SelectionChanged="SettingsComboBox_SelectionChanged" Tag="WidgetCompactAnimationEffect" />
-                        </toolkit:SettingsCard>
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding IsWidgetCompactAnimationEnabled}" svc:Localized.DescriptionKey="Settings.Capsule.AnimationDuration.Description" svc:Localized.HeaderKey="Settings.Capsule.AnimationDuration.Title">
+                        <toolkit:SettingsCard Visibility="{Binding WidgetCompactAnimationCustomVisibility}" HorizontalContentAlignment="Right" IsEnabled="{Binding WidgetCapsuleModeEnabled}" svc:Localized.DescriptionKey="Settings.Capsule.AnimationDuration.Description" svc:Localized.HeaderKey="Settings.Capsule.AnimationDuration.Title">
                             <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                                 <TextBlock Style="{StaticResource SliderSettingValueTextStyle}" Text="{Binding WidgetCompactAnimationDurationText}" />
                                 <Slider Maximum="400" Minimum="120" StepFrequency="10" Style="{StaticResource InlineMetricSliderStyle}" Value="{Binding WidgetCompactAnimationDurationMs, Mode=TwoWay}" />
@@ -1128,94 +801,36 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                 <StackPanel x:Name="CapsuleOverridesSettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <toolkit:SettingsCard Description="{Binding CapsuleBehaviorOverrideSummaryText}" HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Capsule.Overrides.Behavior.Title">
-                            <Button Command="{Binding ResetCapsuleBehaviorOverridesCommand}" IsEnabled="{Binding HasCapsuleBehaviorOverrides}">
-                                <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon FontSize="13" Glyph="&#xE777;" /><TextBlock svc:Localized.Key="Settings.Capsule.Overrides.ResetBehavior" /></StackPanel>
-                            </Button>
+                        <toolkit:SettingsCard Visibility="{Binding CapsuleOverridesEmptyVisibility}" svc:Localized.DescriptionKey="Settings.Capsule.Overrides.Empty.Description" svc:Localized.HeaderKey="Settings.Capsule.Overrides.Empty.Title">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE73E;" /></toolkit:SettingsCard.HeaderIcon>
                         </toolkit:SettingsCard>
-                        <toolkit:SettingsCard Description="{Binding CapsuleGeometryOverrideSummaryText}" HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Capsule.Overrides.Geometry.Title">
-                            <Button Command="{Binding ResetCapsuleGeometryOverridesCommand}" IsEnabled="{Binding HasCapsuleGeometryOverrides}">
-                                <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon FontSize="13" Glyph="&#xE72C;" /><TextBlock svc:Localized.Key="Settings.Capsule.Overrides.ResetGeometry" /></StackPanel>
+                        <ItemsControl ItemsSource="{Binding CapsuleOverrideItems}" Visibility="{Binding CapsuleOverridesListVisibility}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource SettingsGroupStyle}" Margin="0,0,0,4">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="16,10" MinHeight="64">
+                                            <FontIcon Grid.Column="0" FontSize="18" Glyph="{Binding Glyph}" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                                                <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="{Binding DisplayName}" />
+                                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding Summary}" />
+                                            </StackPanel>
+                                            <Button Grid.Column="2" Click="ResetCapsuleWidgetOverrideButton_Click" Tag="{Binding WidgetId}" VerticalAlignment="Center">
+                                                <TextBlock svc:Localized.Key="Settings.Capsule.Overrides.FollowGlobal" />
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <toolkit:SettingsCard Visibility="{Binding CapsuleOverridesListVisibility}" HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.Capsule.Overrides.ResetAll.Description" svc:Localized.HeaderKey="Settings.Capsule.Overrides.ResetAll.Title">
+                            <Button Command="{Binding ResetAllCapsuleOverridesCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon FontSize="13" Glyph="&#xE777;" /><TextBlock svc:Localized.Key="Settings.Capsule.Overrides.ResetAll.Action" /></StackPanel>
                             </Button>
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
 
-                <StackPanel
-                    x:Name="AppearanceDetailSection"
-                    Visibility="Collapsed"
-                    Style="{StaticResource SectionPanelStyle}">
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Appearance.DetailTitle" />
-                    <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="FileDisplaySettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8A5;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.FileLayout.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Group.FileLayout.Description" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ToggleSwitch
-                                    Grid.Column="1"
-                                    MinWidth="0"
-                                    OffContent=""
-                                    OnContent=""
-                                    VerticalAlignment="Center"
-                                    IsOn="{Binding ShowFileExtensions, Mode=TwoWay}" />
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="FileStackSettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE81E;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.FileStacks.Title" />
-                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding FileStackSettingsSummaryText}" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <ToggleSwitch
-                                    Grid.Column="1"
-                                    MinWidth="0"
-                                    OffContent=""
-                                    OnContent=""
-                                    VerticalAlignment="Center"
-                                    IsOn="{Binding FileStacksEnabled, Mode=TwoWay}" />
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
-                                <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="FileStorageSettings">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8B7;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.FileStorage.Title" />
-                                            <TextBlock MaxLines="1" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding ManagedStorageRootPath}" TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                        <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <Button
-                                    Grid.Column="1"
-                                    Click="OpenManagedStoragePathButton_Click"
-                                    Style="{StaticResource IconActionButtonStyle}"
-                                    VerticalAlignment="Center"
-                                    svc:Localized.ToolTipKey="Settings.ManagedPath.OpenTooltip">
-                                    <SymbolIcon Symbol="OpenFile" />
-                                </Button>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </StackPanel>
-
+                <sections:FileWidgetSettingsSection x:Name="AppearanceDetailSection" Visibility="Collapsed" NavigationRequested="SettingsSection_NavigationRequested" OpenManagedStorageRequested="OpenManagedStoragePathButton_Click" />
                 <StackPanel x:Name="FileDisplaySettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
                         <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.ShowFileExtensions.Description" svc:Localized.HeaderKey="Settings.ShowFileExtensions.Title">
@@ -1245,6 +860,13 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                         <toolkit:SettingsCard ContentAlignment="Vertical" HorizontalContentAlignment="Stretch" Padding="20,16" svc:Localized.HeaderKey="Settings.Group.FileStorage.Title">
                             <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8B7;" /></toolkit:SettingsCard.HeaderIcon>
                             <StackPanel Spacing="12">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                    <StackPanel Spacing="3" VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DropAction.Title" />
+                                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" TextWrapping="Wrap" svc:Localized.Key="Settings.DropAction.Description" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableManagedDropActionOptions}" controls:SettingsComboBox.Value="{Binding SelectedManagedDropAction, Mode=TwoWay}" />
+                                </Grid>
                                 <TextBox IsReadOnly="True" Text="{Binding ManagedStorageRootPath, Mode=OneWay}" TextWrapping="NoWrap" />
                                 <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding QuickAccessStatusText}" />
                                 <StackPanel x:Name="PathActionsPanel" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
@@ -1291,11 +913,9 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             svc:Localized.DescriptionKey="Settings.FileStacks.GroupBy.Description"
                             svc:Localized.HeaderKey="Settings.FileStacks.GroupBy.Title">
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableFileStackGroupByDisplayNames}"
-                                SelectedIndex="{Binding SelectedFileStackGroupByIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="FileStackGroupBy" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableFileStackGroupByOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedFileStackGroupBy, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -1304,11 +924,9 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             svc:Localized.DescriptionKey="Settings.FileStacks.Threshold.Description"
                             svc:Localized.HeaderKey="Settings.FileStacks.Threshold.Title">
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableFileStackThresholdDisplayNames}"
-                                SelectedIndex="{Binding SelectedFileStackThresholdIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="FileStackThreshold" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableFileStackThresholdOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedFileStackThreshold, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -1317,11 +935,9 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             svc:Localized.DescriptionKey="Settings.FileStacks.OrderBy.Description"
                             svc:Localized.HeaderKey="Settings.FileStacks.OrderBy.Title">
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableFileStackOrderByDisplayNames}"
-                                SelectedIndex="{Binding SelectedFileStackOrderByIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="FileStackOrderBy" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableFileStackOrderByOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedFileStackOrderBy, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <StackPanel
@@ -1333,11 +949,9 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 svc:Localized.DescriptionKey="Settings.FileStacks.Unmatched.Description"
                                 svc:Localized.HeaderKey="Settings.FileStacks.Unmatched.Title">
                                 <ComboBox
-                                    MinWidth="176"
-                                    ItemsSource="{Binding AvailableFileStackUnmatchedBehaviorDisplayNames}"
-                                    SelectedIndex="{Binding SelectedFileStackUnmatchedBehaviorIndex, Mode=OneWay}"
-                                    SelectionChanged="SettingsComboBox_SelectionChanged"
-                                    Tag="FileStackUnmatchedBehavior" />
+                                    MinWidth="{StaticResource SettingsControlMinWidth}"
+                                    ItemsSource="{Binding AvailableFileStackUnmatchedBehaviorOptions}"
+                                    controls:SettingsComboBox.Value="{Binding SelectedFileStackUnmatchedBehavior, Mode=TwoWay}" />
                             </toolkit:SettingsCard>
 
                             <Border Style="{StaticResource SettingsGroupStyle}">
@@ -1473,98 +1087,96 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                     Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Interaction" />
                     <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <toolkit:SettingsExpander
-                            IsExpanded="False"
-                            svc:Localized.DescriptionKey="Settings.Group.HoverActions.Description"
-                            svc:Localized.HeaderKey="Settings.Group.HoverActions.Title">
-                            <toolkit:SettingsExpander.HeaderIcon>
-                                <FontIcon Glyph="&#xE7C9;" />
-                            </toolkit:SettingsExpander.HeaderIcon>
-                            <ToggleSwitch
-                                MinWidth="0"
-                                OffContent=""
-                                OnContent=""
-                                IsOn="{Binding ShowHoverButtons, Mode=TwoWay}" />
-                            <toolkit:SettingsExpander.Items>
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding ShowHoverButtons}"
-                                    svc:Localized.DescriptionKey="Settings.HoverButtonActions.Description"
-                                    svc:Localized.HeaderKey="Settings.HoverButtonActions.Title">
-                                    <DropDownButton
-                                        MinWidth="176"
-                                        MaxWidth="260"
-                                        HorizontalAlignment="Right"
-                                        Click="HoverButtonActionsDropDown_Click"
-                                        Content="{Binding HoverButtonActionsSummaryText}" />
-                                </toolkit:SettingsCard>
-                            </toolkit:SettingsExpander.Items>
-                        </toolkit:SettingsExpander>
+                        <Border Style="{StaticResource SettingsGroupStyle}">
+                            <Button Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="InteractionHotkeySettings">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                    <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE765;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Interaction.Hotkeys.Title" />
+                                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding GlobalHotkeyText}" />
+                                    </StackPanel>
+                                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                        </Border>
+                        <Border Style="{StaticResource SettingsGroupStyle}">
+                            <Button Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="InteractionHoverSettings">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+                                    <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE7C9;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Interaction.Hover.Title" />
+                                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Interaction.Hover.Description" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="2" MinWidth="0" OffContent="" OnContent="" IsHitTestVisible="False" IsOn="{Binding ShowHoverButtons, Mode=OneWay}" />
+                                    <FontIcon Grid.Column="3" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                        </Border>
+                        <Border Style="{StaticResource SettingsGroupStyle}">
+                            <Button Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="InteractionWindowSettings">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                    <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE7C9;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Interaction.Window.Title" />
+                                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Interaction.Window.Description" />
+                                    </StackPanel>
+                                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
 
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            Description="{Binding GlobalHotkeyDescription}"
-                            svc:Localized.HeaderKey="Settings.GlobalHotkey.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE765;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch
-                                OnContent=""
-                                OffContent=""
-                                MinWidth="0"
-                                IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}" />
+                <StackPanel x:Name="InteractionHotkeySettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
+                    <StackPanel Margin="0,8,0,0" Spacing="4">
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" Description="{Binding GlobalHotkeyDescription}" svc:Localized.HeaderKey="Settings.GlobalHotkey.Title">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            ContentAlignment="Vertical"
-                            HorizontalContentAlignment="Stretch"
-                            svc:Localized.HeaderKey="Settings.GlobalHotkey.CustomTitle">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE765;" />
-                            </toolkit:SettingsCard.HeaderIcon>
+                        <toolkit:SettingsCard ContentAlignment="Vertical" HorizontalContentAlignment="Stretch" svc:Localized.HeaderKey="Settings.GlobalHotkey.CustomTitle">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
                             <Grid RowSpacing="10">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <TextBlock
-                                    Grid.Row="0"
-                                    VerticalAlignment="Center"
-                                    Style="{StaticResource SettingDescriptionTextStyle}"
-                                    Text="{Binding GlobalHotkeyStatusText}" />
-                                <Grid
-                                    x:Name="GlobalHotkeyActionsPanel"
-                                    Grid.Row="1"
-                                    MinWidth="252"
-                                    HorizontalAlignment="Right"
-                                    ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Button
-                                        x:Name="GlobalHotkeyCaptureButton"
-                                        Grid.Column="0"
-                                        MinWidth="132"
-                                        HorizontalAlignment="Stretch"
-                                        Click="ChangeGlobalHotkeyButton_Click"
-                                        KeyDown="GlobalHotkeyCaptureButton_KeyDown"
-                                        LostFocus="GlobalHotkeyCaptureButton_LostFocus"
-                                        Style="{StaticResource ActionButtonStyle}"
-                                        svc:Localized.ToolTipKey="Settings.GlobalHotkey.ChangeTooltip" />
-                                    <Button
-                                        x:Name="ResetGlobalHotkeyButton"
-                                        Grid.Column="1"
-                                        Click="ResetGlobalHotkeyButton_Click"
-                                        Style="{StaticResource ActionButtonStyle}"
-                                        svc:Localized.ToolTipKey="Settings.GlobalHotkey.ResetTooltip">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <SymbolIcon Symbol="Refresh" />
-                                            <TextBlock svc:Localized.Key="Common.Restore" />
-                                        </StackPanel>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" VerticalAlignment="Center" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding GlobalHotkeyStatusText}" />
+                                <Grid x:Name="GlobalHotkeyActionsPanel" Grid.Row="1" MinWidth="252" HorizontalAlignment="Right" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <Button x:Name="GlobalHotkeyCaptureButton" Grid.Column="0" MinWidth="132" HorizontalAlignment="Stretch" Click="ChangeGlobalHotkeyButton_Click" KeyDown="GlobalHotkeyCaptureButton_KeyDown" LostFocus="GlobalHotkeyCaptureButton_LostFocus" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.GlobalHotkey.ChangeTooltip" />
+                                    <Button x:Name="ResetGlobalHotkeyButton" Grid.Column="1" Click="ResetGlobalHotkeyButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.GlobalHotkey.ResetTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Refresh" /><TextBlock svc:Localized.Key="Common.Restore" /></StackPanel>
                                     </Button>
                                 </Grid>
                             </Grid>
+                        </toolkit:SettingsCard>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel x:Name="InteractionHoverSettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
+                    <StackPanel Margin="0,8,0,0" Spacing="4">
+                        <toolkit:SettingsExpander IsExpanded="True" svc:Localized.DescriptionKey="Settings.Group.HoverActions.Description" svc:Localized.HeaderKey="Settings.Group.HoverActions.Title">
+                            <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE7C9;" /></toolkit:SettingsExpander.HeaderIcon>
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding ShowHoverButtons, Mode=TwoWay}" />
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding ShowHoverButtons}" svc:Localized.DescriptionKey="Settings.HoverButtonActions.Description" svc:Localized.HeaderKey="Settings.HoverButtonActions.Title">
+                                    <DropDownButton MinWidth="{StaticResource SettingsControlMinWidth}" MaxWidth="260" HorizontalAlignment="Right" Click="HoverButtonActionsDropDown_Click" Content="{Binding HoverButtonActionsSummaryText}" />
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel x:Name="InteractionWindowSettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
+                    <StackPanel Margin="0,8,0,0" Spacing="4">
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.DoubleClick.Description" svc:Localized.HeaderKey="Settings.DoubleClick.Title">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7C9;" /></toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding DoubleClickToOpen, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.ResizeSnap.Description" svc:Localized.HeaderKey="Settings.ResizeSnap.Title">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE742;" /></toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding ResizeSnapEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.WidgetLayerMode.Description" svc:Localized.HeaderKey="Settings.WidgetLayerMode.Title">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE81E;" /></toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableWidgetLayerModeOptions}" controls:SettingsComboBox.Value="{Binding SelectedWidgetLayerMode, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
@@ -1661,18 +1273,14 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.HeaderKey="Settings.QuickCapture.DefaultView.Title">
                                     <ComboBox
                                         MinWidth="150"
-                                        ItemsSource="{Binding AvailableQuickCaptureDefaultViewDisplayNames}"
-                                        SelectedIndex="{Binding SelectedQuickCaptureDefaultViewIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="QuickCaptureDefaultView" />
+                                        ItemsSource="{Binding AvailableQuickCaptureDefaultViewOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedQuickCaptureDefaultView, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                                 <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.QuickCapture.TabStyle.Title">
                                     <ComboBox
                                         MinWidth="150"
-                                        ItemsSource="{Binding AvailableQuickCaptureTabStyleDisplayNames}"
-                                        SelectedIndex="{Binding SelectedQuickCaptureTabStyleIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="QuickCaptureTabStyle" />
+                                        ItemsSource="{Binding AvailableQuickCaptureTabStyleOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedQuickCaptureTabStyle, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                                 <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.QuickCapture.Tabs.Records">
                                     <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureShowRecordsTab, Mode=TwoWay}" />
@@ -1695,10 +1303,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.HeaderKey="Settings.ContentEditor.PreviewLines.Title">
                                     <ComboBox
                                         MinWidth="260"
-                                        ItemsSource="{Binding AvailableItemPreviewLineCountDisplayNames}"
-                                        SelectedIndex="{Binding SelectedQuickCaptureItemPreviewLineCountIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="QuickCapturePreviewLines" />
+                                        ItemsSource="{Binding AvailableItemPreviewLineCountOptions}"
+                                        controls:SettingsComboBox.Value="{Binding QuickCaptureItemPreviewLineCount, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
@@ -1706,10 +1312,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.HeaderKey="Settings.ContentEditor.EnterBehavior.Title">
                                     <ComboBox
                                         MinWidth="260"
-                                        ItemsSource="{Binding AvailableEditorEnterBehaviorDisplayNames}"
-                                        SelectedIndex="{Binding SelectedQuickCaptureEditorEnterBehaviorIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="QuickCaptureEnterBehavior" />
+                                        ItemsSource="{Binding AvailableEditorEnterBehaviorOptions}"
+                                        controls:SettingsComboBox.Value="{Binding QuickCaptureEditorEnterBehavior, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
 
@@ -1852,18 +1456,14 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.DefaultFilter.Title">
                                     <ComboBox
                                         MinWidth="150"
-                                        ItemsSource="{Binding AvailableTodoDefaultFilterDisplayNames}"
-                                        SelectedIndex="{Binding SelectedTodoDefaultFilterIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="TodoDefaultFilter" />
+                                        ItemsSource="{Binding AvailableTodoDefaultFilterOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedTodoDefaultFilter, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                                 <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.TabStyle.Title">
                                     <ComboBox
                                         MinWidth="150"
-                                        ItemsSource="{Binding AvailableTodoTabStyleDisplayNames}"
-                                        SelectedIndex="{Binding SelectedTodoTabStyleIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="TodoTabStyle" />
+                                        ItemsSource="{Binding AvailableTodoTabStyleOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedTodoTabStyle, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                                 <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.All"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowAllTab, Mode=TwoWay}" /></toolkit:SettingsCard>
                                 <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.Active"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowActiveTab, Mode=TwoWay}" /></toolkit:SettingsCard>
@@ -1884,10 +1484,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.HeaderKey="Settings.ContentEditor.PreviewLines.Title">
                                     <ComboBox
                                         MinWidth="260"
-                                        ItemsSource="{Binding AvailableItemPreviewLineCountDisplayNames}"
-                                        SelectedIndex="{Binding SelectedTodoItemPreviewLineCountIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="TodoPreviewLines" />
+                                        ItemsSource="{Binding AvailableItemPreviewLineCountOptions}"
+                                        controls:SettingsComboBox.Value="{Binding TodoItemPreviewLineCount, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
@@ -1895,10 +1493,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.HeaderKey="Settings.ContentEditor.EnterBehavior.Title">
                                     <ComboBox
                                         MinWidth="260"
-                                        ItemsSource="{Binding AvailableEditorEnterBehaviorDisplayNames}"
-                                        SelectedIndex="{Binding SelectedTodoEditorEnterBehaviorIndex, Mode=OneWay}"
-                                        SelectionChanged="SettingsComboBox_SelectionChanged"
-                                        Tag="TodoEnterBehavior" />
+                                        ItemsSource="{Binding AvailableEditorEnterBehaviorOptions}"
+                                        controls:SettingsComboBox.Value="{Binding TodoEditorEnterBehavior, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
 
@@ -1911,10 +1507,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
                                 MinWidth="150"
-                                ItemsSource="{Binding AvailableTodoNewTaskPositionDisplayNames}"
-                                SelectedIndex="{Binding SelectedTodoNewTaskPositionIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="TodoNewTaskPosition" />
+                                ItemsSource="{Binding AvailableTodoNewTaskPositionOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedTodoNewTaskPosition, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -1941,10 +1535,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             <ComboBox
                                 MinWidth="150"
                                 IsEnabled="{Binding TodoReminderEnabled}"
-                                ItemsSource="{Binding AvailableTodoReminderOffsetDisplayNames}"
-                                SelectedIndex="{Binding SelectedTodoReminderOffsetMinutesIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="TodoReminderOffset" />
+                                ItemsSource="{Binding AvailableTodoReminderOffsetOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedTodoReminderOffsetMinutes, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -2014,11 +1606,9 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 <FontIcon Glyph="&#xE8B9;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableMusicDisplayModeDisplayNames}"
-                                SelectedIndex="{Binding SelectedMusicDisplayModeIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="MusicDisplayMode" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableMusicDisplayModeOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedMusicDisplayMode, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -2033,6 +1623,19 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding MusicUseArtworkBackdrop, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Capsule.MediaCorner.Description"
+                            svc:Localized.HeaderKey="Settings.Capsule.MediaCorner.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xEB9F;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableWidgetCompactMediaCornerOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactMediaCornerMode, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsExpander
@@ -2136,10 +1739,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
                                 MinWidth="150"
-                                ItemsSource="{Binding AvailableWeatherTemperatureUnitDisplayNames}"
-                                SelectedIndex="{Binding SelectedWeatherTemperatureUnitIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="WeatherTemperatureUnit" />
+                                ItemsSource="{Binding AvailableWeatherTemperatureUnitOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedWeatherTemperatureUnit, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -2151,10 +1752,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
                                 MinWidth="150"
-                                ItemsSource="{Binding AvailableWeatherWindSpeedUnitDisplayNames}"
-                                SelectedIndex="{Binding SelectedWeatherWindSpeedUnitIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="WeatherWindSpeedUnit" />
+                                ItemsSource="{Binding AvailableWeatherWindSpeedUnitOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedWeatherWindSpeedUnit, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -2166,10 +1765,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
                                 MinWidth="150"
-                                ItemsSource="{Binding AvailableWeatherDefaultViewDisplayNames}"
-                                SelectedIndex="{Binding SelectedWeatherDefaultViewIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="WeatherDefaultView" />
+                                ItemsSource="{Binding AvailableWeatherDefaultViewOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedWeatherDefaultView, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -2181,10 +1778,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
                                 MinWidth="150"
-                                ItemsSource="{Binding AvailableWeatherSkinDisplayNames}"
-                                SelectedIndex="{Binding SelectedWeatherSkinIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="WeatherSkin" />
+                                ItemsSource="{Binding AvailableWeatherSkinOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedWeatherSkin, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -2196,10 +1791,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
                                 MinWidth="150"
-                                ItemsSource="{Binding AvailableWeatherRefreshIntervalDisplayNames}"
-                                SelectedIndex="{Binding SelectedWeatherRefreshIntervalIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="WeatherRefreshInterval" />
+                                ItemsSource="{Binding AvailableWeatherRefreshIntervalOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedWeatherRefreshInterval, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
@@ -2299,11 +1892,9 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 <FontIcon Glyph="&#xE774;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableLanguageDisplayNames}"
-                                SelectedIndex="{Binding SelectedLanguageIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="Language" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableLanguageOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedLanguage, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -2322,60 +1913,15 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.DoubleClick.Description"
-                            svc:Localized.HeaderKey="Settings.DoubleClick.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE7C9;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch
-                                OnContent=""
-                                OffContent=""
-                                MinWidth="0"
-                                IsOn="{Binding DoubleClickToOpen, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.AttachmentStorageMode.Description"
                             svc:Localized.HeaderKey="Settings.AttachmentStorageMode.Title">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE723;" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableAttachmentStorageModeDisplayNames}"
-                                SelectedIndex="{Binding SelectedAttachmentStorageModeIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="AttachmentStorageMode" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.ResizeSnap.Description"
-                            svc:Localized.HeaderKey="Settings.ResizeSnap.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE742;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch
-                                OnContent=""
-                                OffContent=""
-                                MinWidth="0"
-                                IsOn="{Binding ResizeSnapEnabled, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.WidgetLayerMode.Description"
-                            svc:Localized.HeaderKey="Settings.WidgetLayerMode.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE81E;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox
-                                MinWidth="176"
-                                ItemsSource="{Binding AvailableWidgetLayerModeDisplayNames}"
-                                SelectedIndex="{Binding SelectedWidgetLayerModeIndex, Mode=OneWay}"
-                                SelectionChanged="SettingsComboBox_SelectionChanged"
-                                Tag="WidgetLayerMode" />
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableAttachmentStorageModeOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedAttachmentStorageMode, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -2476,33 +2022,56 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                     Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
                         <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
+                            ContentAlignment="Vertical"
+                            HorizontalContentAlignment="Stretch"
                             svc:Localized.DescriptionKey="Settings.DataBackup.Description"
                             svc:Localized.HeaderKey="Settings.DataBackup.Title">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE74E;" />
                             </toolkit:SettingsCard.HeaderIcon>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button
-                                    x:Name="RestoreDataBackupButton"
-                                    Click="RestoreDataBackupButton_Click"
-                                    Style="{StaticResource ActionButtonStyle}"
-                                    svc:Localized.ToolTipKey="Settings.DataBackup.RestoreTooltip">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon FontSize="14" Glyph="&#xE777;" />
-                                        <TextBlock svc:Localized.Key="Settings.DataBackup.Restore" />
-                                    </StackPanel>
-                                </Button>
-                                <Button
-                                    x:Name="ExportDataBackupButton"
-                                    Click="ExportDataBackupButton_Click"
-                                    Style="{StaticResource ActionButtonStyle}"
-                                    svc:Localized.ToolTipKey="Settings.DataBackup.Tooltip">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon FontSize="14" Glyph="&#xE74E;" />
-                                        <TextBlock svc:Localized.Key="Settings.DataBackup.Export" />
-                                    </StackPanel>
-                                </Button>
+                            <StackPanel Spacing="12">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="RestoreDataBackupButton" Click="RestoreDataBackupButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.DataBackup.RestoreTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon FontSize="14" Glyph="&#xE777;" /><TextBlock svc:Localized.Key="Settings.DataBackup.Restore" /></StackPanel>
+                                    </Button>
+                                    <Button x:Name="ExportDataBackupButton" Click="ExportDataBackupButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.DataBackup.Tooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon FontSize="14" Glyph="&#xE74E;" /><TextBlock svc:Localized.Key="Settings.DataBackup.Export" /></StackPanel>
+                                    </Button>
+                                    <Button x:Name="CreateBackupSnapshotButton" Click="CreateBackupSnapshotButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.DataBackup.Snapshots.BackupNowTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon FontSize="14" Glyph="&#xE74E;" /><TextBlock svc:Localized.Key="Settings.DataBackup.Snapshots.BackupNow" /></StackPanel>
+                                    </Button>
+                                    <Button x:Name="OpenBackupFolderButton" Click="OpenBackupFolderButton_Click" Style="{StaticResource ActionButtonStyle}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="OpenFile" /><TextBlock svc:Localized.Key="Settings.DataBackup.Snapshots.OpenFolder" /></StackPanel>
+                                    </Button>
+                                    <Button x:Name="RefreshBackupSnapshotsButton" Click="RefreshBackupSnapshotsButton_Click" Style="{StaticResource ActionButtonStyle}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Refresh" /><TextBlock svc:Localized.Key="Settings.DataBackup.Snapshots.Refresh" /></StackPanel>
+                                    </Button>
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DataBackup.Snapshots.Title" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" TextWrapping="Wrap" svc:Localized.Key="Settings.DataBackup.Snapshots.Description" />
+                                </StackPanel>
+                                <TextBlock x:Name="BackupSnapshotSummaryText" Style="{StaticResource SettingDescriptionTextStyle}" TextWrapping="Wrap" />
+                                <ListView x:Name="BackupSnapshotsList" SelectionMode="None" IsItemClickEnabled="False">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="10,8" Margin="0,2" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4">
+                                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                                    <StackPanel Grid.Column="0" Spacing="2">
+                                                        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding Details}" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" Click="RestoreSnapshotButton_Click" IsEnabled="{Binding CanRestore}" Style="{StaticResource ActionButtonStyle}">
+                                                        <TextBlock svc:Localized.Key="Settings.DataBackup.Snapshots.Restore" />
+                                                    </Button>
+                                                    <Button Grid.Column="2" Click="DeleteSnapshotButton_Click" Style="{StaticResource ActionButtonStyle}">
+                                                        <TextBlock svc:Localized.Key="Settings.DataBackup.Snapshots.Delete" />
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
                             </StackPanel>
                         </toolkit:SettingsCard>
                     </StackPanel>

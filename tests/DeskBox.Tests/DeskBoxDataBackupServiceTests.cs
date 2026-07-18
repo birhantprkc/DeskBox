@@ -131,6 +131,44 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAutomaticSnapshotNowAsync_CreatesSnapshotEvenWhenOneAlreadyExistsToday()
+    {
+        string dataDirectory = Directory.CreateDirectory(Path.Combine(_appDataRoot, "data")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(dataDirectory, "settings.json"), "{}");
+        var service = new DeskBoxDataBackupService(_appDataRoot);
+
+        string? firstPath = await service.CreateAutomaticSnapshotNowAsync();
+        string? secondPath = await service.CreateAutomaticSnapshotNowAsync();
+
+        Assert.NotNull(firstPath);
+        Assert.NotNull(secondPath);
+        Assert.NotEqual(firstPath, secondPath);
+        Assert.Equal(2, Directory.EnumerateFiles(service.AutomaticSnapshotDirectory, "*.zip").Count());
+    }
+
+    [Fact]
+    public async Task SnapshotInventory_ReportsUnreadableEntriesAndAllowsManagedDeletion()
+    {
+        string dataDirectory = Directory.CreateDirectory(Path.Combine(_appDataRoot, "data")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(dataDirectory, "settings.json"), "{}");
+        var service = new DeskBoxDataBackupService(_appDataRoot);
+        string snapshotPath = Assert.IsType<string>(await service.CreateAutomaticSnapshotNowAsync());
+        Directory.CreateDirectory(service.PreRestoreBackupDirectory);
+        string unreadablePath = Path.Combine(service.PreRestoreBackupDirectory, "DeskBox-PreRestore-broken.zip");
+        await File.WriteAllTextAsync(unreadablePath, "not a zip archive");
+
+        IReadOnlyList<DeskBoxBackupSnapshotInfo> snapshots = await service.GetSnapshotInventoryAsync();
+
+        Assert.Equal(2, snapshots.Count);
+        Assert.Contains(snapshots, snapshot => snapshot.Path == snapshotPath && snapshot.IsReadable);
+        Assert.Contains(snapshots, snapshot => snapshot.Path == unreadablePath && !snapshot.IsReadable);
+        Assert.True(await service.DeleteSnapshotAsync(unreadablePath));
+        Assert.False(File.Exists(unreadablePath));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.DeleteSnapshotAsync(Path.Combine(_exportRoot, "outside.zip")));
+    }
+
+    [Fact]
     public async Task PrepareAndApplyRestore_ReplacesDataAndRebasesManagedAttachments()
     {
         string sourceRoot = Directory.CreateDirectory(Path.Combine(_tempRoot, "source-app-data")).FullName;
@@ -139,6 +177,7 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
         {
             Language = "zh-CN",
             WidgetCapsuleModeEnabled = true,
+            WidgetCompactWidthMode = SettingsService.WidgetCompactWidthModeIndependent,
             WidgetCompactContentMode = SettingsService.WidgetCompactContentModeSummary,
             FileStacksEnabled = true,
             FileStackGroupBy = SettingsService.FileStackGroupByCustom,
@@ -253,6 +292,9 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
             await File.ReadAllTextAsync(Path.Combine(targetData, "settings.json")),
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
         Assert.True(restoredSettings.WidgetCapsuleModeEnabled);
+        Assert.Equal(
+            SettingsService.WidgetCompactWidthModeIndependent,
+            restoredSettings.WidgetCompactWidthMode);
         Assert.Equal(SettingsService.WidgetCompactContentModeSummary, restoredSettings.WidgetCompactContentMode);
         Assert.True(restoredSettings.FileStacksEnabled);
         Assert.Equal(SettingsService.FileStackUnmatchedOther, restoredSettings.FileStackUnmatchedBehavior);

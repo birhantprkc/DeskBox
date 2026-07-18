@@ -298,7 +298,8 @@ public sealed class SettingsServiceTests : IDisposable
               "todoReminderEnabled": false,
               "todoDefaultReminderOffsetMinutes": 999,
               "todoItemPreviewLineCount": -4,
-              "todoEditorEnterBehavior": "unexpected"
+              "todoEditorEnterBehavior": "unexpected",
+              "managedDropAction": "Copy"
             }
             """);
 
@@ -317,6 +318,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(
             SettingsService.EditorEnterBehaviorCtrlEnterSaves,
             service.Settings.TodoEditorEnterBehavior);
+        Assert.Equal(SettingsService.ManagedDropActionCopy, service.Settings.ManagedDropAction);
     }
 
     [Theory]
@@ -488,6 +490,40 @@ public sealed class SettingsServiceTests : IDisposable
 
     [Theory]
     [InlineData(
+        SettingsService.SensitiveWidgetCompactExpandDelayMs,
+        SettingsService.SensitiveWidgetCompactCollapseDelayMs,
+        SettingsService.WidgetCompactHoverResponseSensitive)]
+    [InlineData(
+        SettingsService.DefaultWidgetCompactExpandDelayMs,
+        SettingsService.DefaultWidgetCompactCollapseDelayMs,
+        SettingsService.WidgetCompactHoverResponseBalanced)]
+    [InlineData(
+        SettingsService.PreventAccidentalWidgetCompactExpandDelayMs,
+        SettingsService.PreventAccidentalWidgetCompactCollapseDelayMs,
+        SettingsService.WidgetCompactHoverResponsePreventAccidental)]
+    [InlineData(275, 735, SettingsService.WidgetCompactHoverResponseCustom)]
+    public void ResolveWidgetCompactHoverResponse_MapsStoredDelaysToPreset(
+        int expandDelayMs,
+        int collapseDelayMs,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            SettingsService.ResolveWidgetCompactHoverResponse(expandDelayMs, collapseDelayMs));
+    }
+
+    [Theory]
+    [InlineData(SettingsService.WidgetCompactHoverResponseSensitive)]
+    [InlineData(SettingsService.WidgetCompactHoverResponseBalanced)]
+    [InlineData(SettingsService.WidgetCompactHoverResponsePreventAccidental)]
+    [InlineData(SettingsService.WidgetCompactHoverResponseCustom)]
+    public void NormalizeWidgetCompactHoverResponse_PreservesKnownPreset(string value)
+    {
+        Assert.Equal(value, SettingsService.NormalizeWidgetCompactHoverResponse(value));
+    }
+
+    [Theory]
+    [InlineData(
         SettingsService.WidgetAnimationEffectSlideLeftFade,
         SettingsService.WidgetAnimationSlideDirectionLeft)]
     [InlineData(
@@ -603,6 +639,7 @@ public sealed class SettingsServiceTests : IDisposable
         {
             WidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade,
             WidgetCapsuleModeEnabled = true,
+            WidgetCompactWidthMode = SettingsService.WidgetCompactWidthModeIndependent,
             WidgetCompactAnimationEffect = SettingsService.WidgetCompactAnimationSnappy,
             FileStackThreshold = 5,
             FileStackOrderBy = SettingsService.FileStackOrderByDateModified,
@@ -644,6 +681,8 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.WidgetAnimationEffect, restoredDefaults.WidgetAnimationEffect);
         Assert.False(newUserDefaults.WidgetCapsuleModeEnabled);
         Assert.Equal(newUserDefaults.WidgetCapsuleModeEnabled, restoredDefaults.WidgetCapsuleModeEnabled);
+        Assert.Equal(SettingsService.WidgetCompactWidthModeAligned, newUserDefaults.WidgetCompactWidthMode);
+        Assert.Equal(newUserDefaults.WidgetCompactWidthMode, restoredDefaults.WidgetCompactWidthMode);
         Assert.Equal(SettingsService.WidgetCompactAnimationSmooth, newUserDefaults.WidgetCompactAnimationEffect);
         Assert.Equal(newUserDefaults.WidgetCompactAnimationEffect, restoredDefaults.WidgetCompactAnimationEffect);
         Assert.Equal(SettingsService.DefaultFileStackThreshold, restoredDefaults.FileStackThreshold);
@@ -674,10 +713,13 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(SettingsService.LayoutDensityStandard, restoredDefaults.LayoutDensity);
         Assert.True(restoredDefaults.QuickCaptureShowCreatedTime);
         Assert.Equal(newUserDefaults.QuickCaptureItemPreviewLineCount, restoredDefaults.QuickCaptureItemPreviewLineCount);
+        Assert.Equal(SettingsService.DefaultQuickCaptureItemPreviewLineCount, newUserDefaults.QuickCaptureItemPreviewLineCount);
         Assert.Equal(newUserDefaults.QuickCaptureEditorEnterBehavior, restoredDefaults.QuickCaptureEditorEnterBehavior);
         Assert.True(restoredDefaults.ResizeSnapEnabled);
         Assert.False(restoredDefaults.TodoShowFooterStats);
         Assert.Equal(newUserDefaults.TodoItemPreviewLineCount, restoredDefaults.TodoItemPreviewLineCount);
+        Assert.Equal(SettingsService.DefaultTodoItemPreviewLineCount, newUserDefaults.TodoItemPreviewLineCount);
+        Assert.False(newUserDefaults.TodoShowCompletedTasks);
         Assert.Equal(newUserDefaults.TodoEditorEnterBehavior, restoredDefaults.TodoEditorEnterBehavior);
         Assert.Equal(SettingsService.LanguageChinese, restoredDefaults.Language);
         Assert.False(restoredDefaults.AutoStart);
