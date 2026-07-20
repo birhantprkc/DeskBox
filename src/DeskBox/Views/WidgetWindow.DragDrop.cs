@@ -1,4 +1,4 @@
-﻿﻿// Copyright (c) DeskBox. All rights reserved.
+﻿﻿﻿﻿// Copyright (c) DeskBox. All rights reserved.
 
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -36,6 +36,10 @@ public sealed partial class WidgetWindow
     private bool _isNativeDragActive;
     private Border? _nativeDragHighlightBorder;
 
+    // ── Real-time reorder state ──
+    private bool _isReorderDragActive;
+    private string[] _reorderDragPaths = [];
+
     private void RootGrid_DragOver(object sender, DragEventArgs e)
     {
         e.Handled = true;
@@ -57,6 +61,25 @@ public sealed partial class WidgetWindow
         }
 
         bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
+
+        // Same-widget internal drag: real-time reordering.
+        // All sort modes allow drag reorder — dragging switches to Manual mode
+        // and items move in real-time to show where the drop will land.
+        if (HasDeskBoxInternalDragData(e.DataView.Properties))
+        {
+            string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
+            if (string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal))
+            {
+                e.AcceptedOperation = DataPackageOperation.Link;
+                e.DragUIOverride.IsGlyphVisible = false;
+                e.DragUIOverride.Caption = _localizationService.T("Widget.DragCaption.Reorder");
+
+                // Perform real-time reordering for visual feedback.
+                HandleRealTimeReorder(e.DataView.Properties, e.GetPosition(GetDropTargetControl()));
+                return;
+            }
+        }
+
         e.AcceptedOperation = NormalizePathDropOperation(e.DataView.RequestedOperation, movesIntoFolder);
         LogDropDiagnostic("RootDragOver", e.DataView, e.AcceptedOperation, movesIntoFolder);
         if (e.AcceptedOperation == DataPackageOperation.None)
@@ -130,6 +153,14 @@ e.Handled = true;
 ClearFolderDropTarget();
 StopDragHighlight();
 _lastRootDragDiagnosticSignature = null;
+
+// Persist any real-time reordering that was done during DragOver.
+if (_isReorderDragActive)
+{
+_isReorderDragActive = false;
+_reorderDragPaths = [];
+ViewModel.PersistManualOrder();
+}
 }
 
 private async void RootGrid_Drop(object sender, DragEventArgs e)
@@ -181,6 +212,31 @@ StopDragHighlight();
                 : null;
 
             string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
+
+            // ── Same-widget internal drag: persist real-time reorder ──
+            if (HasDeskBoxInternalDragData(e.DataView.Properties) &&
+                string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal))
+            {
+                // Real-time reordering was done during DragOver.  If the mode
+                // wasn't Manual yet, switch now (HandleRealTimeReorder already
+                // did this, but this covers edge cases).
+                if (ViewModel.Config.SortMode != WidgetSortMode.Manual)
+                {
+                    ViewModel.SetSortMode(WidgetSortMode.Manual);
+                }
+
+                // Do a final reorder to the exact drop position, then persist.
+                var dragPaths = TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths");
+                HandleFinalReorder(dragPaths, e.GetPosition(GetDropTargetControl()));
+                ViewModel.PersistManualOrder();
+
+                _isReorderDragActive = false;
+                _reorderDragPaths = [];
+
+                // Same-widget drop: no file transfer needed regardless of mode.
+                return;
+            }
+
             if (movesIntoFolder &&
                 HasDeskBoxInternalDragData(e.DataView.Properties) &&
                 string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal) &&
@@ -398,6 +454,188 @@ StopDragHighlight();
     private bool CanMoveItemsBackToDesktop()
     {
         return !string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath);
+    }
+
+    // ── Real-time reorder helpers ────────────────────────────────
+
+    /// <summary>
+    /// Returns the active items control (GridView or ListView) that
+    /// should be used for hit-testing the drop position.
+    /// </summary>
+    private UIElement GetDropTargetControl()
+    {
+        return ItemsGridView.Visibility == Visibility.Visible
+            ? ItemsGridView
+            : ItemsListView;
+    }
+
+    /// <summary>
+    /// Performs real-time reordering during DragOver.  Moves the dragged
+    /// item to the insertion index so other items shift to make room.
+    /// Switches to Manual mode on first call.
+    /// </summary>
+    private void HandleRealTimeReorder(
+        DataPackagePropertySetView properties,
+        Windows.Foundation.Point position)
+    {
+        // Skip when file stacks are enabled — VisibleItems != Items.
+        if (ViewModel.FileStacksEnabled)
+        {
+            return;
+        }
+
+        var dragPaths = TryGetPackageStringArray(properties, "DeskBoxSourcePaths");
+        if (dragPaths.Count == 0)
+        {
+            return;
+        }
+
+        // Switch to Manual mode if needed (only once per drag).
+        if (!_isReorderDragActive)
+        {
+            if (ViewModel.Config.SortMode != WidgetSortMode.Manual)
+            {
+                ViewModel.SetSortMode(WidgetSortMode.Manual);
+            }
+            _isReorderDragActive = true;
+            _reorderDragPaths = dragPaths.ToArray();
+        }
+
+        // Find the dragged item (single-item drag is most common).
+        var pathSet = _reorderDragPaths
+            .Select(Path.GetFullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var draggedItem = ViewModel.Items
+            .FirstOrDefault(item => pathSet.Contains(Path.GetFullPath(item.Path)));
+
+        if (draggedItem is null)
+        {
+            return;
+        }
+
+        int currentIndex = ViewModel.Items.IndexOf(draggedItem);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        int targetIndex = ComputeDropInsertionIndex(GetDropTargetControl(), position);
+
+        // Adjust for Move semantics: Move(oldIndex, newIndex) puts the item
+        // AT newIndex.  If target > current, we need target-1 so the item
+        // ends up visually where the insertion indicator shows.
+        if (targetIndex > currentIndex)
+        {
+            targetIndex--;
+        }
+
+        // Skip if no meaningful move.
+        if (targetIndex == currentIndex || targetIndex < 0)
+        {
+            return;
+        }
+
+        ViewModel.MoveItemForReorder(draggedItem, targetIndex);
+    }
+
+    /// <summary>
+    /// Final reorder on drop — moves the item to the exact drop position.
+    /// </summary>
+    private void HandleFinalReorder(
+        IReadOnlyList<string> dragPaths,
+        Windows.Foundation.Point dropPosition)
+    {
+        if (dragPaths.Count == 0 || ViewModel.FileStacksEnabled)
+        {
+            return;
+        }
+
+        var pathSet = dragPaths
+            .Select(Path.GetFullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var draggedItem = ViewModel.Items
+            .FirstOrDefault(item => pathSet.Contains(Path.GetFullPath(item.Path)));
+
+        if (draggedItem is null)
+        {
+            return;
+        }
+
+        int currentIndex = ViewModel.Items.IndexOf(draggedItem);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        int targetIndex = ComputeDropInsertionIndex(GetDropTargetControl(), dropPosition);
+
+        if (targetIndex > currentIndex)
+        {
+            targetIndex--;
+        }
+
+        if (targetIndex == currentIndex || targetIndex < 0)
+        {
+            return;
+        }
+
+        ViewModel.MoveItemForReorder(draggedItem, targetIndex);
+    }
+
+    /// <summary>
+    /// Computes the insertion index at the given position within the
+    /// GridView or ListView.  Handles gaps between items correctly.
+    /// For GridView: considers both row (Y) and column (X) position.
+    /// For ListView: considers row (Y) position only.
+    /// </summary>
+    private int ComputeDropInsertionIndex(UIElement control, Windows.Foundation.Point position)
+    {
+        if (control is not ListViewBase listControl || listControl.Items.Count == 0)
+        {
+            return 0;
+        }
+
+        bool isGridView = control is GridView;
+
+        for (int i = 0; i < listControl.Items.Count; i++)
+        {
+            var container = listControl.ContainerFromIndex(i) as FrameworkElement;
+            if (container is null || container.ActualHeight <= 0)
+            {
+                continue;
+            }
+
+            var transform = container.TransformToVisual(control);
+            var rect = transform.TransformBounds(new Windows.Foundation.Rect(
+                0, 0, container.ActualWidth, container.ActualHeight));
+
+            if (isGridView)
+            {
+                // Determine if the pointer is "before" this item.
+                // "Before" = above the item's row, or in the same row and
+                // to the left of the item's horizontal center.
+                bool aboveRow = position.Y < rect.Top;
+                bool sameRow = position.Y >= rect.Top && position.Y < rect.Bottom;
+                bool leftOfCenter = position.X < (rect.X + rect.Width / 2);
+
+                if (aboveRow || (sameRow && leftOfCenter))
+                {
+                    return i;
+                }
+            }
+            else
+            {
+                // ListView: check if pointer is above the vertical midpoint.
+                if (position.Y < (rect.Top + rect.Height / 2))
+                {
+                    return i;
+                }
+            }
+        }
+
+        return listControl.Items.Count;
     }
 
 }

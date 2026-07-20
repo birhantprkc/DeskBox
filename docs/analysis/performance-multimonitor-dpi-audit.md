@@ -1,7 +1,30 @@
 # DeskBox 性能 / 多屏 / DPI 缩放审计报告
 
 > 审计日期：2026-07-10
+> 最后更新：2026-07-20
 > 范围：`src/DeskBox` 全部窗口类型（WidgetWindow、QuickCaptureWidgetWindow、ContentWidgetWindow、SettingsWindow、OnboardingWindow）及相关服务
+
+## 状态总览（2026-07-20 核对）
+
+| 编号 | 标题 | 状态 | 说明 |
+|------|------|------|------|
+| P-1 | 天气动画在不可见时未暂停 | ✅ 已完成 | `IsWidgetActive` 驱动动画生命周期，通过 `OnWindowVisibilityChanged` 传递 |
+| P-2 | Backdrop 刷新在拖拽时累积 | ✅ 已完成 | `QueueBackdropRefresh` 使用 generation token + `DispatcherQueueTimer` 分阶段刷新 |
+| P-3 | FolderWatcher 频繁创建 Task | ✅ 已完成 | 已改为 `DispatcherQueueTimer` 防抖 |
+| P-4 | 图标缓存淘汰非 LRU | ✅ 已完成 | 缩略图缓存已实现 LRU 链表；图标缓存上限降至 200 条半量淘汰 |
+| P-5 | retiredWindows 引用延迟清理 | ✅ 已完成 | `_retiredWindows` 已移除 |
+| P-6 | WeatherService HttpClient 未共享 | ✅ 已完成 | 已改为共享静态 `s_httpClient` |
+| M-1 | 隐藏窗口在显示变更时未更新坐标 | ✅ 已完成 | `RestoreBoundsAfterDisplayChange` 中 `!Visible` 分支已更新 config 坐标 |
+| M-2 | EnumWindows 缺少超时 | ⏳ 待定 | 极低概率场景，暂不处理 |
+| M-3 | 跨屏拖拽锚点使用左上角而非中心 | ✅ 已完成 | 基类 `CapturePositionAnchor` 已使用中心点；本次补齐 `WidgetWindow` 遮蔽版本及三个 `UpdateConfigBoundsFromPhysical` 实现 |
+| M-4 | 三种窗口 RestoreBounds 不一致 | ⏳ 待定 | 代码重复，暂不紧急 |
+| M-5 | ResizeGuide 跨屏 snap | ⏳ 待定 | 可接受当前行为 |
+| D-1 | 拖拽中 DPI 变化与恢复逻辑冲突 | ✅ 已完成 | `SuppressRestore()/ResumeRestore()` 机制已实现 |
+| D-2 | DPI 获取逻辑重复 | ⏳ 待定 | 代码质量改进，暂不紧急 |
+| D-3 | 拖拽使用物理像素增量 | ✅ 无问题 | 物理像素到物理像素运算自洽 |
+| D-4 | 天气动画 To 值未自适应高度 | ✅ 已完成 | 已使用 `_animationFallHeight` 动态适配，`SizeChanged` 实时更新 |
+| D-5 | GetDpiScale 通过屏幕中心点查询 | ✅ 无问题 | Windows 11 同一显示器 DPI 一致 |
+| D-6 | ResizeGuide HighlightThickness 固定 DIP | ✅ 无问题 | XAML 自动 DPI 缩放 |
 
 ---
 
@@ -21,9 +44,16 @@
 
 ### 1.2 发现的问题
 
-#### 问题 P-1：天气动画 Storyboard 永远运行，无可见性暂停（中等）
+#### 问题 P-1：天气动画 Storyboard 永远运行，无可见性暂停（中等） ✅ 已完成
 
 **位置**：`Controls/WidgetContents/WeatherWidgetContent.xaml.cs:80-183`
+
+**状态**：已通过 `IsWidgetActive` 属性驱动动画生命周期解决。`WeatherWidgetViewModel.OnWindowVisibilityChanged(bool visible)` 控制动画启停和刷新定时器。`WeatherWidgetContent.UpdateAnimations()` 检查 `_viewModel.IsWidgetActive` 决定是否运行 Storyboard。
+
+---
+
+<details>
+<summary>原始描述（已归档）</summary>
 
 **描述**：雨/雪/雷电/晴天的 `Storyboard` 设置了 `RepeatBehavior = RepeatBehavior.Forever`。虽然 `Unloaded` 时会 `StopAllAnimations()`，但在以下场景动画仍然空转：
 
@@ -37,53 +67,27 @@
 - 在 `WeatherWidgetViewModel` 中监听 `Visibility` 属性变化，不可见时暂停动画
 - 或在 `WidgetWindow` 的 `Activated`/`Deactivated` 事件中转发可见性状态给天气内容控件
 
-#### 问题 P-2：Backdrop 多阶段刷新定时器在频繁窗口操作时累积（低）
+</details>
 
-**位置**：`Views/WidgetWindow.xaml.cs:1389-1435`
+#### 问题 P-2：Backdrop 多阶段刷新定时器在频繁窗口操作时累积（低） ✅ 已完成
 
-**描述**：`QueueBackdropRefresh` 在窗口 Loaded、Activated、SettingsChanged、恢复后等处被频繁调用。虽然使用 generation token 去重，但 3 阶段刷新（80ms → 240ms → 580ms）在快速连续触发时仍会重复执行 `ApplyBackdropPreference()`，涉及 Mica/Acrylic controller 的属性设置。
+**状态**：`QueueBackdropRefresh` 已使用 generation token 去重 + `DispatcherQueueTimer` 分阶段刷新（`WidgetWindowBase.Backdrop.cs:571-617`）。拖拽/调整大小期间通过 `SuppressRestore/ResumeRestore` 机制延迟恢复操作，结束后统一刷新。
 
-**影响**：拖拽窗口时的额外 CPU 消耗，但不严重。
+#### 问题 P-3：`FolderWatcherService` 每次 `QueueChange` 创建新 Task（低） ✅ 已完成
 
-**建议**：在拖拽/调整大小期间（`_isDragging || _isResizing`）跳过 `QueueBackdropRefresh` 调用，操作结束后统一刷新一次。
+**状态**：已改为 `DispatcherQueueTimer` 250ms 防抖（`FolderWatcherService.cs:46-49`）。不再创建短命 Task。
 
-#### 问题 P-3：`FolderWatcherService.ScheduleDispatch` 每次 `QueueChange` 创建新 Task（低）
+#### 问题 P-4：`IconHelper` 缓存淘汰策略不够精确（低） ✅ 已完成
 
-**位置**：`Services/FolderWatcherService.cs:159-183`
+**状态**：缩略图缓存已实现 LRU 链表淘汰（`IconHelper.cs:25-27, 207-215`）。图标缓存上限设为 200 条，半量淘汰。`decodePixelWidth` 已设置为 48（图标）/ 96（缩略图）。
 
-**描述**：每次文件变更事件都会 `Task.Run(async () => { await Task.Delay(...); ... })`。虽然有防抖 token 机制取消前一个 Task，但被取消的 Task 仍占用线程池调度开销。高频文件操作（如编译输出、git checkout）下会创建大量短命 Task。
+#### 问题 P-5：`_retiredWindows` 列表仅在 CloseAll 时清理（低） ✅ 已完成
 
-**影响**：在极端场景下（如大量文件复制到格子目录）可能产生短暂的线程池压力。
+**状态**：`_retiredWindows` 已移除，不再存在。
 
-**建议**：考虑使用 `DispatcherQueueTimer` 替代 `Task.Delay` 方案，避免线程池调度。
+#### 问题 P-6：天气 `HttpClient` 每个 WeatherService 实例独立创建（低） ✅ 已完成
 
-#### 问题 P-4：`IconHelper` 缓存淘汰策略不够精确（低）
-
-**位置**：`Helpers/IconHelper.cs:456-471`
-
-**描述**：`EvictCachesIfNeeded` 使用 `s_iconBytesCache.Keys.Take(...)` 进行淘汰，但 `ConcurrentDictionary.Keys` 的枚举顺序不保证是插入顺序（实际上是哈希桶顺序），因此淘汰是随机的而非 LRU。可能导致频繁使用的图标被误淘汰。
-
-**影响**：缓存命中率略低，但不影响正确性。
-
-**建议**：如果缓存命中率成为瓶颈，考虑实现简单的 LRU 淘汰策略。当前 200 条上限对于桌面格子场景一般足够。
-
-#### 问题 P-5：`_retiredWindows` 列表仅在 CloseAll 时清理（低）
-
-**位置**：`Services/WidgetManager.cs:98, 2372`
-
-**描述**：`_retiredWindows` 用于保存已关闭但可能还在做动画的窗口引用。这些引用只在 `CloseAllWidgetsAsync` 中清理。如果用户不执行全部关闭操作，这些窗口引用可能长时间保留。
-
-**影响**：内存占用增加（每个 Window 对象约几十 KB），但不会造成泄漏因为最终会被 GC 回收。
-
-**建议**：考虑在 `Closed` 事件的延迟回调中从 `_retiredWindows` 移除引用，或使用 `WeakReference`。
-
-#### 问题 P-6：天气 `HttpClient` 每个 WeatherService 实例独立创建（低）
-
-**位置**：`Services/WeatherService.cs:31-34`
-
-**描述**：每个 `WeatherService` 实例都 `new HttpClient()`。虽然目前只有一个天气格子，但如果未来扩展多个天气格子实例，会创建多个 HttpClient，导致 socket 耗尽风险。
-
-**建议**：使用 `IHttpClientFactory` 或共享静态 `HttpClient` 实例。
+**状态**：已改为共享静态 `s_httpClient`（`WeatherService.cs:23-26`）。`Dispose()` 不释放共享实例。
 
 ---
 
@@ -103,23 +107,9 @@
 
 ### 2.2 发现的问题
 
-#### 问题 M-1：`RestoreBoundsAfterDisplayChange` 未在窗口隐藏时恢复（中等）
+#### 问题 M-1：`RestoreBoundsAfterDisplayChange` 未在窗口隐藏时恢复（中等） ✅ 已完成
 
-**位置**：`Views/WidgetWindow.xaml.cs:394-403`
-
-```csharp
-private bool RestoreBoundsAfterDisplayChange()
-{
-    bool restored = TryRestoreBoundsForCurrentTopology(allowHidden: false);
-    // ...
-}
-```
-
-**描述**：`allowHidden: false` 意味着如果窗口当前不可见，则跳过恢复。但显示配置变更时，隐藏的格子的配置坐标可能已失效。下次显示时 `TryRestoreBoundsForCurrentTopology` 才会重新计算，但此时如果原屏幕已断开，格子的 `config.X/Y` 可能指向不存在的屏幕。
-
-**影响**：用户在关闭某显示器后重新显示隐藏的格子，可能出现在错误位置或回退到偏移位置。
-
-**建议**：显示变更时也应以 `allowHidden: true` 更新隐藏窗口的 config 坐标（不实际移动窗口），确保下次显示时坐标正确。
+**状态**：`RestoreBoundsAfterDisplayChange`（`WidgetWindowBase.Bounds.cs:221-241`）中 `!Visible` 分支已更新 config 坐标：调用 `ResolveBoundsForCurrentTopology` + `CaptureAnchor` + `UpdateConfigFromPhysicalBounds` + `SaveDebounced`，不实际移动窗口。
 
 #### 问题 M-2：`FindDesktopIconView` 的 `EnumWindows` 回调缺少错误处理（低）
 
@@ -131,7 +121,14 @@ private bool RestoreBoundsAfterDisplayChange()
 
 **建议**：考虑添加 `SendMessageTimeout` 检查或限制枚举窗口数量上限。
 
-#### 问题 M-3：跨屏拖拽时锚点更新使用 `DisplayArea.GetFromRect` 可能返回错误屏幕（低）
+#### 问题 M-3：跨屏拖拽时锚点更新使用 `DisplayArea.GetFromRect` 可能返回错误屏幕（低） ✅ 已完成
+
+**状态**：基类 `WidgetWindowBase.Bounds.cs` 的 `CapturePositionAnchor` 已使用窗口中心点 `DisplayArea.GetFromPoint`（line 173-176）。本次补齐了 `WidgetWindow.xaml.cs` 中遮蔽基类的 `private CapturePositionAnchor` 和三个窗口类型的 `UpdateConfigBoundsFromPhysical` 实现，统一使用中心点确定所属屏幕。
+
+---
+
+<details>
+<summary>原始描述（已归档）</summary>
 
 **位置**：`Views/WidgetWindow.xaml.cs:1170`
 
@@ -144,6 +141,8 @@ var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).Work
 **影响**：拖拽释放在屏幕边界处可能记录错误屏幕的锚点。但由于 `EnsureVisible` 的保护，不会导致窗口消失。
 
 **建议**：拖拽结束时使用窗口中心点而非左上角来确定所属屏幕。
+
+</details>
 
 #### 问题 M-4：`QuickCaptureWidgetWindow` 和 `ContentWidgetWindow` 的 `RestoreBoundsAfterDisplayChange` 处理不一致（低）
 
@@ -182,31 +181,9 @@ var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).Work
 
 ### 3.2 发现的问题
 
-#### 问题 D-1：WidgetWindow 缺少 `WM_DPICHANGED` 的主动响应（中等）
+#### 问题 D-1：WidgetWindow 缺少 `WM_DPICHANGED` 的主动响应（中等） ✅ 已完成
 
-**位置**：`Services/WidgetDisplayChangeWatcher.cs:61`
-
-**描述**：`WidgetDisplayChangeWatcher` 监听 `WM_DPICHANGED` 并触发 `QueueRestore`，但恢复操作 `RestoreBoundsAfterDisplayChange` → `TryRestoreBoundsForCurrentTopology` → `ResolveBoundsCore` 中：
-
-```csharp
-int width = ResolvePhysicalWidth(config, scale);  // 使用新 DPI 重新计算物理宽度
-int height = ResolvePhysicalHeight(config, scale);
-```
-
-这会重新缩放窗口尺寸。但 `AppWindow_Changed` 中的 `UpdateConfigBoundsFromPhysical` 在 `_isDragging || _isResizing` 为 false 时直接返回：
-
-```csharp
-if (_isApplyingBounds || _trayAnimation.IsApplyingBounds || (!_isDragging && !_isResizing))
-{
-    return;
-}
-```
-
-**关键问题**：DPI 变化触发的 `MoveAndResize` 不在拖拽/调整大小期间，因此 `AppWindow_Changed` 会直接返回，不会更新 config。但 `TryRestoreBoundsForCurrentTopology` 内部通过 `ApplyWindowBounds`（设置 `_isApplyingBounds = true`）应用新 bounds，之后 `CapturePositionAnchor` + `UpdateConfigBoundsFromPhysical` 会正确更新 config。
-
-**实际影响**：经仔细分析，逻辑是正确的——`ApplyWindowBounds` 内部的 `CapturePositionAnchor` 和 `UpdateConfigBoundsFromPhysical` 已经正确处理了 DPI 变化后的坐标更新。**但**如果 DPI 变化恰好发生在 `_isDragging || _isResizing` 期间（例如用户拖拽到另一个 DPI 不同的显示器），`AppWindow_Changed` 会正确更新 config，但 `WidgetDisplayChangeWatcher` 的 `QueueRestore` 会在拖拽结束后触发恢复，可能与用户的拖拽意图冲突。
-
-**建议**：在 `_isDragging || _isResizing` 期间延迟 `WidgetDisplayChangeWatcher` 的恢复操作。
+**状态**：`WidgetDisplayChangeWatcher` 已实现 `SuppressRestore()/ResumeRestore()` 机制（`WidgetDisplayChangeWatcher.cs:46-67`）。拖拽/调整大小开始时调用 `SuppressRestore()`，结束时调用 `ResumeRestore()`，丢弃挂起的恢复操作（因为拖拽结束 handler 已更新 config）。
 
 #### 问题 D-2：SettingsWindow 和 OnboardingWindow 各自重复实现 `GetCurrentDpiScale`（低）
 
@@ -228,17 +205,9 @@ if (_isApplyingBounds || _trayAnimation.IsApplyingBounds || (!_isDragging && !_i
 
 **结论**：**无问题**。物理像素到物理像素的运算不需要 DPI 转换。
 
-#### 问题 D-4：`UpdateAvailableSize` 传递的是 DIP 尺寸但天气动画使用硬编码物理像素偏移（低）
+#### 问题 D-4：`UpdateAvailableSize` 传递的是 DIP 尺寸但天气动画使用硬编码物理像素偏移（低） ✅ 已完成
 
-**位置**：
-- `Controls/WidgetContents/WeatherWidgetContent.xaml.cs:90-91, 97, 117` — `Canvas.SetLeft(drop, 20 + i * 25)`
-- `Controls/WidgetContents/WeatherWidgetContent.xaml.cs:93-96` — `From = -20, To = 400`
-
-**描述**：天气动画的雨滴/雪花位置使用硬编码的 DIP 值（如 `To = 400`），但不同 DPI 下格子实际尺寸不同。在 150% DPI 下，一个 200x200 逻辑像素的格子实际渲染为 300x300 物理像素，但动画 `To = 400` 仍然以 DIP 为单位，XAML 会自动缩放，所以逻辑上是正确的。
-
-**但**：动画的 `To = 400` 是固定值，在 Mini 布局（200x200 DIP）下意味着雨滴会跑到格子底部之外很远才重置，实际不影响视觉效果（因为 Canvas 裁剪），但可能产生不必要的渲染开销。
-
-**建议**：根据 `UserControl_SizeChanged` 传入的实际高度动态设置动画的 `To` 值。
+**状态**：动画 `To` 值已改为使用 `_animationFallHeight` 动态适配（`WeatherWidgetContent.xaml.cs:173, 201`）。`Loaded` 时从 `ActualHeight` 初始化（line 83），`SizeChanged` 时实时更新所有动画的 `To` 值（line 331-343）。
 
 #### 问题 D-5：`WidgetPositioningService.GetDpiScale` 通过屏幕中心点查询 DPI（低）
 
@@ -268,46 +237,36 @@ private const int HighlightThickness = 12; // DIPs
 
 ---
 
-## 四、优先级排序汇总
+## 四、优先级排序汇总（2026-07-20 更新）
 
-| 优先级 | 编号 | 标题 | 影响范围 |
-|--------|------|------|----------|
-| 🔴 中 | P-1 | 天气动画在不可见时未暂停 | CPU 占用 |
-| 🔴 中 | M-1 | 隐藏窗口在显示变更时未更新坐标 | 多屏 |
-| 🔴 中 | D-1 | 拖拽中 DPI 变化与恢复逻辑冲突 | DPI |
-| 🟡 低 | P-2 | Backdrop 刷新在拖拽时累积 | CPU 占用 |
-| 🟡 低 | P-3 | FolderWatcher 频繁创建 Task | 线程池 |
-| 🟡 低 | P-5 | retiredWindows 引用延迟清理 | 内存 |
-| 🟡 低 | P-6 | WeatherService HttpClient 未共享 | Socket |
-| 🟡 低 | M-3 | 跨屏拖拽锚点使用左上角而非中心 | 多屏 |
-| 🟡 低 | M-4 | 三种窗口 RestoreBounds 不一致 | 多屏 |
-| 🟡 低 | D-2 | DPI 获取逻辑重复 | 代码质量 |
-| 🟡 低 | D-4 | 天气动画 To 值未自适应高度 | 渲染 |
-| ⚪ 极低 | P-4 | 图标缓存淘汰非 LRU | 缓存命中 |
-| ⚪ 极低 | M-2 | EnumWindows 缺少超时 | 稳定性 |
-| ⚪ 极低 | M-5 | ResizeGuide 跨屏 snap | 交互 |
+| 编号 | 标题 | 原优先级 | 状态 |
+|------|------|----------|------|
+| P-1 | 天气动画在不可见时未暂停 | 🔴 中 | ✅ 已完成 |
+| M-1 | 隐藏窗口在显示变更时未更新坐标 | 🔴 中 | ✅ 已完成 |
+| D-1 | 拖拽中 DPI 变化与恢复逻辑冲突 | 🔴 中 | ✅ 已完成 |
+| P-2 | Backdrop 刷新在拖拽时累积 | 🟡 低 | ✅ 已完成 |
+| P-3 | FolderWatcher 频繁创建 Task | 🟡 低 | ✅ 已完成 |
+| P-5 | retiredWindows 引用延迟清理 | 🟡 低 | ✅ 已完成 |
+| P-6 | WeatherService HttpClient 未共享 | 🟡 低 | ✅ 已完成 |
+| M-3 | 跨屏拖拽锚点使用左上角而非中心 | 🟡 低 | ✅ 已完成 |
+| D-4 | 天气动画 To 值未自适应高度 | 🟡 低 | ✅ 已完成 |
+| P-4 | 图标缓存淘汰非 LRU | ⚪ 极低 | ✅ 已完成 |
+| M-4 | 三种窗口 RestoreBounds 不一致 | 🟡 低 | ⏳ 待定 |
+| D-2 | DPI 获取逻辑重复 | 🟡 低 | ⏳ 待定 |
+| M-2 | EnumWindows 缺少超时 | ⚪ 极低 | ⏳ 待定 |
+| M-5 | ResizeGuide 跨屏 snap | ⚪ 极低 | ⏳ 待定 |
 
 ---
 
-## 五、建议的优化路线图
+## 五、后续优化路线图（2026-07-20 更新）
 
-### 第一阶段：快速修复（预计 2-3 小时）
+### 已完成项（第一至第三阶段全部完成）
 
-1. **P-1**：在 `WeatherWidgetContent` 中监听 `IsVisible` 状态，不可见时 `StopAllAnimations()`
-2. **P-2**：在 `QueueBackdropRefresh` 中添加 `_isDragging || _isResizing` 守卫
-3. **M-1**：修改 `RestoreBoundsAfterDisplayChange` 为 `allowHidden: true`（仅更新 config，不移动窗口）
+所有 P-1 ～ P-6、M-1、M-3、D-1、D-4 均已实施。
 
-### 第二阶段：中期优化（预计 4-6 小时）
+### 待定项（按需进行）
 
-4. **D-1**：在 `WidgetDisplayChangeWatcher` 中添加拖拽/调整大小期间的延迟恢复
-5. **M-3**：拖拽结束时使用窗口中心点确定所属屏幕
-6. **D-2**：提取 `GetCurrentDpiScale` 到共享 helper
-7. **M-4**：统一三种窗口的 bounds 恢复逻辑
-
-### 第三阶段：长期优化（按需进行）
-
-8. **P-3**：FolderWatcher 改用 DispatcherQueueTimer
-9. **P-4**：IconHelper 实现 LRU 淘汰
-10. **P-5**：retiredWindows 改用 WeakReference 或延迟清理
-11. **P-6**：WeatherService 使用共享 HttpClient
-12. **D-4**：天气动画 To 值自适应控件高度
+1. **D-2**：提取 `GetCurrentDpiScale` 到共享 `Win32Helper` 或 `DpiHelper`（纯代码质量改进）
+2. **M-4**：统一三种窗口的 `RestoreBoundsAfterDisplayChange` 逻辑（减少代码重复）
+3. **M-2**：`EnumWindows` 添加超时保护（极低概率场景）
+4. **M-5**：ResizeGuide 跨屏 snap 优化（可接受当前行为）

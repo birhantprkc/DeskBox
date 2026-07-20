@@ -240,6 +240,7 @@ end;
 procedure RemoveStartupRegistryEntry;
 var
   Value: string;
+  StartupShortcutPath: string;
 begin
   if RegQueryStringValue(HKEY_CURRENT_USER, DeskBoxStartupRunKey, 'DeskBox', Value) then
   begin
@@ -247,6 +248,16 @@ begin
       Log('DeskBox uninstall removed startup registry entry.')
     else
       Log('DeskBox uninstall failed to remove startup registry entry.');
+  end;
+
+  // Also remove the legacy startup folder shortcut.
+  StartupShortcutPath := ExpandConstant('{userstartup}\DeskBox.lnk');
+  if FileExists(StartupShortcutPath) then
+  begin
+    if DeleteFile(StartupShortcutPath) then
+      Log('DeskBox uninstall removed legacy startup shortcut.')
+    else
+      Log('DeskBox uninstall failed to remove legacy startup shortcut.');
   end;
 end;
 

@@ -432,9 +432,13 @@
                         BorderBrush="#24FFFFFF"
                         BorderThickness="1"
                         CornerRadius="11"
-                        IsHitTestVisible="False" />
+                        IsHitTestVisible="False"
+                        x:Name="AlbumArtInnerBorder" />
                     <Grid Visibility="{Binding ThumbnailPlaceholderVisibility}">
-                        <Rectangle Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+                        <Border
+                            x:Name="AlbumArtPlaceholderBackground"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            CornerRadius="12" />
                         <FontIcon
                             FontSize="30"
                             Glyph="&#xEC4F;"

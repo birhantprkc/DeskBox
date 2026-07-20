@@ -410,6 +410,16 @@ public sealed partial class WidgetWindow
         }
 
         _surfaceDragCompletionHandled = true;
+
+        // Fallback: if a real-time reorder was active but RootGrid_Drop
+        // didn't fire (event didn't bubble), persist the order now.
+        if (_isReorderDragActive)
+        {
+            _isReorderDragActive = false;
+            _reorderDragPaths = [];
+            ViewModel.PersistManualOrder();
+        }
+
         await HandleItemDragCompletedAsync(args.DropResult);
     }
 }

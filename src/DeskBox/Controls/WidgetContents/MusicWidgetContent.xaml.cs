@@ -462,8 +462,11 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         AlbumArtShadow.Height = size;
         AlbumArtSurface.Width = size;
         AlbumArtSurface.Height = size;
-        AlbumArtShadow.CornerRadius = new CornerRadius(Math.Max(8, size * 0.12));
-        AlbumArtSurface.CornerRadius = new CornerRadius(Math.Max(8, size * 0.12));
+        double cornerRadius = Math.Max(8, size * 0.12);
+        AlbumArtShadow.CornerRadius = new CornerRadius(cornerRadius);
+        AlbumArtSurface.CornerRadius = new CornerRadius(cornerRadius);
+        AlbumArtInnerBorder.CornerRadius = new CornerRadius(Math.Max(0, cornerRadius - 1));
+        AlbumArtPlaceholderBackground.CornerRadius = new CornerRadius(cornerRadius);
     }
 
     private static void SetButtonSize(Button button, double size)

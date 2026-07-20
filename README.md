@@ -15,22 +15,22 @@ DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates na
 
 Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
 
-Current release: 1.3.0
+Current release: 1.3.1
 
-- [DeskBox_Setup_1.3.0_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.0/DeskBox_Setup_1.3.0_x64.exe)
+- [DeskBox_Setup_1.3.1_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.1/DeskBox_Setup_1.3.1_x64.exe)
 
 The installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64. If either dependency is missing, the setup flow can download and install it for you.
 
-## What's New In 1.3.0
+## What's New In 1.3.1
 
-- **Capsule mode**: Collapse widgets into compact, information-rich surfaces. Expand by click or title-area hover, choose smart/summary/minimal content, hide sensitive text, and keep compact and expanded widths aligned or independent.
-- **Flexible capsule layouts**: Position capsules freely or combine them into an ordered movable bar with floating or edge placement, automatic direction and adjustable spacing. Screen-aware anchors keep expansion and collapse connected to the compact position.
-- **Automatic file stacks**: Group file-widget items by type or date without moving files, or create prioritized custom extension rules with live previews, thresholds, sorting and an unmatched-file policy.
-- **Todo and Quick Capture attachments**: Associate multiple files, link originals or copy them into DeskBox, include localized paths when copying content, configure visible tabs, drag entries onto tabs, and tune preview lines and Enter-key behavior.
-- **Appearance and Music controls**: Added Mica Alt, Base acrylic, material intensity, border color modes and display-density presets. Music can adapt automatically or force Cover/Controls mode.
-- **Windows-style Settings**: Title-bar search, focused detail pages, clearer hierarchy and important options directly on entry cards make advanced configuration easier to discover without crowding the main pages.
-- **Data safety**: Export and restore integrity-checked backups, manage automatic snapshots, recover resilient JSON stores and scan Todo/Quick Capture attachment health.
-- **Interaction reliability**: Improved capsule/stack transitions, drag-to-expand, title-bar actions, resize guides, Z-order, tray show/hide, multi-monitor bounds restoration and rapid repeated interactions.
+- **High-DPI icon clarity**: File and shortcut icons now extract at 256×256 (Jumbo) or 48×48 (Extra Large) instead of 32×32, matching desktop icon clarity on high-DPI displays.
+- **Steam shortcut icons**: Resolved `.url` shortcut icons not displaying by parsing comma-separated icon indices and searching for Steam via registry and common paths.
+- **Animation performance**: Switched opacity/scale animations to GPU Composition KeyFrame animations and direct `SetWindowPos` P/Invoke, eliminating stutter on lower-end GPUs.
+- **Black screen transition fix**: Material backdrop now stays consistent throughout tray show/hide animations.
+- **Music artwork corner radius**: Fixed asymmetric corner radius on music widget album art.
+- **Duplicate startup entries**: Unified to a single registry `Run` key with automatic legacy shortcut cleanup.
+- **Capsule mode defaults**: New installs now default to hover auto-expand, sensitive hover response, and relaxed animation.
+- **Freeze diagnostics**: Added UI thread watchdog and fixed a sync-over-async deadlock in Store startup.
 
 See the full [changelog](CHANGELOG.md).
 
@@ -137,7 +137,7 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 Installer output:
 
 ```text
-Output\DeskBox_Setup_1.3.0_x64.exe
+Output\DeskBox_Setup_1.3.1_x64.exe
 ```
 
 ## Project Structure

@@ -249,7 +249,6 @@ public sealed partial class WidgetWindow
         _trayAnimation.StopAndRestoreWindowPosition();
         RestoreItemContainerTransitions();
         SuppressItemContainerTransitions();
-        RestoreNativeBackdropAfterTrayReveal();
 
         _isHideAnimationRunning = true;
         Visible = false;
@@ -420,10 +419,11 @@ public sealed partial class WidgetWindow
         PlayTrayHideAnimation(CompleteTrayHideAnimation);
     }
 
-    public void CloseWindow()
-    {
-        _trayAnimation.RevealWindowForTrayShow();
-        WidgetLayerService.ReleaseWindow(_hWnd);
-        Close();
-    }
+public void CloseWindow()
+{
+_trayAnimation.RevealWindowForTrayShow();
+RestoreNativeBackdropAfterTrayReveal();
+WidgetLayerService.ReleaseWindow(_hWnd);
+Close();
+}
 }

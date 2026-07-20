@@ -530,12 +530,10 @@ public static class DragDropPermissionService
     {
         string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         string programs = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-        string startup = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
         return
         [
             new ShortcutDefinition(Path.Combine(desktop, $"{AppName}.lnk"), string.Empty, false),
-            new ShortcutDefinition(Path.Combine(programs, $"{AppName}.lnk"), string.Empty, true),
-            new ShortcutDefinition(Path.Combine(startup, $"{AppName}.lnk"), "--startup", false)
+            new ShortcutDefinition(Path.Combine(programs, $"{AppName}.lnk"), string.Empty, true)
         ];
     }
 

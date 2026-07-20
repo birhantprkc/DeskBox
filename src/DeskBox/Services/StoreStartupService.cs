@@ -34,8 +34,20 @@ public sealed class StoreStartupService : IStartupService
 
             if (task.State == StartupTaskState.Disabled)
             {
-                var state = task.RequestEnableAsync().AsTask().GetAwaiter().GetResult();
-                global::DeskBox.App.Log($"[StoreStartupService] StartupTask enable requested: {state}");
+                // Fire-and-forget: RequestEnableAsync may show a consent dialog
+                // that requires the UI thread. Blocking with GetAwaiter().GetResult()
+                // would dead-lock the UI thread.
+                _ = task.RequestEnableAsync().AsTask().ContinueWith(t =>
+                {
+                    if (t.IsCompletedSuccessfully)
+                    {
+                        global::DeskBox.App.Log($"[StoreStartupService] StartupTask enable requested: {t.Result}");
+                    }
+                    else if (t.IsFaulted)
+                    {
+                        global::DeskBox.App.Log($"[StoreStartupService] StartupTask enable failed: {t.Exception?.GetBaseException()?.Message}");
+                    }
+                }, TaskScheduler.Default);
                 return;
             }
 

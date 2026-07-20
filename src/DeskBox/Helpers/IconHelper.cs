@@ -47,6 +47,7 @@ public static class IconHelper
 
     private const uint SHGFI_ICON = 0x100;
     private const uint SHGFI_LARGEICON = 0x0;
+    private const uint SHGFI_SYSICONINDEX = 0x4000;
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr SHGetFileInfo(
@@ -61,12 +62,59 @@ public static class IconHelper
     private static extern bool DestroyIcon(IntPtr hIcon);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int SHDefExtractIcon(
+        string pszIconFile,
+        int iIcon,
+        uint uFlags,
+        out IntPtr phiconLarge,
+        out IntPtr phiconSmall,
+        uint nIconSize); // MAKELONG(cxSmall, cxLarge) — low word = small, high word = large
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint ExtractIconEx(
         string lpszFile,
         int nIconIndex,
         IntPtr[]? phiconLarge,
         IntPtr[]? phiconSmall,
         uint nIcons);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int SHGetImageList(
+        int iImageList,
+        ref Guid riid,
+        ref IntPtr ppv);
+
+    // Image list size flags for SHGetImageList
+    private const int SHIL_EXTRALARGE = 0x2; // 48x48
+    private const int SHIL_JUMBO = 0x4;      // 256x256 (Vista+)
+
+    private static readonly Guid s_iidIImageList = new("46EB5926-582E-4017-9FDF-E899822AA8B3");
+
+    [ComImport]
+    [Guid("46EB5926-582E-4017-9FDF-E899822AA8B3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IImageList
+    {
+        [PreserveSig]
+        int GetImageCount();
+
+        [PreserveSig]
+        int GetImageRect(int i, ref RECT pRect);
+
+        [PreserveSig]
+        int GetIcon(int i, uint flags, ref IntPtr picon);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
+
+    private const uint ILD_TRANSPARENT = 0x00000001;
 
     /// <summary>
     /// Asynchronously retrieve the native Windows shell icon for the given path.
@@ -456,31 +504,40 @@ public static class IconHelper
                 }
             }
 
+            // Get the system icon index, then extract the highest-resolution
+            // version available via SHGetImageList (Jumbo 256 → ExtraLarge 48 → Large 32).
             var shinfo = new SHFILEINFO();
             IntPtr hImg = SHGetFileInfo(
                 iconSource.Path,
                 0,
                 ref shinfo,
                 (uint)Marshal.SizeOf(shinfo),
-                SHGFI_ICON | SHGFI_LARGEICON);
+                SHGFI_SYSICONINDEX);
 
-            if (hImg == IntPtr.Zero || shinfo.hIcon == IntPtr.Zero)
+            if (hImg == IntPtr.Zero)
             {
-                return null;
+                // Fallback: direct large icon via SHGetFileInfo
+                return LoadIconBytesFromShGetFileInfo(iconSource.Path);
             }
 
-            try
+            int iconIndex = shinfo.iIcon;
+
+            // Try Jumbo (256×256) first — gives crisp icons on high-DPI displays.
+            byte[]? bytes = TryGetIconFromImageList(SHIL_JUMBO, iconIndex);
+            if (bytes is not null)
             {
-                using var icon = Icon.FromHandle(shinfo.hIcon);
-                using var bitmap = icon.ToBitmap();
-                using var ms = new MemoryStream();
-                bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                return ms.ToArray();
+                return bytes;
             }
-            finally
+
+            // Fall back to Extra Large (48×48).
+            bytes = TryGetIconFromImageList(SHIL_EXTRALARGE, iconIndex);
+            if (bytes is not null)
             {
-                DestroyIcon(shinfo.hIcon);
+                return bytes;
             }
+
+            // Final fallback: Large (32×32) via SHGetFileInfo.
+            return LoadIconBytesFromShGetFileInfo(iconSource.Path);
         }
         catch (Exception ex)
         {
@@ -489,8 +546,97 @@ public static class IconHelper
         }
     }
 
+    private static byte[]? TryGetIconFromImageList(int imageListFlags, int iconIndex)
+    {
+        IntPtr imageListPtr = IntPtr.Zero;
+        IntPtr iconHandle = IntPtr.Zero;
+
+        try
+        {
+            Guid iid = s_iidIImageList;
+            int hr = SHGetImageList(imageListFlags, ref iid, ref imageListPtr);
+            if (hr != 0 || imageListPtr == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            var imageList = (IImageList)Marshal.GetObjectForIUnknown(imageListPtr);
+            int result = imageList.GetIcon(iconIndex, ILD_TRANSPARENT, ref iconHandle);
+            if (result != 0 || iconHandle == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            using var icon = Icon.FromHandle(iconHandle);
+            using var bitmap = icon.ToBitmap();
+            using var ms = new MemoryStream();
+            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+            return ms.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (iconHandle != IntPtr.Zero)
+            {
+                DestroyIcon(iconHandle);
+            }
+
+            if (imageListPtr != IntPtr.Zero)
+            {
+                Marshal.Release(imageListPtr);
+            }
+        }
+    }
+
+    private static byte[]? LoadIconBytesFromShGetFileInfo(string path)
+    {
+        var shinfo = new SHFILEINFO();
+        IntPtr hImg = SHGetFileInfo(
+            path,
+            0,
+            ref shinfo,
+            (uint)Marshal.SizeOf(shinfo),
+            SHGFI_ICON | SHGFI_LARGEICON);
+
+        if (hImg == IntPtr.Zero || shinfo.hIcon == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var icon = Icon.FromHandle(shinfo.hIcon);
+            using var bitmap = icon.ToBitmap();
+            using var ms = new MemoryStream();
+            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+            return ms.ToArray();
+        }
+        finally
+        {
+            DestroyIcon(shinfo.hIcon);
+        }
+    }
+
     private static byte[]? LoadIndexedIconBytes(IconSource iconSource)
     {
+        // Try SHDefExtractIcon first — it can extract 256×256 icons from exe/dll/ico resources.
+        byte[]? hiResBytes = TryExtractHighResIndexedIcon(iconSource.Path, iconSource.IconIndex, 256);
+        if (hiResBytes is not null)
+        {
+            return hiResBytes;
+        }
+
+        // Fallback: 48×48
+        hiResBytes = TryExtractHighResIndexedIcon(iconSource.Path, iconSource.IconIndex, 48);
+        if (hiResBytes is not null)
+        {
+            return hiResBytes;
+        }
+
+        // Final fallback: ExtractIconEx (32×32 large / 16×16 small)
         var largeIcons = new IntPtr[1];
         var smallIcons = new IntPtr[1];
         uint count = ExtractIconEx(
@@ -527,6 +673,45 @@ public static class IconHelper
             if (smallIcons[0] != IntPtr.Zero && smallIcons[0] != largeIcons[0])
             {
                 DestroyIcon(smallIcons[0]);
+            }
+        }
+    }
+
+    private static byte[]? TryExtractHighResIndexedIcon(string filePath, int iconIndex, int size)
+    {
+        IntPtr hLarge = IntPtr.Zero;
+        IntPtr hSmall = IntPtr.Zero;
+
+        try
+        {
+            // nIconSize: high word = large icon size, low word = small icon size
+            uint nIconSize = ((uint)size << 16) | (uint)size;
+            int hr = SHDefExtractIcon(filePath, iconIndex, 0, out hLarge, out hSmall, nIconSize);
+            if (hr != 0 || hLarge == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            using var icon = Icon.FromHandle(hLarge);
+            using var bitmap = icon.ToBitmap();
+            using var ms = new MemoryStream();
+            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+            return ms.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (hLarge != IntPtr.Zero)
+            {
+                DestroyIcon(hLarge);
+            }
+
+            if (hSmall != IntPtr.Zero && hSmall != hLarge)
+            {
+                DestroyIcon(hSmall);
             }
         }
     }
@@ -602,11 +787,39 @@ public static class IconHelper
             return new IconSource(path);
         }
 
-        string? iconLocation = NormalizeIconLocation(shortcut.IconLocation);
+        // Parse icon location — may contain a comma-separated index (e.g. "steam.exe,0")
+        var (iconFilePath, iconFileIndex) = SplitIconLocation(shortcut.IconLocation);
+        string? iconLocation = NormalizeIconLocation(iconFilePath);
+        int resolvedIconIndex = iconFileIndex >= 0 ? iconFileIndex : shortcut.IconIndex;
+
         if (!string.IsNullOrWhiteSpace(iconLocation) &&
             File.Exists(iconLocation))
         {
-            return new IconSource(iconLocation, shortcut.IconIndex, UsesExplicitIconIndex: true);
+            return new IconSource(iconLocation, resolvedIconIndex, UsesExplicitIconIndex: true);
+        }
+
+        // For Steam .url shortcuts, the IconFile may point to a steam.exe path
+        // that doesn't exist on this machine. Try to locate steam.exe via registry.
+        if (!string.IsNullOrWhiteSpace(shortcut.TargetPath) &&
+            shortcut.TargetPath.StartsWith("steam://", StringComparison.OrdinalIgnoreCase))
+        {
+            string? steamExe = TryFindSteamExecutable();
+            if (steamExe is not null && File.Exists(steamExe))
+            {
+                return new IconSource(steamExe, 0, UsesExplicitIconIndex: true);
+            }
+        }
+
+        // If the icon location references an .exe/.dll/.ico that doesn't exist,
+        // but we have the original iconLocation string, try finding the file
+        // by searching common locations (e.g., strip path and search PATH).
+        if (!string.IsNullOrWhiteSpace(iconLocation))
+        {
+            string? foundPath = TryFindExecutableInPath(iconLocation);
+            if (foundPath is not null)
+            {
+                return new IconSource(foundPath, resolvedIconIndex, UsesExplicitIconIndex: true);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(shortcut.TargetPath) &&
@@ -618,6 +831,150 @@ public static class IconHelper
         return new IconSource(path);
     }
 
+    /// <summary>
+    /// Splits an icon location string into (path, index).
+    /// Handles formats like "C:\\path\\to\\file.exe,0" or "file.exe,-5".
+    /// </summary>
+    private static (string path, int index) SplitIconLocation(string? iconLocation)
+    {
+        if (string.IsNullOrWhiteSpace(iconLocation))
+        {
+            return (string.Empty, -1);
+        }
+
+        string trimmed = iconLocation.Trim().Trim('"');
+        int lastComma = trimmed.LastIndexOf(',');
+        if (lastComma <= 0 || lastComma == trimmed.Length - 1)
+        {
+            return (trimmed, -1);
+        }
+
+        string indexPart = trimmed[(lastComma + 1)..];
+        if (int.TryParse(indexPart, out int index))
+        {
+            return (trimmed[..lastComma], index);
+        }
+
+        return (trimmed, -1);
+    }
+
+    private static string? TryFindSteamExecutable()
+    {
+        try
+        {
+            // Check HKCU\Software\Valve\Steam\SteamPath
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam");
+            if (key?.GetValue("SteamPath") is string steamPath)
+            {
+                string exePath = Path.Combine(steamPath, "steam.exe");
+                if (File.Exists(exePath))
+                {
+                    return exePath;
+                }
+            }
+
+            // Check HKLM\SOFTWARE\WOW6432Node\Valve\Steam\InstallPath
+            using var key2 = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Valve\Steam");
+            if (key2?.GetValue("InstallPath") is string installPath)
+            {
+                string exePath = Path.Combine(installPath, "steam.exe");
+                if (File.Exists(exePath))
+                {
+                    return exePath;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore registry access errors
+        }
+
+        // Try common install locations
+        string[] commonPaths =
+        {
+            @"C:\Program Files (x86)\Steam\steam.exe",
+            @"C:\Program Files\Steam\steam.exe",
+        };
+
+        foreach (string p in commonPaths)
+        {
+            if (File.Exists(p))
+            {
+                return p;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? TryFindExecutableInPath(string filePath)
+    {
+        try
+        {
+            // If the path is just a filename (no directory), search system PATH
+            if (!Path.IsPathRooted(filePath) && filePath.IndexOf(Path.DirectorySeparatorChar) < 0)
+            {
+                string? fullPath = FindInPath(filePath);
+                if (fullPath is not null)
+                {
+                    return fullPath;
+                }
+            }
+
+            // Try common Program Files locations
+            string fileName = Path.GetFileName(filePath);
+            string[] searchDirs =
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            };
+
+            foreach (string dir in searchDirs)
+            {
+                if (string.IsNullOrEmpty(dir)) continue;
+                string candidate = Path.Combine(dir, fileName);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors
+        }
+
+        return null;
+    }
+
+    private static string? FindInPath(string fileName)
+    {
+        string? pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(pathEnv))
+        {
+            return null;
+        }
+
+        foreach (string dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                string candidate = Path.Combine(dir.Trim(), fileName);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+            catch
+            {
+                // Ignore invalid path entries
+            }
+        }
+
+        return null;
+    }
+
     private static string? NormalizeIconLocation(string? iconLocation)
     {
         if (string.IsNullOrWhiteSpace(iconLocation))
@@ -625,7 +982,19 @@ public static class IconHelper
             return null;
         }
 
-        string expanded = Environment.ExpandEnvironmentVariables(iconLocation.Trim().Trim('"'));
+        // Strip any trailing comma-separated icon index (e.g. "steam.exe,0" → "steam.exe")
+        string trimmed = iconLocation.Trim().Trim('"');
+        int lastComma = trimmed.LastIndexOf(',');
+        if (lastComma > 0 && lastComma < trimmed.Length - 1)
+        {
+            string afterComma = trimmed[(lastComma + 1)..];
+            if (int.TryParse(afterComma, out _))
+            {
+                trimmed = trimmed[..lastComma];
+            }
+        }
+
+        string expanded = Environment.ExpandEnvironmentVariables(trimmed);
         return string.IsNullOrWhiteSpace(expanded) ? null : expanded;
     }
 

@@ -358,6 +358,8 @@ public sealed partial class WidgetWindow
         {
             var item = sortItems[i];
             var mode = sortModes[i];
+            // Highlight the active auto-sort mode.  When in Manual mode
+            // (triggered by dragging), none of the auto-sort items are checked.
             item.IsChecked = i == currentSortIndex;
             item.Click += (_, _) => ViewModel.SetSortMode(mode);
             sortSubItem.Items.Add(item);

@@ -361,7 +361,11 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         if (!Visible)
         {
             var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(ViewModel.Config);
-            var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+            // Use center point for consistent monitor determination.
+            var center = new Windows.Graphics.PointInt32(
+                bounds.X + Math.Max(1, bounds.Width) / 2,
+                bounds.Y + Math.Max(1, bounds.Height) / 2);
+            var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
             WidgetPositioningService.CaptureAnchor(ViewModel.Config, bounds, workArea);
             WidgetPositioningService.UpdateConfigFromPhysicalBounds(ViewModel.Config, bounds, workArea);
             _settingsService.SaveDebounced();
@@ -743,7 +747,13 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             return;
         }
 
-        var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        // Use the window center point to determine the owning display.
+        // This prevents incorrect anchor capture when the window straddles
+        // two monitors during a cross-screen drag.
+        var center = new Windows.Graphics.PointInt32(
+            x + Math.Max(1, width) / 2,
+            y + Math.Max(1, height) / 2);
+        var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
         ViewModel.Config.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
         if (preserveCurrentEdge)
         {
@@ -768,7 +778,11 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         }
 
         var bounds = new Windows.Graphics.RectInt32(x, y, width, height);
-        var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        // Use center point for consistent monitor determination across drag/resize.
+        var center = new Windows.Graphics.PointInt32(
+            x + Math.Max(1, width) / 2,
+            y + Math.Max(1, height) / 2);
+        var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
         WidgetPositioningService.UpdateConfigFromPhysicalBounds(ViewModel.Config, bounds, workArea);
         if (persist)
         {

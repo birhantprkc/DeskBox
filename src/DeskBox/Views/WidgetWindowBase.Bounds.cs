@@ -56,12 +56,17 @@ public abstract partial class WidgetWindowBase
         ExtendsContentIntoTitleBar = false;
 
         var config = Config;
-        var workArea = DisplayArea.GetFromRect(
-            new RectInt32(
-                (int)Math.Round(config.X),
-                (int)Math.Round(config.Y),
-                (int)Math.Round(config.Width),
-                (int)Math.Round(config.Height)),
+        // Use center point for consistent monitor determination.
+        var initBounds = new RectInt32(
+            (int)Math.Round(config.X),
+            (int)Math.Round(config.Y),
+            (int)Math.Round(config.Width),
+            (int)Math.Round(config.Height));
+        var initCenter = new PointInt32(
+            initBounds.X + Math.Max(1, initBounds.Width) / 2,
+            initBounds.Y + Math.Max(1, initBounds.Height) / 2);
+        var workArea = DisplayArea.GetFromPoint(
+            initCenter,
             DisplayAreaFallback.Nearest).WorkArea;
         var bounds = WidgetPositioningService.ResolveBounds(
             config,
@@ -224,7 +229,11 @@ public abstract partial class WidgetWindowBase
         if (!Visible)
         {
             var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(Config);
-            var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+            // Use center point for consistent monitor determination.
+            var center = new PointInt32(
+                bounds.X + Math.Max(1, bounds.Width) / 2,
+                bounds.Y + Math.Max(1, bounds.Height) / 2);
+            var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
             WidgetPositioningService.CaptureAnchor(Config, bounds, workArea);
             WidgetPositioningService.UpdateConfigFromPhysicalBounds(Config, bounds, workArea);
             SettingsService.SaveDebounced();

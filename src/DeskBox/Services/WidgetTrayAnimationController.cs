@@ -62,14 +62,11 @@ public sealed class WidgetTrayAnimationController
     private double _renderFromOffsetY;
     private double _renderToOffsetX;
     private double _renderToOffsetY;
-    private float _renderFromOpacity;
-    private float _renderToOpacity;
-    private float _renderFromScale;
-    private float _renderToScale;
     private bool _renderIsShowing;
     private long _renderGeneration;
     private string _renderEasingIntensity = string.Empty;
     private Action? _renderCompleted;
+    private Microsoft.UI.Composition.Compositor? _cachedCompositor;
 
     public WidgetTrayAnimationController(
         AppWindow appWindow,
@@ -111,6 +108,15 @@ public sealed class WidgetTrayAnimationController
             return;
         }
 
+        // Disable DWM's built-in show/hide transition so it doesn't
+        // interfere with our custom animation.
+        int forceDisabled = 1;
+        Win32Helper.DwmSetWindowAttribute(
+            _windowHandle,
+            Win32Helper.DWMWA_TRANSITIONS_FORCEDISABLED,
+            ref forceDisabled,
+            sizeof(int));
+
         int cloaked = 1;
         int result = Win32Helper.DwmSetWindowAttribute(
             _windowHandle,
@@ -148,6 +154,16 @@ public sealed class WidgetTrayAnimationController
         {
             _log($"RevealWindow failed hresult=0x{result:X8}");
         }
+    }
+
+    private void RestoreDwmTransitions()
+    {
+        int forceDisabled = 0;
+        Win32Helper.DwmSetWindowAttribute(
+            _windowHandle,
+            Win32Helper.DWMWA_TRANSITIONS_FORCEDISABLED,
+            ref forceDisabled,
+            sizeof(int));
     }
 
     public void PlayAfterContentReady(Action action)
@@ -266,7 +282,7 @@ public sealed class WidgetTrayAnimationController
         visual.Offset = Vector3.Zero;
         visual.Opacity = RestingOpacity;
         visual.Scale = new Vector3(scale, scale, 1.0f);
-        ApplyOpacity(opacity);
+        visual.Opacity = Math.Clamp(opacity, 0.0f, 1.0f);
     }
 
     public void PrepareHiddenState()
@@ -276,8 +292,11 @@ public sealed class WidgetTrayAnimationController
         if (_targetPosition.HasValue)
         {
             ApplyWindowOffset(_preparedOffsetX, _preparedOffsetY);
-            ApplyOpacity(_preparedOpacity);
-            ApplyScale(_preparedScale);
+            var v = GetCachedRootVisual();
+            StopVisualAnimations(v);
+            v.Opacity = Math.Clamp(_preparedOpacity, 0.0f, 1.0f);
+            v.CenterPoint = GetVisualCenterPoint();
+            v.Scale = new Vector3(_preparedScale, _preparedScale, 1.0f);
             return;
         }
 
@@ -287,7 +306,7 @@ public sealed class WidgetTrayAnimationController
         visual.Offset = Vector3.Zero;
         visual.Opacity = RestingOpacity;
         visual.Scale = new Vector3(RestingScale, RestingScale, 1.0f);
-        ApplyOpacity(SoftOpacity);
+        visual.Opacity = SoftOpacity;
     }
 
     public void Animate(
@@ -317,31 +336,75 @@ public sealed class WidgetTrayAnimationController
         else
         {
             ApplyWindowOffset(fromOffsetX, fromOffsetY);
-            ApplyOpacity(fromOpacity);
-            ApplyScale(fromScale);
         }
+
+        // Ensure visual is ready and any previous animations are stopped.
+        var visual = GetCachedRootVisual();
+        StopVisualAnimations(visual);
 
         if (durationMs <= 1)
         {
-            CompleteAnimation(toOffsetX, toOffsetY, toOpacity, toScale, isShowing, generation, completed);
+            // Ensure final visual state is applied for instant transitions.
+            visual.Opacity = toOpacity;
+            visual.CenterPoint = GetVisualCenterPoint();
+            visual.Scale = new Vector3(toScale, toScale, 1);
+            CompleteAnimation(toOffsetX, toOffsetY, isShowing, generation, completed);
             return;
         }
 
+        // ── Opacity & Scale: Composition KeyFrame animations (GPU-driven) ──
+        var compositor = GetCachedCompositor(visual);
+        var easing = CreateEasingFunction(compositor, easingIntensity, isShowing);
+        var duration = TimeSpan.FromMilliseconds(durationMs);
+
+        // Opacity animation
+        if (Math.Abs(fromOpacity - toOpacity) > 0.001f)
+        {
+            var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
+            opacityAnim.Duration = duration;
+            opacityAnim.InsertKeyFrame(0, fromOpacity);
+            opacityAnim.InsertKeyFrame(1, toOpacity, easing);
+            visual.Opacity = fromOpacity;
+            visual.StartAnimation("Opacity", opacityAnim);
+        }
+        else
+        {
+            visual.Opacity = toOpacity;
+        }
+
+        // Scale animation
+        if (Math.Abs(fromScale - toScale) > 0.001f)
+        {
+            visual.CenterPoint = GetVisualCenterPoint();
+            var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
+            scaleAnim.Duration = duration;
+            scaleAnim.InsertKeyFrame(0, new Vector3(fromScale, fromScale, 1));
+            scaleAnim.InsertKeyFrame(1, new Vector3(toScale, toScale, 1), easing);
+            visual.Scale = new Vector3(fromScale, fromScale, 1);
+            visual.StartAnimation("Scale", scaleAnim);
+        }
+        else
+        {
+            visual.CenterPoint = GetVisualCenterPoint();
+            visual.Scale = new Vector3(toScale, toScale, 1);
+        }
+
+        // ── Window offset: still CPU-driven via AppWindow.Move() ──
+        // Only the position needs CompositionTarget.Rendering; opacity/scale
+        // are now GPU-driven and don't need per-frame CPU updates.
         _renderFromOffsetX = fromOffsetX;
         _renderFromOffsetY = fromOffsetY;
         _renderToOffsetX = toOffsetX;
         _renderToOffsetY = toOffsetY;
-        _renderFromOpacity = fromOpacity;
-        _renderToOpacity = toOpacity;
-        _renderFromScale = fromScale;
-        _renderToScale = toScale;
         _renderDurationMs = durationMs;
         _renderIsShowing = isShowing;
         _renderGeneration = generation;
-        _renderEasingIntensity = easingIntensity;
         _renderCompleted = completed;
         _renderStopwatch = Stopwatch.StartNew();
         _isRendering = true;
+
+        // Use the same easing for window position interpolation.
+        _renderEasingIntensity = easingIntensity;
 
         CompositionTarget.Rendering -= OnRenderingFrame;
         CompositionTarget.Rendering += OnRenderingFrame;
@@ -366,12 +429,9 @@ public sealed class WidgetTrayAnimationController
         double easedProgress = WidgetAnimationSettings.Ease(rawProgress, _renderEasingIntensity, _renderIsShowing);
         double currentOffsetX = Lerp(_renderFromOffsetX, _renderToOffsetX, easedProgress);
         double currentOffsetY = Lerp(_renderFromOffsetY, _renderToOffsetY, easedProgress);
-        float currentOpacity = (float)Lerp(_renderFromOpacity, _renderToOpacity, easedProgress);
-        float currentScale = (float)Lerp(_renderFromScale, _renderToScale, easedProgress);
 
+        // Only move the window — opacity/scale are GPU-driven by Composition animations.
         ApplyWindowOffset(currentOffsetX, currentOffsetY);
-        ApplyOpacity(currentOpacity);
-        ApplyScale(currentScale);
 
         if (rawProgress < 1.0)
         {
@@ -383,8 +443,6 @@ public sealed class WidgetTrayAnimationController
         CompleteAnimation(
             _renderToOffsetX,
             _renderToOffsetY,
-            _renderToOpacity,
-            _renderToScale,
             _renderIsShowing,
             _renderGeneration,
             _renderCompleted);
@@ -406,6 +464,7 @@ public sealed class WidgetTrayAnimationController
     {
         CancelContentReadyCallback();
         StopRendering();
+        RestoreDwmTransitions();
 
         if (_cachedRootVisual is { } visual)
         {
@@ -470,7 +529,6 @@ public sealed class WidgetTrayAnimationController
             visual.Offset = Vector3.Zero;
             visual.Opacity = RestingOpacity;
             visual.Scale = new Vector3(RestingScale, RestingScale, 1.0f);
-            RestoreOpacity();
         }
         catch
         {
@@ -500,8 +558,6 @@ public sealed class WidgetTrayAnimationController
     private void CompleteAnimation(
         double finalOffsetX,
         double finalOffsetY,
-        float finalOpacity,
-        float finalScale,
         bool isShowing,
         long generation,
         Action completed)
@@ -512,9 +568,8 @@ public sealed class WidgetTrayAnimationController
         }
 
         ApplyWindowOffset(finalOffsetX, finalOffsetY);
-        ApplyOpacity(finalOpacity);
-        ApplyScale(finalScale);
         SetOffsetOverride(null, null);
+        RestoreDwmTransitions();
         _log($"AnimateCompleted mode={(isShowing ? "show" : "hide")} gen={generation}");
         completed();
     }
@@ -542,28 +597,49 @@ public sealed class WidgetTrayAnimationController
 
     private void MoveNativeWindow(PointInt32 position)
     {
-        _appWindow.Move(position);
+        // Direct P/Invoke SetWindowPos — bypasses AppWindow.Move() WinRT
+        // marshalling overhead for lower per-frame latency.
+        Win32Helper.SetWindowPos(
+            _windowHandle,
+            IntPtr.Zero,
+            position.X,
+            position.Y,
+            0, 0,
+            Win32Helper.SWP_NOSIZE | Win32Helper.SWP_NOZORDER | Win32Helper.SWP_NOACTIVATE);
     }
 
-    private void ApplyOpacity(float opacity)
+    private Microsoft.UI.Composition.Compositor GetCachedCompositor(Microsoft.UI.Composition.Visual visual)
     {
-        opacity = Math.Clamp(opacity, 0.0f, 1.0f);
-        var visual = GetCachedRootVisual();
-        visual.Opacity = opacity;
+        return _cachedCompositor ??= visual.Compositor;
     }
 
-    private void RestoreOpacity()
+    private static Microsoft.UI.Composition.CompositionEasingFunction CreateEasingFunction(
+        Microsoft.UI.Composition.Compositor compositor,
+        string easingIntensity,
+        bool isShowing)
     {
-        var visual = GetCachedRootVisual();
-        visual.Opacity = RestingOpacity;
-    }
+        string intensity = WidgetAnimationSettings.NormalizeEasingIntensity(easingIntensity);
+        if (intensity == SettingsService.WidgetAnimationEasingNone)
+        {
+            return compositor.CreateLinearEasingFunction();
+        }
 
-    private void ApplyScale(float scale)
-    {
-        scale = Math.Clamp(scale, 0.0f, 1.0f);
-        var visual = GetCachedRootVisual();
-        visual.CenterPoint = GetVisualCenterPoint();
-        visual.Scale = new Vector3(scale, scale, 1.0f);
+        if (isShowing)
+        {
+            return intensity switch
+            {
+                SettingsService.WidgetAnimationEasingLight => compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.9f), new Vector2(0.25f, 1.0f)),
+                SettingsService.WidgetAnimationEasingStrong => compositor.CreateCubicBezierEasingFunction(new Vector2(0.05f, 1.1f), new Vector2(0.15f, 1.0f)),
+                _ => compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1.0f), new Vector2(0.3f, 1.0f))
+            };
+        }
+
+        return intensity switch
+        {
+            SettingsService.WidgetAnimationEasingLight => compositor.CreateCubicBezierEasingFunction(new Vector2(0.6f, 0.1f), new Vector2(0.9f, 0.3f)),
+            SettingsService.WidgetAnimationEasingStrong => compositor.CreateCubicBezierEasingFunction(new Vector2(0.7f, 0.0f), new Vector2(0.95f, -0.1f)),
+            _ => compositor.CreateCubicBezierEasingFunction(new Vector2(0.7f, 0.0f), new Vector2(0.84f, 0.0f))
+        };
     }
 
     private (double Left, double Right, double Up, double Down) GetOffscreenSlideOffsets()

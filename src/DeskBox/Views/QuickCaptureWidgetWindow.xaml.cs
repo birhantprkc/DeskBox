@@ -380,12 +380,12 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         RootGrid.Focus(FocusState.Programmatic);
     }
 
-    public void PrepareTrayShowAnimation()
-    {
-        _trayAnimation.NextGeneration();
-        _trayAnimation.StopAndRestoreWindowPosition();
-        _trayAnimation.CloakWindowForTrayShow();
-        _isHideAnimationRunning = false;
+public void PrepareTrayShowAnimation()
+{
+_trayAnimation.NextGeneration();
+_trayAnimation.StopAndRestoreWindowPosition();
+_trayAnimation.CloakWindowForTrayShow();
+_isHideAnimationRunning = false;
         var profile = GetTrayAnimationProfile();
         LogTrayWindow(
             $"PrepareShow gen={_trayAnimation.Generation} effect={_settingsService.Settings.WidgetAnimationEffect} " +
@@ -422,11 +422,10 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
             return false;
         }
 
-        _trayAnimation.NextGeneration();
-        _trayAnimation.RevealWindowForTrayShow();
-        _trayAnimation.StopAndRestoreWindowPosition();
-        RestoreNativeBackdropAfterTrayReveal();
-        _isHideAnimationRunning = true;
+_trayAnimation.NextGeneration();
+_trayAnimation.RevealWindowForTrayShow();
+_trayAnimation.StopAndRestoreWindowPosition();
+_isHideAnimationRunning = true;
         Visible = false;
         ViewModel.Config.IsVisible = false;
         if (persistVisibility)
@@ -528,6 +527,7 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
         StopBackdropRefreshTimer();
         _trayAnimation.Stop();
         _trayAnimation.RevealWindowForTrayShow();
+        RestoreNativeBackdropAfterTrayReveal();
         WidgetLayerService.ReleaseWindow(_hWnd);
         Close();
     }

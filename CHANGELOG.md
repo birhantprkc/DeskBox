@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.3.1 - 2026-07-20
+
+### English
+
+- **High-DPI icon clarity**: Replaced 32×32 `SHGFI_LARGEICON` extraction with `SHGetImageList` Jumbo (256×256) and Extra Large (48×48) fallback, plus `SHDefExtractIcon` for indexed icons. File and shortcut icons now match desktop icon clarity on high-DPI displays.
+- **Steam shortcut icons**: Resolved `.url` shortcut icons not displaying by parsing comma-separated icon indices (e.g. `steam.exe,0`), searching for Steam via registry, and falling back to common install locations and system PATH.
+- **Animation performance**: Replaced CPU-driven opacity/scale animations with GPU Composition KeyFrame animations. Added `DWMWA_TRANSITIONS_FORCEDISABLED` to prevent DWM interference. Replaced `AppWindow.Move` with direct `SetWindowPos` P/Invoke for lower latency.
+- **Black screen transition fix**: Removed backdrop suppression during tray show/hide animations so Mica/Acrylic material remains consistent throughout the animation cycle.
+- **Music artwork corner radius**: Fixed asymmetric corner radius on music widget album art in both empty and populated states by dynamically computing `CornerRadius` from widget settings.
+- **Duplicate startup entries**: Unified startup registration to a single registry `Run` key. Removed redundant startup shortcut creation from the installer and drag-drop permission service. Added automatic cleanup of legacy startup shortcuts.
+- **Capsule mode defaults**: New installs and global reset now default to hover auto-expand, sensitive hover response, and relaxed expand/collapse animation for a smoother first-run experience.
+- **Freeze diagnostics**: Added a UI thread watchdog that detects and logs unresponsive periods with handle counts and GC generation. Fixed a sync-over-async deadlock in `StoreStartupService.RequestEnableAsync`.
+- **Manual sort improvement**: Any drag-and-drop action in a file widget now automatically switches to manual sort mode. Subsequent sort mode clicks revert to automatic sorting. Removed the explicit "Manual Sort" menu option.
+
+### 中文
+
+- **高 DPI 图标清晰度**：将 32×32 的 `SHGFI_LARGEICON` 提取替换为 `SHGetImageList` Jumbo（256×256）和 Extra Large（48×48）回退，以及 `SHDefExtractIcon` 索引图标提取。文件和快捷方式图标在高 DPI 显示器上现在与桌面图标一样清晰。
+- **Steam 快捷方式图标**：修复 `.url` 快捷方式图标不显示的问题，解析逗号分隔的图标索引（如 `steam.exe,0`），通过注册表搜索 Steam 安装路径，并回退到常见安装位置和系统 PATH。
+- **动画性能**：将 CPU 驱动的透明度/缩放动画替换为 GPU Composition KeyFrame 动画。添加 `DWMWA_TRANSITIONS_FORCEDISABLED` 防止 DWM 干扰。将 `AppWindow.Move` 替换为直接 `SetWindowPos` P/Invoke 调用，降低延迟。
+- **黑屏过渡修复**：移除托盘显示/隐藏动画期间的材质抑制，使 Mica/Acrylic 材质在整个动画周期内保持一致。
+- **音乐封面圆角**：修复音乐格子封面在空状态和有值时圆角上下不对称的问题，通过动态计算 `CornerRadius` 解决。
+- **重复启动项**：统一开机启动注册为单一注册表 `Run` 键。移除安装器和拖拽权限服务中多余的启动快捷方式创建。新增旧启动快捷方式自动清理。
+- **胶囊模式默认值**：新安装和全局重置现在默认使用悬停自动展开、灵敏悬停响应和舒缓的展开/收起动画，提供更流畅的首次使用体验。
+- **卡死诊断**：新增 UI 线程看门狗，检测并记录无响应时段的句柄数和 GC 代数。修复 `StoreStartupService.RequestEnableAsync` 中的 sync-over-async 死锁。
+- **手动排序改进**：文件格子中任意拖拽操作现在自动切换到手动排序模式。后续排序模式点击恢复为自动排序。移除了显式的"手动排序"菜单选项。
+
 ## 1.3.0 - 2026-07-18
 
 ### English

@@ -44,7 +44,11 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         var bounds = new Windows.Graphics.RectInt32(x, y, width, height);
-        var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        // Use center point for consistent monitor determination across drag/resize.
+        var center = new Windows.Graphics.PointInt32(
+            x + Math.Max(1, width) / 2,
+            y + Math.Max(1, height) / 2);
+        var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
         WidgetPositioningService.UpdateConfigFromPhysicalBounds(ViewModel.Config, bounds, workArea);
         if (persist)
         {

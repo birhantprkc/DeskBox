@@ -459,7 +459,7 @@
                                             Minimum="0"
                                             StepFrequency="0.02"
                                             Style="{StaticResource InlineMetricSliderStyle}"
-                                            Value="{Binding WidgetOpacity, Mode=TwoWay}"
+                                            Value="{Binding WidgetTransparency, Mode=TwoWay}"
                                             ManipulationMode="TranslateX"
                                             ManipulationStarted="AppearanceSlider_ManipulationStarted"
                                             ManipulationCompleted="AppearanceSlider_ManipulationCompleted"

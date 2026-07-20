@@ -162,6 +162,7 @@ public partial class App : Application
 
         InitializeComponent();
         StartupService.Configure(StartupServiceFactory.Create(DistributionService));
+        DirectStartupService.TryRemoveLegacyStartupShortcutSafe();
         OrganizerService = new OrganizerService(SettingsService, FileService);
         AppUpdateService.CheckCompleted += OnUpdateCheckCompleted;
         UnhandledException += OnUnhandledException;
@@ -834,6 +835,7 @@ public partial class App : Application
             ScheduleBackgroundUpdateCheck();
             ScheduleMemoryDiagnostics();
             SchedulePeriodicMemoryCleanup();
+            StartUiThreadWatchdog();
 
             // Start display area watcher for hot-plug detection
             _displayAreaWatcher = new DisplayAreaWatcherService(UiDispatcherQueue);
@@ -885,6 +887,9 @@ public partial class App : Application
 
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _memoryDiagnosticTimer;
     private CancellationTokenSource? _periodicGcCts;
+    private System.Threading.Timer? _uiWatchdogTimer;
+    private volatile bool _uiHeartbeatReceived;
+    private int _watchdogMissCount;
 
     /// <summary>
     /// When perf logging is enabled, samples memory and cache statistics
@@ -958,6 +963,66 @@ public partial class App : Application
             }
         });
         Log("[Perf] Periodic memory cleanup scheduled (2 min interval)");
+    }
+
+    /// <summary>
+    /// Starts a watchdog that detects when the UI thread is unresponsive.
+    /// A background timer sets a heartbeat flag every 4 seconds; the UI thread
+    /// clears it via DispatcherQueue.TryEnqueue. If the flag is still set on
+    /// the next tick, the UI thread was blocked for >4 seconds.
+    /// Logs diagnostic info including handle count to help identify the cause.
+    /// </summary>
+    private void StartUiThreadWatchdog()
+    {
+        _uiHeartbeatReceived = true;
+
+        _uiWatchdogTimer = new System.Threading.Timer(_ =>
+        {
+            try
+            {
+                if (!_uiHeartbeatReceived)
+                {
+                    int missCount = Interlocked.Increment(ref _watchdogMissCount);
+                    int handleCount = 0;
+                    try
+                    {
+                        using var proc = System.Diagnostics.Process.GetCurrentProcess();
+                        handleCount = proc.HandleCount;
+                    }
+                    catch { }
+
+                    Log($"[Watchdog] UI thread unresponsive (miss #{missCount}), " +
+                        $"handles={handleCount}, " +
+                        $"gen0={GC.CollectionCount(0)}, gen1={GC.CollectionCount(1)}, gen2={GC.CollectionCount(2)}");
+
+                    // After 5 consecutive misses (20+ seconds), force a GC to rule out
+                    // memory pressure as the cause.
+                    if (missCount == 5)
+                    {
+                        Log("[Watchdog] 5 consecutive misses — forcing GC.Collect");
+                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+                        GC.WaitForPendingFinalizers();
+                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+                    }
+                }
+                else
+                {
+                    if (Interlocked.Exchange(ref _watchdogMissCount, 0) > 0)
+                    {
+                        Log("[Watchdog] UI thread recovered");
+                    }
+                }
+
+                _uiHeartbeatReceived = false;
+                UiDispatcherQueue?.TryEnqueue(() => _uiHeartbeatReceived = true);
+            }
+            catch (Exception ex)
+            {
+                Log($"[Watchdog] Error: {ex.Message}");
+            }
+        }, null, TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(4));
+
+        Log("[Watchdog] UI thread watchdog started (4s interval)");
     }
 
     private void ScheduleBackgroundUpdateCheck()

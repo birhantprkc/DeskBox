@@ -525,6 +525,7 @@ _ = RefreshQuickAccessStateAsync();
         OnPropertyChanged(nameof(DefaultWidthInput));
         OnPropertyChanged(nameof(DefaultHeightInput));
         OnPropertyChanged(nameof(WidgetOpacityPercentInput));
+        OnPropertyChanged(nameof(WidgetTransparency));
         OnPropertyChanged(nameof(IconSizeInput));
         OnPropertyChanged(nameof(TextSizeInput));
         OnPropertyChanged(nameof(LayoutDensityPercentInput));

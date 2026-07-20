@@ -357,6 +357,7 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(IsOpacitySliderEnabled));
         OnPropertyChanged(nameof(WidgetOpacityVisibility));
         OnPropertyChanged(nameof(MaterialIntensityVisibility));
+        OnPropertyChanged(nameof(WidgetTransparency));
         OnPropertyChanged(nameof(IsWidgetBorderStyleEnabled));
         OnPropertyChanged(nameof(SelectedThemeText));
         OnPropertyChanged(nameof(SelectedTrayIconStyleText));

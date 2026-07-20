@@ -171,7 +171,10 @@ public enum WidgetSortMode
     Type,
 
     /// <summary>Sort by last modification date.</summary>
-    DateModified
+    DateModified,
+
+    /// <summary>Manual order: items stay where the user placed them via drag.</summary>
+    Manual
 }
 
 /// <summary>

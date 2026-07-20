@@ -357,7 +357,11 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         }
 
         var bounds = new RectInt32(x, y, width, height);
-        var workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
+        // Use center point for consistent monitor determination across drag/resize.
+        var center = new PointInt32(
+            x + Math.Max(1, width) / 2,
+            y + Math.Max(1, height) / 2);
+        var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
         WidgetPositioningService.UpdateConfigFromPhysicalBounds(_config, bounds, workArea);
         if (persist)
         {
@@ -470,13 +474,13 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         TrayAnimation.SetOffsetOverride(offsetX, offsetY);
     }
 
-    public void PrepareTrayShowAnimation()
-    {
-        TrayAnimation.NextGeneration();
-        TrayAnimation.StopAndRestoreWindowPosition();
-        TrayAnimation.CloakWindowForTrayShow();
-        _isHidePrepared = false;
-        IsHideAnimationRunning = false;
+public void PrepareTrayShowAnimation()
+{
+TrayAnimation.NextGeneration();
+TrayAnimation.StopAndRestoreWindowPosition();
+TrayAnimation.CloakWindowForTrayShow();
+_isHidePrepared = false;
+IsHideAnimationRunning = false;
 
         var profile = GetTrayAnimationProfile();
         LogTrayWindow(
@@ -530,10 +534,10 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             return false;
         }
 
-        TrayAnimation.NextGeneration();
-        TrayAnimation.RevealWindowForTrayShow();
-        TrayAnimation.StopAndRestoreWindowPosition();
-        IsHideAnimationRunning = true;
+TrayAnimation.NextGeneration();
+TrayAnimation.RevealWindowForTrayShow();
+TrayAnimation.StopAndRestoreWindowPosition();
+IsHideAnimationRunning = true;
         _isHidePrepared = true;
         Visible = false;
         _config.IsVisible = false;
@@ -604,6 +608,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     {
         TrayAnimation.Stop();
         TrayAnimation.RevealWindowForTrayShow();
+        RestoreNativeBackdropAfterTrayReveal();
         IsHideAnimationRunning = false;
         _isHidePrepared = false;
         Visible = false;
@@ -633,6 +638,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
         IsClosing = true;
         TrayAnimation.RevealWindowForTrayShow();
+        RestoreNativeBackdropAfterTrayReveal();
         WidgetLayerService.ReleaseWindow(HWnd);
         Close();
     }

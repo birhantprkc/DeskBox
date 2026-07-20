@@ -391,7 +391,17 @@ public partial class SettingsViewModel
     }
 
     public string IconSizeValueText => $"{Math.Round(IconSize):0}px";
-    public string WidgetOpacityValueText => $"{Math.Round(WidgetOpacity * 100):0}%";
+    public string WidgetOpacityValueText => $"{Math.Round((1.0 - WidgetOpacity) * 100):0}%";
+
+    /// <summary>
+    /// UI-facing transparency value (inverted from internal WidgetOpacity).
+    /// 0 = fully opaque, 1 = most transparent.  The slider binds to this.
+    /// </summary>
+    public double WidgetTransparency
+    {
+        get => 1.0 - WidgetOpacity;
+        set => WidgetOpacity = 1.0 - Math.Clamp(value, 0.0, 1.0);
+    }
     public string WidgetMaterialIntensityValueText => $"{Math.Round(WidgetMaterialIntensity * 100):0}%";
     public string TextSizeValueText => $"{TextSize:0.#}pt";
     public string LayoutDensityValueText => $"{Math.Round(LayoutDensityScale * 100):0}%";
@@ -452,11 +462,11 @@ public partial class SettingsViewModel
         set => ApplyNumberInput(value, () => FileNameWidthPercent, next => FileNameWidthPercent = next, 0d, 100d, 0);
     }
 
-    public double WidgetOpacityPercent
-    {
-        get => Math.Round(WidgetOpacity * 100);
-        set => WidgetOpacity = Math.Clamp(value / 100d, SettingsService.MinWidgetOpacity, SettingsService.MaxWidgetOpacity);
-    }
+public double WidgetOpacityPercent
+{
+get => Math.Round((1.0 - WidgetOpacity) * 100);
+set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetOpacity, SettingsService.MaxWidgetOpacity);
+}
 
     public double LayoutDensityPercent
     {

@@ -55,6 +55,7 @@ public sealed partial class ContentWidgetWindow
             {
                 TrayAnimation.RestoreVisualState();
                 TrayAnimation.RestoreWindowPosition();
+                RestoreNativeBackdropAfterTrayReveal();
             });
     }
 
@@ -111,6 +112,7 @@ public sealed partial class ContentWidgetWindow
         IsHideAnimationRunning = false;
         _isHidePrepared = false;
         TrayAnimation.Stop();
+        RestoreNativeBackdropAfterTrayReveal();
         WidgetLayerService.ClearTopMost(HWnd);
         Win32Helper.ShowWindow(HWnd, Win32Helper.SW_HIDE);
         AppWindow.Hide();

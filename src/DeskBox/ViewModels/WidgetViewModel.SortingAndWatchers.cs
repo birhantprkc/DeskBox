@@ -15,12 +15,30 @@ public partial class WidgetViewModel
     {
         if (Config.SortMode == mode)
         {
-            Config.SortDescending = !Config.SortDescending;
+            // Toggle direction only for auto sort modes (not Manual).
+            if (mode != WidgetSortMode.Manual)
+            {
+                Config.SortDescending = !Config.SortDescending;
+            }
+            else
+            {
+                // Clicking "Manual" when already manual — no-op.
+                return;
+            }
         }
         else
         {
             Config.SortMode = mode;
             Config.SortDescending = false;
+        }
+
+        // Manual mode: keep current order, just persist the mode.
+        if (mode == WidgetSortMode.Manual)
+        {
+            NormalizeSortOrder();
+            _settingsService.UpdateWidget(Config, notifySubscribers: false);
+            OnPropertyChanged(nameof(SortModeLabel));
+            return;
         }
 
         var sorted = Items.OrderBy(item => item, Comparer<WidgetItem>.Create(CompareItems)).ToList();
@@ -34,16 +52,118 @@ public partial class WidgetViewModel
         OnPropertyChanged(nameof(SortModeLabel));
     }
 
+    /// <summary>
+    /// Moves an item to a new position within the Items collection.
+    /// Only effective when SortMode is Manual; otherwise the call is ignored.
+    /// </summary>
+    public bool TryReorderItem(WidgetItem item, int targetIndex)
+    {
+        if (Config.SortMode != WidgetSortMode.Manual)
+        {
+            return false;
+        }
+
+        int currentIndex = Items.IndexOf(item);
+        if (currentIndex < 0 || currentIndex == targetIndex)
+        {
+            return false;
+        }
+
+        // Clamp targetIndex to valid range.
+        targetIndex = Math.Clamp(targetIndex, 0, Items.Count - 1);
+        if (currentIndex == targetIndex)
+        {
+            return false;
+        }
+
+        Items.Move(currentIndex, targetIndex);
+        NormalizeSortOrder();
+        SyncConfigItemsOrder();
+        _settingsService.UpdateWidget(Config, notifySubscribers: false);
+        _settingsService.SaveDebounced(notifySubscribers: false);
+        return true;
+    }
+
+    /// <summary>
+    /// Moves an item to a new position without persisting to config.
+    /// Used for real-time reordering during drag-over for visual feedback.
+    /// Switches to Manual mode if needed.  Call PersistManualOrder on drop.
+    /// </summary>
+    public bool MoveItemForReorder(WidgetItem item, int targetIndex)
+    {
+        if (Config.SortMode != WidgetSortMode.Manual)
+        {
+            return false;
+        }
+
+        int currentIndex = Items.IndexOf(item);
+        if (currentIndex < 0)
+        {
+            return false;
+        }
+
+        targetIndex = Math.Clamp(targetIndex, 0, Items.Count - 1);
+        if (currentIndex == targetIndex)
+        {
+            return false;
+        }
+
+        Items.Move(currentIndex, targetIndex);
+        return true;
+    }
+
+    /// <summary>
+    /// Persists the current item order to config and settings.
+    /// Called once after real-time reordering is complete (on drop).
+    /// </summary>
+    public void PersistManualOrder()
+    {
+        if (Config.SortMode != WidgetSortMode.Manual)
+        {
+            return;
+        }
+
+        NormalizeSortOrder();
+        SyncConfigItemsOrder();
+        _settingsService.UpdateWidget(Config, notifySubscribers: false);
+        _settingsService.SaveDebounced(notifySubscribers: false);
+    }
+
+    /// <summary>
+    /// Rebuilds Config.Items to match the current Items collection order.
+    /// Called after a manual reorder to persist the new order.
+    /// </summary>
+    private void SyncConfigItemsOrder()
+    {
+        Config.Items.Clear();
+        foreach (var item in Items)
+        {
+            Config.Items.Add(new WidgetItemConfig
+            {
+                Path = item.Path,
+                SortOrder = item.SortOrder
+            });
+        }
+    }
+
     public string SortModeLabel => Config.SortMode switch
     {
         WidgetSortMode.Size => _localizationService.T("Widget.Sort.Size"),
         WidgetSortMode.Type => _localizationService.T("Widget.Sort.Type"),
         WidgetSortMode.DateModified => _localizationService.T("Widget.Sort.DateModified"),
+        WidgetSortMode.Manual => _localizationService.T("Widget.Sort.Manual"),
         _ => _localizationService.T("Widget.Sort.Name")
     };
 
     private void SortItems()
     {
+        // Manual mode: never auto-sort; preserve user-defined order.
+        if (Config.SortMode == WidgetSortMode.Manual)
+        {
+            NormalizeSortOrder();
+            return;
+        }
+
         var sortedItems = Items.ToList();
         sortedItems.Sort(CompareItems);
         for (int targetIndex = 0; targetIndex < sortedItems.Count; targetIndex++)
@@ -222,6 +342,12 @@ public partial class WidgetViewModel
 
     private int GetSortedInsertIndex(WidgetItem candidate)
     {
+        // Manual mode: always append to the end.
+        if (Config.SortMode == WidgetSortMode.Manual)
+        {
+            return Items.Count;
+        }
+
         for (int index = 0; index < Items.Count; index++)
         {
             if (CompareItems(candidate, Items[index]) < 0)
@@ -293,6 +419,7 @@ public partial class WidgetViewModel
                 Path.GetExtension(right.Path),
                 StringComparison.OrdinalIgnoreCase),
             WidgetSortMode.DateModified => left.LastModified.CompareTo(right.LastModified),
+            WidgetSortMode.Manual => left.SortOrder.CompareTo(right.SortOrder),
             _ => NaturalStringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name)
         };
 

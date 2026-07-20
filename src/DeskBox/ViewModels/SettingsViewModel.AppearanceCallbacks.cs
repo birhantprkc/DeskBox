@@ -18,11 +18,12 @@ public partial class SettingsViewModel
     {
         if (_isRestoringDefaults)
         {
-            OnPropertyChanged(nameof(WidgetOpacityValueText));
-            OnPropertyChanged(nameof(WidgetOpacityPercent));
-            OnPropertyChanged(nameof(WidgetOpacityPercentInput));
-            return;
-        }
+        OnPropertyChanged(nameof(WidgetOpacityValueText));
+        OnPropertyChanged(nameof(WidgetOpacityPercent));
+        OnPropertyChanged(nameof(WidgetOpacityPercentInput));
+        OnPropertyChanged(nameof(WidgetTransparency));
+        return;
+    }
 
         if (double.IsNaN(value))
         {
@@ -46,6 +47,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(WidgetOpacityValueText));
         OnPropertyChanged(nameof(WidgetOpacityPercent));
         OnPropertyChanged(nameof(WidgetOpacityPercentInput));
+        OnPropertyChanged(nameof(WidgetTransparency));
     }
 
     partial void OnWidgetMaterialIntensityChanged(double value)
