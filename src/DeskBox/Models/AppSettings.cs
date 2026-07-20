@@ -232,10 +232,10 @@ public class AppSettings
     /// How widgets enter and leave their compact state.
     /// Valid values: <c>"Expanded"</c>, <c>"Click"</c>, <c>"Smart"</c>.
     /// </summary>
-    public string WidgetCollapseBehavior { get; set; } = "Click";
+    public string WidgetCollapseBehavior { get; set; } = "Smart";
 
     /// <summary>Whether widgets are allowed to enter compact capsule mode.</summary>
-    public bool WidgetCapsuleModeEnabled { get; set; }
+    public bool WidgetCapsuleModeEnabled { get; set; } = true;
 
     /// <summary>
     /// How compact and expanded widget widths relate to each other.
@@ -293,16 +293,16 @@ public class AppSettings
     /// Valid values: <c>"Smooth"</c>, <c>"Slow"</c>, <c>"Snappy"</c>,
     /// <c>"Custom"</c>, <c>"None"</c>.
     /// </summary>
-    public string WidgetCompactAnimationEffect { get; set; } = "Smooth";
+    public string WidgetCompactAnimationEffect { get; set; } = "Slow";
 
     /// <summary>Compact transition duration in milliseconds.</summary>
     public int WidgetCompactAnimationDurationMs { get; set; } = 220;
 
     /// <summary>Pointer hover delay before a smart compact widget expands.</summary>
-    public int WidgetCompactExpandDelayMs { get; set; } = 360;
+    public int WidgetCompactExpandDelayMs { get; set; } = 180;
 
     /// <summary>Pointer leave delay before a smart compact widget collapses.</summary>
-    public int WidgetCompactCollapseDelayMs { get; set; } = 620;
+    public int WidgetCompactCollapseDelayMs { get; set; } = 420;
 
     /// <summary>
     /// Corner treatment for media inside compact widgets.

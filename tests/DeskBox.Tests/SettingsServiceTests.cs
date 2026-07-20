@@ -679,12 +679,18 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(SettingsService.WidgetAnimationEffectSlideFade, newUserDefaults.WidgetAnimationEffect);
         Assert.Equal(newUserDefaults.WidgetAnimationEffect, restoredDefaults.WidgetAnimationEffect);
-        Assert.False(newUserDefaults.WidgetCapsuleModeEnabled);
+        Assert.True(newUserDefaults.WidgetCapsuleModeEnabled);
         Assert.Equal(newUserDefaults.WidgetCapsuleModeEnabled, restoredDefaults.WidgetCapsuleModeEnabled);
         Assert.Equal(SettingsService.WidgetCompactWidthModeAligned, newUserDefaults.WidgetCompactWidthMode);
         Assert.Equal(newUserDefaults.WidgetCompactWidthMode, restoredDefaults.WidgetCompactWidthMode);
-        Assert.Equal(SettingsService.WidgetCompactAnimationSmooth, newUserDefaults.WidgetCompactAnimationEffect);
+        Assert.Equal(SettingsService.WidgetCompactAnimationSlow, newUserDefaults.WidgetCompactAnimationEffect);
         Assert.Equal(newUserDefaults.WidgetCompactAnimationEffect, restoredDefaults.WidgetCompactAnimationEffect);
+        Assert.Equal(SettingsService.WidgetCollapseBehaviorSmart, newUserDefaults.WidgetCollapseBehavior);
+        Assert.Equal(newUserDefaults.WidgetCollapseBehavior, restoredDefaults.WidgetCollapseBehavior);
+        Assert.Equal(SettingsService.SensitiveWidgetCompactExpandDelayMs, newUserDefaults.WidgetCompactExpandDelayMs);
+        Assert.Equal(newUserDefaults.WidgetCompactExpandDelayMs, restoredDefaults.WidgetCompactExpandDelayMs);
+        Assert.Equal(SettingsService.SensitiveWidgetCompactCollapseDelayMs, newUserDefaults.WidgetCompactCollapseDelayMs);
+        Assert.Equal(newUserDefaults.WidgetCompactCollapseDelayMs, restoredDefaults.WidgetCompactCollapseDelayMs);
         Assert.Equal(SettingsService.DefaultFileStackThreshold, restoredDefaults.FileStackThreshold);
         Assert.Equal(SettingsService.FileStackOrderByWidget, restoredDefaults.FileStackOrderBy);
         Assert.Equal(SettingsService.WidgetCompactContentModeSmart, restoredDefaults.WidgetCompactContentMode);
